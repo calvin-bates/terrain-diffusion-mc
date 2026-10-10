@@ -89,7 +89,7 @@ public final class WorldScaleSettingsScreen extends Screen {
     @Override
     public void onClose() {
         if (this.minecraft != null) {
-            this.minecraft.setScreen(parentScreen);
+            this.minecraft.gui.setScreen(parentScreen);
         }
     }
 

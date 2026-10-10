@@ -62,7 +62,7 @@ public abstract class CreateWorldScreenWorldTabMixin {
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft != null) {
-            minecraft.setScreen(new WorldScaleSettingsScreen(this$0));
+            minecraft.gui.setScreen(new WorldScaleSettingsScreen(this$0));
             callbackInfo.cancel();
         }
     }
