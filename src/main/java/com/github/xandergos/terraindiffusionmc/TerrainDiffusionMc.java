@@ -63,7 +63,7 @@ public class TerrainDiffusionMc implements ModInitializer {
             String url = "http://localhost:" + port;
             MutableComponent link = Component.literal(url)
                     .withStyle(s -> s.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
-                                  .withUnderline(true));
+                                  .withUnderlined(true));
             ctx.getSource().sendSuccess(
                     () -> Component.literal("Terrain Explorer: ").append(link),
                     false);
