@@ -112,12 +112,13 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
 
     @Override
     public double minValue() {
-        return -64;
+        // density = targetHeight - y, with y spanning the full -2032..2031 column.
+        return -4096;
     }
 
     @Override
     public double maxValue() {
-        return 1024;
+        return 8192;
     }
 
     @Override
