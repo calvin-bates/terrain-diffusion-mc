@@ -4,125 +4,112 @@ import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import com.mojang.serialization.MapCodec;
-import net.minecraft.util.dynamic.CodecHolder;
+import net.minecraft.util.Interval;
+import net.minecraft.world.level.levelgen.densityfunction.DensityBuffer;
 import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
+import net.minecraft.world.level.levelgen.densityfunction.DensitySampler;
+import net.minecraft.world.level.levelgen.densityfunction.DensityVolume;
+import net.minecraft.world.level.levelgen.densityfunction.DfRewriteRule;
+import net.minecraft.world.level.levelgen.densityfunction.SamplerContext;
 
+/**
+ * Density function backed by the Terrain Diffusion heightmap.
+ *
+ * <p>Minecraft 26.3 replaced the old per-position {@code sample}/{@code fill} API with compiled
+ * samplers. This function is stateless; all work happens in {@link Sampler}.
+ *
+ * <p>Value semantics are unchanged from the 1.21.x version: {@code targetHeight(x, z) - y},
+ * so the value is positive below the terrain surface and negative above it.
+ */
 public class TerrainDiffusionDensityFunction implements DensityFunction {
     public static final MapCodec<TerrainDiffusionDensityFunction> CODEC =
             MapCodec.unit(TerrainDiffusionDensityFunction::new);
 
-    public static final CodecHolder<TerrainDiffusionDensityFunction> CODEC_HOLDER = CodecHolder.of(CODEC);
+    /** Conservative bounds: y spans the full -2032..2031 column and targetHeight is within a few thousand blocks. */
+    private static final Interval RANGE = Interval.of(-4096.0f, 8192.0f);
 
     @Override
-    public double sample(DensityFunction.NoisePos pos) {
-        return compute(pos);
+    public DensitySampler compileSampler(DensityFunction.CompileContext context) {
+        return new Sampler();
     }
 
-    public double compute(DensityFunction.NoisePos context) {
-        int x = context.blockX();
-        int z = context.blockZ();
-        int y = context.blockY();
-
-        int tileSize = TerrainDiffusionConfig.tileSize();
-        int tileShift = Integer.numberOfTrailingZeros(tileSize);
-
-        int tileX = x >> tileShift;
-        int tileZ = z >> tileShift;
-
-        int blockStartX = tileX << tileShift;
-        int blockStartZ = tileZ << tileShift;
-        int blockEndX = blockStartX + tileSize;
-        int blockEndZ = blockStartZ + tileSize;
-
-        HeightmapData data = LocalTerrainProvider.getInstance().fetchHeightmap(blockStartZ, blockStartX, blockEndZ, blockEndX);
-        if (data == null || data.heightmap == null) {
-            return -y;
-        }
-
-        int localX = Math.max(0, Math.min(data.width  - 1, x - blockStartX));
-        int localZ = Math.max(0, Math.min(data.height - 1, z - blockStartZ));
-
-        int targetHeight = HeightConverter.convertToMinecraftHeight(data.heightmap[localZ][localX]);
-        return targetHeight - y;
+    @Override
+    public DensityFunction rewriteChildren(DfRewriteRule rule) {
+        // No child functions to rewrite.
+        return this;
     }
 
-    private static final class FillContext {
-        int blockStartX, blockStartZ, blockEndX, blockEndZ;
+    @Override
+    public Interval range() {
+        return RANGE;
+    }
+
+    @Override
+    public int domainAxes() {
+        return DensityFunction.ALL_AXES;
+    }
+
+    @Override
+    public MapCodec<? extends DensityFunction> codec() {
+        return CODEC;
+    }
+
+    /**
+     * Per-thread cache of the most recently used heightmap tile, so that scanning a volume
+     * does not hit the tile provider once per sampled point.
+     */
+    static final class TileCache {
+        int blockStartX = Integer.MIN_VALUE;
+        int blockStartZ = Integer.MIN_VALUE;
+        int blockEndX = Integer.MIN_VALUE;
+        int blockEndZ = Integer.MIN_VALUE;
         HeightmapData data;
 
-        void update(int x, int z) {
-            if (x < blockStartX || x >= blockEndX) this.init(x, z);
-            if (z < blockStartZ || z >= blockEndZ) this.init(x, z);
+        private static final ThreadLocal<TileCache> LOCAL = ThreadLocal.withInitial(TileCache::new);
+
+        static TileCache get() {
+            return LOCAL.get();
         }
 
-        void init(int x, int z) {
+        /** Returns the terrain surface height in Minecraft Y for the given block column. */
+        int surfaceHeight(int x, int z, int fallbackY) {
+            if (x < blockStartX || x >= blockEndX || z < blockStartZ || z >= blockEndZ) {
+                load(x, z);
+            }
+            HeightmapData tile = this.data;
+            if (tile == null || tile.heightmap == null) {
+                return fallbackY;
+            }
+            int localX = Math.max(0, Math.min(tile.width - 1, x - blockStartX));
+            int localZ = Math.max(0, Math.min(tile.height - 1, z - blockStartZ));
+            return HeightConverter.convertToMinecraftHeight(tile.heightmap[localZ][localX]);
+        }
+
+        private void load(int x, int z) {
             int tileSize = TerrainDiffusionConfig.tileSize();
             int tileShift = Integer.numberOfTrailingZeros(tileSize);
-
             int tileX = x >> tileShift;
             int tileZ = z >> tileShift;
-
             this.blockStartX = tileX << tileShift;
             this.blockStartZ = tileZ << tileShift;
             this.blockEndX = blockStartX + tileSize;
             this.blockEndZ = blockStartZ + tileSize;
-
             this.data = LocalTerrainProvider.getInstance()
-                .fetchHeightmap(blockStartZ, blockStartX, blockEndZ, blockEndX);
+                    .fetchHeightmap(blockStartZ, blockStartX, blockEndZ, blockEndX);
         }
     }
 
-    @Override
-    public void fill(double[] densities, DensityFunction.EachApplier applier) {
-        if (densities.length == 0) return;
-
-        FillContext ctx = new FillContext();
-        DensityFunction.NoisePos pos = applier.at(0);
-        int x = pos.blockX();
-        int z = pos.blockZ();
-        int y = pos.blockY();
-        ctx.init(x, z);
-
-        for (int i = 0; i < densities.length; i++) {
-            pos = applier.at(i);
-            x = pos.blockX();
-            z = pos.blockZ();
-            y = pos.blockY();
-            ctx.update(x, z);
-
-            HeightmapData data = ctx.data;
-            if (data == null || data.heightmap == null) {
-                densities[i] = -y;
-                continue;
-            }
-
-            int localX = Math.max(0, Math.min(data.width  - 1, x - ctx.blockStartX));
-            int localZ = Math.max(0, Math.min(data.height - 1, z - ctx.blockStartZ));
-
-            int targetHeight = HeightConverter
-                .convertToMinecraftHeight(data.heightmap[localZ][localX]);
-            densities[i] = targetHeight - y;
+    private static final class Sampler implements DensitySampler {
+        @Override
+        public float sampleValue(SamplerContext context, int x, int y, int z) {
+            // When no tile is available, behave like empty air above y=0: density = -y.
+            int target = TileCache.get().surfaceHeight(x, z, 0);
+            return (float) (target - y);
         }
-    }
 
-    @Override
-    public DensityFunction apply(DensityFunction.DensityFunctionVisitor visitor) {
-        return visitor.apply(this);
-    }
-
-    @Override
-    public double minValue() {
-        // density = targetHeight - y, with y spanning the full -2032..2031 column.
-        return -4096;
-    }
-
-    @Override
-    public double maxValue() {
-        return 8192;
-    }
-
-    @Override
-    public CodecHolder<? extends DensityFunction> getCodecHolder() {
-        return CODEC_HOLDER;
+        @Override
+        public void sampleVolume(SamplerContext context, DensityBuffer buffer, DensityVolume volume) {
+            DensitySampler.sampleVolumeNaive(context, buffer, volume, this);
+        }
     }
 }

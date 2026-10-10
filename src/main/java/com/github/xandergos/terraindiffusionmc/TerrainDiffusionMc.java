@@ -6,6 +6,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
 import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction;
+import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionSurfaceLevelFunction;
 import com.github.xandergos.terraindiffusionmc.world.WorldScaleManager;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
@@ -33,8 +34,9 @@ public class TerrainDiffusionMc implements ModInitializer {
     @Override
     public void onInitialize() {
         LOG.info("Initializing terrain-diffusion-mc");
-        Registry.register(BuiltInRegistries.BIOME_SOURCE, Identifier.of(MOD_ID, "terrain_diffusion"), TerrainDiffusionBiomeSource.CODEC);
-        Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.of(MOD_ID, "terrain_diffusion"), TerrainDiffusionDensityFunction.CODEC);
+        Registry.register(BuiltInRegistries.BIOME_SOURCE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionBiomeSource.CODEC);
+        Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionDensityFunction.CODEC);
+        Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion_surface"), TerrainDiffusionSurfaceLevelFunction.CODEC);
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
@@ -42,7 +44,7 @@ public class TerrainDiffusionMc implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> LocalTerrainProvider.clearCache());
 
         ServerLevelEvents.LOAD.register((server, world) -> {
-            if (world.getRegistryKey() == Level.OVERWORLD) {
+            if (world.dimension() == Level.OVERWORLD) {
                 WorldScaleManager.initializeForWorld(world);
                 LocalTerrainProvider.init(world.getSeed());
             }
@@ -60,14 +62,14 @@ public class TerrainDiffusionMc implements ModInitializer {
             int port = ExplorerServer.startIfNotRunning();
             String url = "http://localhost:" + port;
             MutableComponent link = Component.literal(url)
-                    .styled(s -> s.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
+                    .withStyle(s -> s.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
                                   .withUnderline(true));
-            ctx.getSource().sendFeedback(
+            ctx.getSource().sendSuccess(
                     () -> Component.literal("Terrain Explorer: ").append(link),
                     false);
         } catch (Exception e) {
             LOG.error("Failed to start terrain explorer", e);
-            ctx.getSource().sendError(Component.literal("Failed to start terrain explorer: " + e.getMessage()));
+            ctx.getSource().sendFailure(Component.literal("Failed to start terrain explorer: " + e.getMessage()));
         }
         return 1;
     }

@@ -20,8 +20,10 @@ import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.core.QuartPos;
+import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Climate;
+import net.minecraft.world.level.levelgen.RandomState;
 
 import java.util.Map;
 import java.util.function.Predicate;
@@ -30,13 +32,13 @@ import java.util.stream.Stream;
 import static java.util.Map.entry;
 
 public class TerrainDiffusionBiomeSource extends BiomeSource {
-    private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.of(Registries.BIOME, Identifier.of("terrain-diffusion-mc", "forest_sparse"));
-    private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.of(Registries.BIOME, Identifier.of("terrain-diffusion-mc", "taiga_sparse"));
-    private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.of(Registries.BIOME, Identifier.of("terrain-diffusion-mc", "snowy_taiga_sparse"));
+    private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "forest_sparse"));
+    private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "taiga_sparse"));
+    private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "snowy_taiga_sparse"));
 
     public static final MapCodec<TerrainDiffusionBiomeSource> CODEC = RecordCodecBuilder.mapCodec((instance) ->
             instance.group(
-                    RegistryOps.getEntryLookupCodec(Registries.BIOME)
+                    RegistryOps.retrieveGetter(Registries.BIOME)
             ).apply(instance, instance.stable(TerrainDiffusionBiomeSource::new)));
 
 
@@ -48,7 +50,7 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
     }
 
     @Override
-    protected MapCodec<? extends BiomeSource> getCodec() {
+    protected MapCodec<? extends BiomeSource> codec() {
         return CODEC;
     }
 
@@ -83,13 +85,21 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
     }
 
     @Override
-    public Stream<Holder<Biome>> biomeStream() {
+    protected Stream<Holder<Biome>> collectPossibleBiomes() {
         requireBiomeIdMap();
         return biomeIdMap.values().stream();
     }
 
+    /**
+     * 26.3 asks biome sources for a resolver bound to a climate sampler. This source ignores the
+     * climate sampler entirely and reads biome ids straight from the Terrain Diffusion tiles.
+     */
     @Override
-    public Holder<Biome> getBiome(int x, int y, int z, Climate.Sampler noise) {
+    public BiomeResolver createResolver(Climate.Sampler sampler) {
+        return this::getNoiseBiome;
+    }
+
+    private Holder<Biome> getNoiseBiome(int x, int y, int z) {
         requireBiomeIdMap();
         Holder<Biome> defaultEntry = biomeIdMap.get((short) 1);
 
@@ -119,13 +129,26 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
         return defaultEntry;
     }
 
+    // The Terrain Diffusion biome layout is not searchable through vanilla's climate search, so
+    // /locate biome style lookups are disabled, as in the 1.21.x version.
+
     @Override
-    public Pair<BlockPos, Holder<Biome>> locateBiome(BlockPos origin, int radius, int horizontalBlockCheckInterval, int verticalBlockCheckInterval, Predicate<Holder<Biome>> predicate, Climate.Sampler noiseSampler, LevelReader world) {
+    public Pair<BlockPos, Holder<Biome>> findBiomeHorizontal(int x, int y, int z, int radius,
+            Predicate<Holder<Biome>> predicate, RandomSource random, RandomState randomState) {
         return null;
     }
 
     @Override
-    public Pair<BlockPos, Holder<Biome>> locateBiome(int x, int y, int z, int radius, int blockCheckInterval, Predicate<Holder<Biome>> predicate, RandomSource random, boolean bl, Climate.Sampler noiseSampler) {
+    public Pair<BlockPos, Holder<Biome>> findClosestBiome3d(BlockPos origin, int radius,
+            int horizontalBlockCheckInterval, int verticalBlockCheckInterval,
+            Predicate<Holder<Biome>> predicate, RandomState randomState, LevelReader world) {
+        return null;
+    }
+
+    @Override
+    public Pair<BlockPos, Holder<Biome>> findBiomeHorizontal(int x, int y, int z, int radius,
+            int blockCheckInterval, Predicate<Holder<Biome>> predicate, RandomSource random,
+            boolean bl, RandomState randomState) {
         return null;
     }
 }
