@@ -20,8 +20,8 @@
 4. ONNX Runtime artifacts, model manifest revision and Java 25 compatibility are unverified.
 5. Test: a 4064-tall world is heavy on memory and chunk saves. Expect slower generation.
 
-## Gradle 9.4.1 / JDK 26
-- gradle-wrapper.properties now points at Gradle 9.4.1 (was 8.14.1). Run `./gradlew wrapper` once to refresh the wrapper jar.
+## Gradle 9.5.0 / JDK 26
+- gradle-wrapper.properties now points at Gradle 9.5.0 (was 8.14.1; Loom 1.17.x requires 9.5.0). Run `./gradlew wrapper` once to refresh the wrapper jar.
 - build.gradle: replaced `project.archivesBaseName` (removed in Gradle 9) with `base.archivesName.get()`.
 - Code still compiles with `--release 25`, so JDK 26 can build it. Java 26 support in Gradle 9.4.1 was stated by the user, not verified here.
 - Other Gradle 9 removals may surface once the build runs (Loom version must also support Gradle 9). Send the first error output.
