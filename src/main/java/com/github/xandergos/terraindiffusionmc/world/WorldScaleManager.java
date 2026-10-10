@@ -1,6 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.world;
 
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
 
 /**
  * Runtime access for world-scoped terrain scale.
@@ -21,7 +21,7 @@ public final class WorldScaleManager {
      * <p>If the world has no explicit stored scale yet, this applies pending
      * world-creation selection when present, otherwise falls back to {@value #DEFAULT_SCALE}.
      */
-    public static void initializeForWorld(ServerWorld serverWorld) {
+    public static void initializeForWorld(ServerLevel serverWorld) {
         WorldScaleSettingsState worldScaleSettingsState = serverWorld.getPersistentStateManager()
                 .getOrCreate(WorldScaleSettingsState.TYPE);
 
@@ -44,7 +44,7 @@ public final class WorldScaleManager {
     /**
      * Updates world scale for the currently loaded world and persists it immediately.
      */
-    public static void setCurrentScale(ServerWorld serverWorld, int configuredScale) {
+    public static void setCurrentScale(ServerLevel serverWorld, int configuredScale) {
         int clampedScale = clampScale(configuredScale);
         WorldScaleSettingsState worldScaleSettingsState = serverWorld.getPersistentStateManager()
                 .getOrCreate(WorldScaleSettingsState.TYPE);

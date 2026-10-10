@@ -5,7 +5,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.util.dynamic.CodecHolder;
-import net.minecraft.world.gen.densityfunction.DensityFunction;
+import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
 
 public class TerrainDiffusionDensityFunction implements DensityFunction {
     public static final MapCodec<TerrainDiffusionDensityFunction> CODEC =

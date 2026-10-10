@@ -1,14 +1,14 @@
 package com.github.xandergos.terraindiffusionmc.mixin.client;
 
 import com.github.xandergos.terraindiffusionmc.client.WorldScaleSettingsScreen;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.world.CreateWorldScreen;
-import net.minecraft.client.gui.screen.world.WorldCreator;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.util.Identifier;
-import net.minecraft.world.gen.WorldPreset;
-import net.minecraft.registry.RegistryKey;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
+import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.levelgen.presets.WorldPreset;
+import net.minecraft.resources.ResourceKey;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -27,13 +27,13 @@ public abstract class CreateWorldScreenWorldTabMixin {
     CreateWorldScreen field_42182;
 
     @Shadow
-    private ButtonWidget customizeButton;
+    private Button customizeButton;
 
-    private static final RegistryKey<WorldPreset> TERRAIN_DIFFUSION_PRESET_KEY =
-            RegistryKey.of(RegistryKeys.WORLD_PRESET, Identifier.of("terrain-diffusion-mc", "terrain_diffusion"));
+    private static final ResourceKey<WorldPreset> TERRAIN_DIFFUSION_PRESET_KEY =
+            ResourceKey.of(Registries.WORLD_PRESET, Identifier.of("terrain-diffusion-mc", "terrain_diffusion"));
 
     @Inject(method = "method_48676", at = @At("TAIL"))
-    private void terrainDiffusionMc$enableCustomizeButtonForTerrainDiffusion(WorldCreator worldCreator, CallbackInfo callbackInfo) {
+    private void terrainDiffusionMc$enableCustomizeButtonForTerrainDiffusion(WorldCreationUiState worldCreator, CallbackInfo callbackInfo) {
         if (isTerrainDiffusionWorldTypeSelected()) {
             customizeButton.active = true;
         }
@@ -58,7 +58,7 @@ public abstract class CreateWorldScreenWorldTabMixin {
         if (!isTerrainDiffusionWorldTypeSelected()) {
             return;
         }
-        MinecraftClient minecraftClient = MinecraftClient.getInstance();
+        Minecraft minecraftClient = Minecraft.getInstance();
         if (minecraftClient != null) {
             minecraftClient.setScreen(new WorldScaleSettingsScreen(field_42182));
             callbackInfo.cancel();
@@ -66,11 +66,11 @@ public abstract class CreateWorldScreenWorldTabMixin {
     }
 
     private boolean isTerrainDiffusionWorldTypeSelected() {
-        WorldCreator worldCreator = field_42182.getWorldCreator();
+        WorldCreationUiState worldCreator = field_42182.getWorldCreator();
         if (worldCreator == null) {
             return false;
         }
-        WorldCreator.WorldType worldType = worldCreator.getWorldType();
+        WorldCreationUiState.WorldType worldType = worldCreator.getWorldType();
         if (worldType == null) {
             return false;
         }
