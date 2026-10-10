@@ -25,3 +25,9 @@
 - build.gradle: replaced `project.archivesBaseName` (removed in Gradle 9) with `base.archivesName.get()`.
 - Code still compiles with `--release 25`, so JDK 26 can build it. Java 26 support in Gradle 9.4.1 was stated by the user, not verified here.
 - Other Gradle 9 removals may surface once the build runs (Loom version must also support Gradle 9). Send the first error output.
+
+## Status update
+- Client `CreateWorldScreen$WorldTab` mixin ported (uses `this$0`, `customizeTypeButton`, `openPresetEditor`).
+- `noise_settings/terrain_diffusion.json` rewritten in the 26.3 format; surface rule moved to `worldgen/material_rule/terrain_diffusion.json` (uses vanilla `minecraft:bedrock_floor`, which follows the new world floor).
+- dimension_type JSONs gained `default_clock`, `has_ender_dragon_fight`, straw bed rule, ambient light colour.
+- Not yet compiled/run: expect further compile or datapack-load errors.
