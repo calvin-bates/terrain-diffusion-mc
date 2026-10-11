@@ -40,11 +40,11 @@ Use the `-cuda` build only if you are on Linux, or have an NVIDIA GPU and prefer
 1. Download the mod jar from [Releases](https://github.com/xandergos/terrain-diffusion-mc/releases) for your Minecraft version and place it in your Minecraft `mods/` folder. Make sure the Minecraft version matches.
 2. Launch Minecraft, at least once online to download the models (~2.5GB).
 3. Create a world, and select the **Terrain Diffusion** world type. Click **Customize** to set the `World Scale` (see [Per-world settings](#per-world-settings) below).
-4. The mod will search for a land spawn point near the world origin automatically. If the area around (0, 0) is entirely ocean, it may take a moment to find land. Use `/td-explore` (see below) to scout the world further.
+4. The mod will search for a land spawn point near the world origin automatically. If the area around (0, 0) is entirely ocean, it may take a moment to find land. Use `/terra-explore` (see below) to scout the world further.
 
 ## Exploring the World
 
-The mod includes a built-in terrain explorer web UI. Run the `/td-explore` command in-game; it will print a clickable link (e.g. `http://localhost:19801`) that opens an interactive map in your browser. Click the map on the left to open a "detailed view". Click the detailed view to get coordinates in the bottom left. You can also filter for certain climates.
+The mod includes a built-in terrain explorer web UI. Run the `/terra-explore` command in-game; it will print a clickable link (e.g. `http://localhost:19801`) that opens an interactive map in your browser. Click the map on the left to open a "detailed view". Click the detailed view to get coordinates in the bottom left. You can also filter for certain climates.
 
 Use the explorer to scout continents, mountains, islands, and other interesting terrain before venturing out in Minecraft.
 
@@ -70,7 +70,7 @@ inference.offload_models=true
 # Set to false if you want to provide custom models/config files without hash checks.
 validate_model=true
 
-# Port for the local terrain explorer web UI (/td-explore).
+# Port for the local terrain explorer web UI (/terra-explore).
 explorer.port=19801
 
 # Spawn search: coarse-pixel region sizes for finding a land spawn near (0, 0).

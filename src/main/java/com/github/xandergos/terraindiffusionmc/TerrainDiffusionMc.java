@@ -54,37 +54,7 @@ public class TerrainDiffusionMc implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 {
-                    dispatcher.register(literal("td-explore").executes(TerrainDiffusionMc::executeExplore));
-                    dispatcher.register(literal("td-check").executes(ctx -> {
-                        var src = ctx.getSource();
-                        var pos = src.getPosition();
-                        int bx = (int) Math.floor(pos.x), bz = (int) Math.floor(pos.z);
-                        int scale = WorldScaleManager.getCurrentScale();
-                        int heightmapY = com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction.debugSurfaceHeight(bx, bz);
-                        int actualY = src.getLevel().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, bx, bz) - 1;
-                        String explorerMeters;
-                        try {
-                            int pi = Math.floorDiv(bz, scale), pj = Math.floorDiv(bx, scale);
-                            float[][] d = LocalTerrainProvider.getPipelineData(pi, pj, pi + 1, pj + 1, false);
-                            explorerMeters = String.valueOf(d[0][0]);
-                        } catch (Exception e) {
-                            explorerMeters = "error: " + e.getMessage();
-                        }
-                        String msg = "x=" + bx + " z=" + bz + " | seed=" + LocalTerrainProvider.getSeed()
-                                + " | scale=" + scale + " | heightmap Y=" + heightmapY
-                                + " | actual top block Y=" + actualY + " | explorer-path elevation(m)=" + explorerMeters;
-                        src.sendSuccess(() -> Component.literal(msg), false);
-                        LOG.info("[td-check] {}", msg);
-                        return 1;
-                    }));
-                    dispatcher.register(literal("td-height").executes(ctx -> {
-                        var pos = ctx.getSource().getPosition();
-                        int bx = (int) Math.floor(pos.x), bz = (int) Math.floor(pos.z);
-                        int expected = com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction.debugSurfaceHeight(bx, bz);
-                        ctx.getSource().sendSuccess(() -> Component.literal(
-                                "x=" + bx + " z=" + bz + " heightmap surface Y=" + expected + " (you are at y=" + (int) pos.y + ")"), false);
-                        return 1;
-                    }));
+                    dispatcher.register(literal("terra-explore").executes(TerrainDiffusionMc::executeExplore));
                 }
         );
     }

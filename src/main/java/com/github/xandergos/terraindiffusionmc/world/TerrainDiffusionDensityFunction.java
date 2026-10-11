@@ -28,11 +28,6 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
     /** Conservative bounds: y spans the -64..2031 column and targetHeight is within a few thousand blocks. */
     private static final Interval RANGE = Interval.of(-4096.0f, 8192.0f);
 
-    /** Debug helper: terrain surface Y the heightmap asks for at this block column. */
-    public static int debugSurfaceHeight(int x, int z) {
-        return TileCache.get().surfaceHeight(x, z, Integer.MIN_VALUE);
-    }
-
     @Override
     public DensitySampler compileSampler(DensityFunction.CompileContext context) {
         return new Sampler();
