@@ -1,10 +1,14 @@
-# Porting notes: 26.3 + 4064-block world
+# Porting notes: 26.3 + tall world
+
+## Height layout (current)
+- All dimension types: min_y=-64, height=2096, logical_height=2096 (build range y -64..2031).
+- noise_settings: noise min_y=-64, height=2096. Bedrock follows the floor via the vanilla `minecraft:bedrock_floor` material rule.
+- Sea level stays 63, so there are ~127 blocks from sea level down to bedrock, like vanilla. Mountains can reach the 2031 cap.
+- Vanilla ore/feature height ranges line up again because the floor is back at -64.
+- Worlds created with the earlier -2032 layout are incompatible; make a new world.
 
 ## Done (version-independent)
-- All dimension types: min_y=-2032, height=4064, logical_height=4064.
-- noise_settings: noise min_y=-2032, height=4064; bedrock gradient moved to -2028..-2023.
 - Sea level and terrain placement unchanged (sea level 63), so existing terrain code is untouched.
-  Result: ~2000 blocks of stone below the surface, and max build height 2031.
 - TerrainDiffusionDensityFunction min/max bounds widened for the taller column.
 - gradle.properties: minecraft 26.3, Fabric Loader 0.19.5, Fabric API 0.160.5+26.3. Java target 25.
 

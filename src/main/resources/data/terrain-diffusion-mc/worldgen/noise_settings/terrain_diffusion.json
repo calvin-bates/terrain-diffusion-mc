@@ -6,8 +6,8 @@
   "legacy_random_source": false,
   "material_rule": "terrain-diffusion-mc:terrain_diffusion",
   "noise": {
-    "height": 4064,
-    "min_y": -2032
+    "height": 2096,
+    "min_y": -64
   },
   "noise_router": {
     "chunk_surface_level": {
