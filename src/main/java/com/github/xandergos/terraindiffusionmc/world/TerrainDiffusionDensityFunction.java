@@ -33,8 +33,6 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
         return TileCache.get().surfaceHeight(x, z, Integer.MIN_VALUE);
     }
 
-    private static final java.util.concurrent.atomic.AtomicInteger DEBUG_LOGS = new java.util.concurrent.atomic.AtomicInteger();
-
     @Override
     public DensitySampler compileSampler(DensityFunction.CompileContext context) {
         return new Sampler();
@@ -111,10 +109,6 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
         public float sampleValue(SamplerContext context, int x, int y, int z) {
             // When no tile is available, behave like empty air above y=0: density = -y.
             int target = TileCache.get().surfaceHeight(x, z, 0);
-            if (DEBUG_LOGS.getAndIncrement() < 40) {
-                org.slf4j.LoggerFactory.getLogger("terrain-diffusion-mc").info(
-                        "[td-debug] sampleValue x={} y={} z={} -> surface={}", x, y, z, target);
-            }
             return (float) (target - y);
         }
 
