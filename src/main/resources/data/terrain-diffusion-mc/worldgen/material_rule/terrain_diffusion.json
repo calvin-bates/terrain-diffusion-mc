@@ -48,12 +48,7 @@
           },
           "then_run": {
             "type": "minecraft:block",
-            "result_state": {
-              "Name": "minecraft:snow",
-              "Properties": {
-                "layers": "1"
-              }
-            }
+            "result_state": "minecraft:snow"
           }
         }
       }
