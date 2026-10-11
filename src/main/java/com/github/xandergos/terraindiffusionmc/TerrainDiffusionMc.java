@@ -53,7 +53,17 @@ public class TerrainDiffusionMc implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> ExplorerServer.stop());
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-                dispatcher.register(literal("td-explore").executes(TerrainDiffusionMc::executeExplore))
+                {
+                    dispatcher.register(literal("td-explore").executes(TerrainDiffusionMc::executeExplore));
+                    dispatcher.register(literal("td-height").executes(ctx -> {
+                        var pos = ctx.getSource().getPosition();
+                        int bx = (int) Math.floor(pos.x), bz = (int) Math.floor(pos.z);
+                        int expected = com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction.debugSurfaceHeight(bx, bz);
+                        ctx.getSource().sendSuccess(() -> Component.literal(
+                                "x=" + bx + " z=" + bz + " heightmap surface Y=" + expected + " (you are at y=" + (int) pos.y + ")"), false);
+                        return 1;
+                    }));
+                }
         );
     }
 
