@@ -38,7 +38,7 @@ public abstract class CreateWorldScreenWorldTabMixin {
 
     private static final ResourceKey<WorldPreset> TERRAIN_DIFFUSION_PRESET_KEY =
             ResourceKey.create(Registries.WORLD_PRESET,
-                    Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "terrain_diffusion"));
+                    Identifier.fromNamespaceAndPath("terra", "terrain_diffusion"));
 
     /** Re-enable the customize button after the tab's constructor finished wiring its listeners. */
     @Inject(method = "<init>", at = @At("TAIL"))

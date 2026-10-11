@@ -1,3 +1,9 @@
+# Terra
+
+Terra is a Fabric mod for Minecraft 26.3 that generates realistic, AI-based terrain with a build range up to y=2031. It is a fork of [Terrain Diffusion](https://github.com/xandergos/terrain-diffusion-mc) by xandergos (MIT licensed); the original copyright notice is kept in `LICENSE`. The text below is the upstream README and still describes the original mod.
+
+---
+
 # Terrain Diffusion Fabric Mod [[Modrinth]](https://modrinth.com/mod/terrain-diffusion)
 
 #### UPDATE: The research behind this mod has been accepted to SIGGRAPH 2026, the world's premier graphics conference! That means the research was officially peer reviewed and recognized as a significant contribution to the field. Enjoy the mod!

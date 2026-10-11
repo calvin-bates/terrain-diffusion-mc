@@ -32,9 +32,9 @@ import java.util.stream.Stream;
 import static java.util.Map.entry;
 
 public class TerrainDiffusionBiomeSource extends BiomeSource {
-    private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "forest_sparse"));
-    private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "taiga_sparse"));
-    private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terrain-diffusion-mc", "snowy_taiga_sparse"));
+    private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "forest_sparse"));
+    private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "taiga_sparse"));
+    private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "snowy_taiga_sparse"));
 
     public static final MapCodec<TerrainDiffusionBiomeSource> CODEC = RecordCodecBuilder.mapCodec((instance) ->
             instance.group(

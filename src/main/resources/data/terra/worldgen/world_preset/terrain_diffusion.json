@@ -1,12 +1,12 @@
 {
   "dimensions": {
     "minecraft:overworld": {
-      "type": "terrain-diffusion-mc:terrain_diffusion",
+      "type": "terra:terrain_diffusion",
       "generator": {
         "type": "minecraft:noise",
-        "settings": "terrain-diffusion-mc:terrain_diffusion",
+        "settings": "terra:terrain_diffusion",
         "biome_source": {
-          "type": "terrain-diffusion-mc:terrain_diffusion"
+          "type": "terra:terrain_diffusion"
         }
       }
     },

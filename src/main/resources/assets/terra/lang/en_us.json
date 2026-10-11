@@ -1,0 +1,9 @@
+{
+  "generator.terra.terrain_diffusion": "Terra",
+  "terra.world_settings.title": "Terrain Settings",
+  "terra.world_settings.open_button": "Terrain Settings",
+  "terra.world_settings.scale": "World Scale",
+  "terra.world_settings.world_scale_description": "Set World Scale for this world.",
+  "terra.world_settings.scale_error": "Scale must be an integer >= 1"
+}
+

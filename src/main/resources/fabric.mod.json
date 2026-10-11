@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "terrain-diffusion-mc",
+  "id": "terra",
   "version": "${version}",
-  "name": "terrain-diffusion-mc",
-  "description": "Terrain Diffusion in Minecraft",
+  "name": "Terra",
+  "description": "Terra: realistic AI-generated terrain with a tall build height. Based on Terrain Diffusion by xandergos (MIT).",
   "authors": [],
   "contact": {},
   "license": "MIT",
-  "icon": "assets/terrain-diffusion-mc/icon.png",
+  "icon": "assets/terra/icon.png",
   "environment": "*",
   "entrypoints": {
     "fabric-datagen": [
@@ -21,9 +21,9 @@
     ]
   },
   "mixins": [
-    "terrain-diffusion-mc.mixins.json",
+    "terra.mixins.json",
     {
-      "config": "terrain-diffusion-mc.client.mixins.json",
+      "config": "terra.client.mixins.json",
       "environment": "client"
     }
   ],

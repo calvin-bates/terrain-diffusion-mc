@@ -28,12 +28,12 @@ import org.slf4j.LoggerFactory;
 import static net.minecraft.commands.Commands.literal;
 
 public class TerrainDiffusionMc implements ModInitializer {
-    public static final String MOD_ID = "terrain-diffusion-mc";
+    public static final String MOD_ID = "terra";
     private static final Logger LOG = LoggerFactory.getLogger(TerrainDiffusionMc.class);
 
     @Override
     public void onInitialize() {
-        LOG.info("Initializing terrain-diffusion-mc");
+        LOG.info("Initializing terra");
         Registry.register(BuiltInRegistries.BIOME_SOURCE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionBiomeSource.CODEC);
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionDensityFunction.CODEC);
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion_surface"), TerrainDiffusionSurfaceLevelFunction.CODEC);

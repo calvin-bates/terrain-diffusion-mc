@@ -26,7 +26,7 @@
         "biome_is": [
           "minecraft:snowy_plains",
           "minecraft:snowy_taiga",
-          "terrain-diffusion-mc:snowy_taiga_sparse"
+          "terra:snowy_taiga_sparse"
         ]
       },
       "then_run": {

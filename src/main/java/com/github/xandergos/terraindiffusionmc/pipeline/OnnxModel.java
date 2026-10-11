@@ -164,7 +164,7 @@ public final class OnnxModel implements AutoCloseable {
             if ("CoreML".equals(resolvedInferenceProvider)) {
                 throw new OrtException(
                         "inference.offload_models=false is not supported with CoreML. " +
-                        "Set inference.offload_models=true in terrain-diffusion-mc.properties.");
+                        "Set inference.offload_models=true in terra.properties.");
             }
             this.gpuSession = env.createSession(modelBytes, sessionOptions);
             this.cpuSession = null;

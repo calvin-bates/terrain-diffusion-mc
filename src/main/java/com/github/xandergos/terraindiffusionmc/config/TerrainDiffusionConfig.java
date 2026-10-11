@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.Properties;
 
 public final class TerrainDiffusionConfig {
-    private static final String FILE_NAME = "terrain-diffusion-mc.properties";
+    private static final String FILE_NAME = "terra.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
     private static final String BUILD_VARIANT = readBuildVariant();

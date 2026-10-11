@@ -109,7 +109,7 @@ public final class ExplorerServer {
     private static void handleRoot(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
         try (InputStream in = ExplorerServer.class.getResourceAsStream(
-                "/assets/terrain-diffusion-mc/explorer/index.html")) {
+                "/assets/terra/explorer/index.html")) {
             if (in == null) {
                 sendError(ex, 404, "index.html not found");
                 return;

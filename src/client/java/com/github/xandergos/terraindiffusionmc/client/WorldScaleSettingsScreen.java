@@ -26,7 +26,7 @@ import java.util.Map;
  * World creation settings screen for selecting the initial terrain scale of a world.
  */
 public final class WorldScaleSettingsScreen extends Screen {
-    private static final String MOD_ID = "terrain-diffusion-mc";
+    private static final String MOD_ID = "terra";
     private static final int TEXT_FIELD_WIDTH = 80;
     private static final int TEXT_FIELD_HEIGHT = 20;
     private static final int BUTTON_WIDTH = 80;
@@ -42,7 +42,7 @@ public final class WorldScaleSettingsScreen extends Screen {
     private StringWidget validationTextWidget;
 
     public WorldScaleSettingsScreen(Screen parentScreen) {
-        super(Component.translatable("terrain-diffusion-mc.world_settings.title"));
+        super(Component.translatable("terra.world_settings.title"));
         this.parentScreen = parentScreen;
     }
 

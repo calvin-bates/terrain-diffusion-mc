@@ -1,15 +1,22 @@
 {
   "attributes": {
-    "minecraft:visual/sky_color": "#839eff"
+    "minecraft:audio/background_music": {
+      "default": {
+        "max_delay": 24000,
+        "min_delay": 12000,
+        "sound": "minecraft:music.overworld.forest"
+      }
+    },
+    "minecraft:visual/sky_color": "#79a6ff"
   },
   "carvers": [
     "minecraft:cave",
     "minecraft:cave_extra_underground",
     "minecraft:canyon"
   ],
-  "downfall": 0.4,
+  "downfall": 0.8,
   "effects": {
-    "water_color": "#3d57d6"
+    "water_color": "#3f76e4"
   },
   "features": [
     [],
@@ -64,16 +71,16 @@
     ],
     [
       "minecraft:glow_lichen",
-      "minecraft:patch_large_fern",
-      "terrain-diffusion-mc:trees_taiga_sparse",
+      "minecraft:forest_flowers",
+      "terra:trees_birch_and_oak_sparse",
+      "minecraft:patch_bush",
       "minecraft:flower_default",
-      "minecraft:patch_grass_taiga_2",
-      "minecraft:brown_mushroom_taiga",
-      "minecraft:red_mushroom_taiga",
+      "minecraft:patch_grass_forest",
+      "minecraft:brown_mushroom_normal",
+      "minecraft:red_mushroom_normal",
       "minecraft:patch_pumpkin",
       "minecraft:patch_sugar_cane",
-      "minecraft:patch_firefly_bush_near_water",
-      "minecraft:patch_berry_rare"
+      "minecraft:patch_firefly_bush_near_water"
     ],
     [
       "minecraft:freeze_top_layer"
@@ -120,19 +127,7 @@
         "type": "minecraft:wolf",
         "maxCount": 4,
         "minCount": 4,
-        "weight": 8
-      },
-      {
-        "type": "minecraft:rabbit",
-        "maxCount": 3,
-        "minCount": 2,
-        "weight": 4
-      },
-      {
-        "type": "minecraft:fox",
-        "maxCount": 4,
-        "minCount": 2,
-        "weight": 8
+        "weight": 5
       }
     ],
     "misc": [],
@@ -197,5 +192,5 @@
     "water_ambient": [],
     "water_creature": []
   },
-  "temperature": -0.5
+  "temperature": 0.7
 }
