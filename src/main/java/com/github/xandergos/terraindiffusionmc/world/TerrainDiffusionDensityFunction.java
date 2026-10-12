@@ -82,6 +82,12 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
             }
             int localX = Math.max(0, Math.min(tile.width - 1, x - blockStartX));
             int localZ = Math.max(0, Math.min(tile.height - 1, z - blockStartZ));
+            // Rivers carve the terrain: use the carved surface where the tile has one.
+            short[][] carved = tile.surfaceY;
+            if (carved != null) {
+                short v = carved[localZ][localX];
+                if (v != Short.MIN_VALUE) return v;
+            }
             return HeightConverter.convertToMinecraftHeight(tile.heightmap[localZ][localX]);
         }
 

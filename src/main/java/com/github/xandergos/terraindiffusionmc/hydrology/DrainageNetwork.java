@@ -1,20 +1,17 @@
 package com.github.xandergos.terraindiffusionmc.hydrology;
 
-import java.util.PriorityQueue;
-
 /**
  * Drainage network on a regular grid: depression filling (priority-flood), D8 flow directions
  * and runoff-weighted flow accumulation.
  *
  * <p>Pure Java with no Minecraft dependencies so it can be unit-tested on synthetic terrain.
  *
- * <p>Outlets: every cell at or below {@code seaLevel} (the ocean). Grid edges are NOT treated as
- * outlets by default (water leaving the window is treated as flowing to an unknown outlet, see
- * {@link #edgesAreOutlets}); callers should compute on a window with a margin and only use the
- * central part, so that edge effects do not matter.
+ * <p>Outlets: every cell at or below {@code seaLevel} (the ocean), plus, if requested, every cell
+ * on the grid border. Callers compute on a window with a margin and only use the central part, so
+ * that border effects do not matter.
  */
 public final class DrainageNetwork {
-    /** Cell indices of the 8 neighbours. */
+    /** Cell offsets of the 8 neighbours. */
     private static final int[] DR = {-1, -1, -1, 0, 0, 1, 1, 1};
     private static final int[] DC = {-1, 0, 1, -1, 1, -1, 0, 1};
 
@@ -22,9 +19,9 @@ public final class DrainageNetwork {
     public final int width;
     /** Downstream cell index for every cell, or -1 for outlets (ocean cells and window-edge exits). */
     public final int[] downstream;
-    /** Runoff accumulated upstream of (and including) every cell, in the units of the runoff input. */
+    /** Runoff accumulated upstream of (and including) every cell. */
     public final float[] discharge;
-    /** Elevation after depression filling (lakes become flat plus a tiny epsilon slope). */
+    /** Elevation after depression filling (lakes become flat plus a tiny random slope). */
     public final float[] filled;
     /** True for cells that were raised by depression filling (lake / flat areas). */
     public final boolean[] inDepression;
@@ -38,6 +35,13 @@ public final class DrainageNetwork {
         this.inDepression = dep;
     }
 
+    /** Heap key: float ordering in the high 32 bits, cell index in the low 32 bits. */
+    private static long key(float v, int idx) {
+        int b = Float.floatToIntBits(v);
+        if (b < 0) b ^= 0x7FFFFFFF;
+        return ((long) b << 32) | (idx & 0xFFFFFFFFL);
+    }
+
     /**
      * @param elev        elevation in metres, row-major {@code height*width}
      * @param runoff      runoff produced by each cell (for example precipitation times cell area)
@@ -46,18 +50,17 @@ public final class DrainageNetwork {
      */
     public static DrainageNetwork compute(float[] elev, float[] runoff, int height, int width,
                                           float seaLevel, boolean edgesAreOutlets) {
-        int n = height * width;
+        final int n = height * width;
         float[] filled = new float[n];
         int[] downstream = new int[n];
         boolean[] closed = new boolean[n];
         boolean[] dep = new boolean[n];
         java.util.Arrays.fill(downstream, -1);
 
-        PriorityQueue<long[]> open = new PriorityQueue<>((a, b) -> {
-            int c = Float.compare(Float.intBitsToFloat((int) a[0]), Float.intBitsToFloat((int) b[0]));
-            return c != 0 ? c : Long.compare(a[2], b[2]);
-        });
-        long order = 0;
+        long[] heap = new long[n];
+        int size = 0;
+        int[] order = new int[n];
+        int popped = 0;
 
         for (int i = 0; i < n; i++) {
             int r = i / width, c = i % width;
@@ -66,22 +69,24 @@ public final class DrainageNetwork {
             if (ocean || edge) {
                 closed[i] = true;
                 filled[i] = elev[i];
-                open.add(new long[]{Float.floatToIntBits(elev[i]), i, order++});
+                size = push(heap, size, key(elev[i], i));
             }
         }
-        // If nothing is an outlet, seed from the lowest edge cell so the algorithm still terminates.
-        if (open.isEmpty()) {
+        // If nothing is an outlet, seed from the lowest cell so the algorithm still terminates.
+        if (size == 0) {
             int best = 0;
             for (int i = 1; i < n; i++) if (elev[i] < elev[best]) best = i;
             closed[best] = true;
             filled[best] = elev[best];
-            open.add(new long[]{Float.floatToIntBits(elev[best]), best, order++});
+            size = push(heap, size, key(elev[best], best));
         }
 
         final float eps = 1e-3f;
-        while (!open.isEmpty()) {
-            long[] top = open.poll();
-            int i = (int) top[1];
+        while (size > 0) {
+            long top = heap[0];
+            size = pop(heap, size);
+            int i = (int) top;
+            order[popped++] = i;
             int r = i / width, c = i % width;
             float fi = filled[i];
             for (int k = 0; k < 8; k++) {
@@ -100,21 +105,73 @@ public final class DrainageNetwork {
                 }
                 filled[j] = fj;
                 downstream[j] = i;
-                open.add(new long[]{Float.floatToIntBits(fj), j, order++});
+                size = push(heap, size, key(fj, j));
             }
         }
 
-        // Accumulate from high to low along the (acyclic) downstream tree.
-        Integer[] idx = new Integer[n];
-        for (int i = 0; i < n; i++) idx[i] = i;
-        java.util.Arrays.sort(idx, (a, b) -> Float.compare(filled[b], filled[a]));
+        // Cells were popped in non-decreasing filled order and every cell is popped after its
+        // downstream cell, so walking the pop order backwards visits all upstream cells first.
         float[] discharge = new float[n];
         for (int i = 0; i < n; i++) discharge[i] = Math.max(0f, runoff[i]);
-        for (int t = 0; t < n; t++) {
-            int i = idx[t];
+        for (int t = popped - 1; t >= 0; t--) {
+            int i = order[t];
             int d = downstream[i];
             if (d >= 0) discharge[d] += discharge[i];
         }
         return new DrainageNetwork(height, width, downstream, discharge, filled, dep);
+    }
+
+    /**
+     * Accumulation restricted to upstream cells that reach a cell within {@code steps} flow steps.
+     *
+     * <p>Unlike {@link #discharge} this does not depend on how big the computed window is, as long
+     * as the window extends at least {@code steps} cells beyond the area of interest. That is what
+     * keeps rivers continuous across independently computed regions.
+     */
+    public float[] limitedDischarge(float[] runoff, int steps) {
+        final int n = height * width;
+        float[] base = new float[n];
+        for (int i = 0; i < n; i++) base[i] = Math.max(0f, runoff[i]);
+        float[] cur = base.clone();
+        float[] next = new float[n];
+        for (int k = 0; k < steps; k++) {
+            System.arraycopy(base, 0, next, 0, n);
+            for (int i = 0; i < n; i++) {
+                int d = downstream[i];
+                if (d >= 0) next[d] += cur[i];
+            }
+            float[] t = cur; cur = next; next = t;
+        }
+        return cur;
+    }
+
+    private static int push(long[] heap, int size, long v) {
+        int i = size++;
+        while (i > 0) {
+            int p = (i - 1) >>> 1;
+            if (heap[p] <= v) break;
+            heap[i] = heap[p];
+            i = p;
+        }
+        heap[i] = v;
+        return size;
+    }
+
+    private static int pop(long[] heap, int size) {
+        size--;
+        if (size == 0) return 0;
+        long v = heap[size];
+        int i = 0;
+        while (true) {
+            int l = 2 * i + 1;
+            if (l >= size) break;
+            int rgt = l + 1;
+            int m = (rgt < size && heap[rgt] < heap[l]) ? rgt : l;
+            if (heap[m] >= v) break;
+            heap[i] = heap[m];
+            i = m;
+        }
+        heap[i] = v;
+        return size;
     }
 }

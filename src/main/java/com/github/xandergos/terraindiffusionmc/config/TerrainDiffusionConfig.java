@@ -75,6 +75,27 @@ public final class TerrainDiffusionConfig {
         return configuredTileSize;
     }
 
+    /** Whether rivers and lakes are generated. Only affects newly generated chunks. */
+    public static boolean riversEnabled() {
+        return readBoolean("rivers.enabled", true);
+    }
+
+    /** Side length of a hydrology region in native pixels (30 m each). */
+    public static int riverRegionSize() {
+        return Math.max(128, readInt("rivers.region_size", 512));
+    }
+
+    /** Extra native pixels computed around each region so rivers match across region borders. */
+    public static int riverMargin() {
+        return readInt("rivers.margin", 128);
+    }
+
+    public static float riverStreamThreshold() { return readFloat("rivers.stream_threshold", 1200f); }
+    public static float riverRiverThreshold() { return readFloat("rivers.river_threshold", 8000f); }
+    public static float riverMainThreshold() { return readFloat("rivers.main_threshold", 25000f); }
+    public static int lakeMinArea() { return readInt("rivers.lake_min_area", 150); }
+    public static float lakeMinDepth() { return readFloat("rivers.lake_min_depth", 2f); }
+
     private static void loadDefaults() {
         boolean loadedFromResource = false;
         try (InputStream in = TerrainDiffusionConfig.class.getResourceAsStream(RESOURCE_PATH)) {
@@ -148,6 +169,17 @@ public final class TerrainDiffusionConfig {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
             System.err.println("Invalid int for " + key + ": " + value + ", using default " + defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static float readFloat(String key, float defaultValue) {
+        String value = PROPERTIES.getProperty(key);
+        if (value == null) return defaultValue;
+        try {
+            return Float.parseFloat(value.trim());
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid float for " + key + ": " + value + ", using default " + defaultValue);
             return defaultValue;
         }
     }

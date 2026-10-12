@@ -165,3 +165,14 @@ The built jar appears in `java/build/`. Rename it to `onnxruntime-dml.jar` and p
 While modifying the AI terrain itself is quite complex, the integration with Minecraft biomes is extremely simple. The model outputs elevation + 4 climate variables, and this is converted to Minecraft biomes with hand-written rules. This is the most immediate way to improve the quality of the terrain and is relatively easy, but takes time to get realistic. The entire biome classifier is [only 250 lines](https://github.com/xandergos/terrain-diffusion-mc/blob/master/src/main/java/com/github/xandergos/terraindiffusionmc/pipeline/BiomeClassifier.java).
 
 The terrain diversity far outpaces the biome diversity and there's a real opportunity to close that gap. I'm hoping someone goes crazy with it.
+
+## Rivers and lakes
+
+Terra derives rivers and lakes from the generated terrain: water drains downhill, small catchments
+make streams, larger ones rivers and main rivers, and filled basins become lakes. Main rivers stay in
+the lowlands, mountains only get streams, and snowy or stony peaks stay dry. Channels are carved into
+the terrain, so rivers sit in real valleys.
+
+Tune it with the **Rivers** view in `/terra-explore` (sliders for thresholds and lake size), then copy
+the numbers into `config/terra.properties` (`rivers.*` keys). Set `rivers.enabled=false` to turn it
+off. It only affects newly generated chunks.

@@ -6,18 +6,35 @@ import com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite;
  * Turns an elevation + climate window into river / lake classes using {@link DrainageNetwork}.
  *
  * <p>Pure Java (no Minecraft types). All coordinates are native pixels. The caller should pass a
- * window with a generous margin around the area of interest and crop the result, because flow
- * accumulation is truncated at the window border.
+ * window with a margin of at least {@link Params#flowSteps} pixels around the area of interest;
+ * results inside that area are then identical no matter how the windows are cut.
  */
 public final class RiverMap {
     public static final byte NONE = 0, STREAM = 1, RIVER = 2, MAIN = 3, LAKE = 4;
 
-    /** Discharge thresholds in "cell equivalents" of runoff (1 cell = 1 native pixel of ~1 m/yr rain). */
     public static final class Params {
-        public float streamQ = 1200f, riverQ = 10000f, mainQ = 60000f;
+        /** Discharge thresholds in "cell equivalents" of runoff (1 cell = one native pixel of ~800 mm rain). */
+        public float streamQ = 1200f, riverQ = 8000f, mainQ = 25000f;
+        /** Only upstream area within this many flow steps counts (keeps regions seamless). */
+        public int flowSteps = 110;
         /** Minimum lake size (native pixels) and depth (metres of fill). */
         public int lakeMinArea = 150;
         public float lakeMinDepth = 2f;
+    }
+
+    /** Per-cell results for the whole window. */
+    public static final class Result {
+        public final byte[] cls;
+        /** Downstream cell index, or -1. */
+        public final int[] downstream;
+        /** Water surface elevation in metres (depression-filled terrain). */
+        public final float[] surface;
+
+        Result(byte[] cls, int[] downstream, float[] surface) {
+            this.cls = cls;
+            this.downstream = downstream;
+            this.surface = surface;
+        }
     }
 
     private static final FastNoiseLite JITTER = new FastNoiseLite(99);
@@ -28,8 +45,9 @@ public final class RiverMap {
 
     private RiverMap() { }
 
-    public static byte[] compute(float[] elev, float[] climate, int H, int W, int i0, int j0) {
-        return compute(elev, climate, H, W, i0, j0, new Params());
+    /** Convenience for callers that only need the classes. */
+    public static byte[] compute(float[] elev, float[] climate, int H, int W, int i0, int j0, Params p) {
+        return computeFull(elev, climate, H, W, i0, j0, p).cls;
     }
 
     /**
@@ -37,9 +55,8 @@ public final class RiverMap {
      * @param climate 5*H*W climate (temp, t_season, precip, p_cv, ...) or null
      * @param i0      world row of the window's first row (for position-stable jitter noise)
      * @param j0      world column of the window's first column
-     * @return class per cell: NONE / STREAM / RIVER / MAIN / LAKE
      */
-    public static byte[] compute(float[] elev, float[] climate, int H, int W, int i0, int j0, Params p) {
+    public static Result computeFull(float[] elev, float[] climate, int H, int W, int i0, int j0, Params p) {
         int n = H * W;
         float[] routing = new float[n];
         float[] runoff = new float[n];
@@ -59,6 +76,7 @@ public final class RiverMap {
         }
 
         DrainageNetwork net = DrainageNetwork.compute(routing, runoff, H, W, 0f, true);
+        float[] q = net.limitedDischarge(runoff, p.flowSteps);
         byte[] out = new byte[n];
 
         // --- lakes: connected groups of depression cells that are big and deep enough
@@ -95,14 +113,14 @@ public final class RiverMap {
 
             if (lake[i]) { out[i] = LAKE; continue; }
 
-            float q = net.discharge[i];
-            byte cls = q >= p.mainQ ? MAIN : q >= p.riverQ ? RIVER : q >= p.streamQ ? STREAM : NONE;
+            float d = q[i];
+            byte cls = d >= p.mainQ ? MAIN : d >= p.riverQ ? RIVER : d >= p.streamQ ? STREAM : NONE;
             if (cls == NONE) continue;
             // Altitude caps: big rivers only in lowlands, small streams in the mountains.
             if (e > 1500f && cls > STREAM) cls = STREAM;
             else if (e > 700f && cls > RIVER) cls = RIVER;
             out[i] = cls;
         }
-        return out;
+        return new Result(out, net.downstream, net.filled);
     }
 }

@@ -1,6 +1,11 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+import com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver;
+import com.github.xandergos.terraindiffusionmc.hydrology.RiverMap;
+import com.github.xandergos.terraindiffusionmc.hydrology.RiverService;
 import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
+import com.github.xandergos.terraindiffusionmc.world.HeightConverter;
 import com.github.xandergos.terraindiffusionmc.world.WorldScaleManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +54,10 @@ public final class LocalTerrainProvider {
         public final short[][] biomeIds;
         public final int width;
         public final int height;
+        /** Carved surface heights (top solid block Y) or {@link RiverCarver#NONE}; null if the tile has no rivers. */
+        public short[][] surfaceY;
+        /** Y of the highest inland water block or {@link RiverCarver#NONE}; null if the tile has no inland water. */
+        public short[][] waterY;
 
         public HeightmapData(short[][] heightmap, short[][] biomeIds, int width, int height) {
             this.heightmap = heightmap;
@@ -97,6 +106,7 @@ public final class LocalTerrainProvider {
             instanceSeed = seed;
             CACHE.clear();
             PENDING.clear();
+            clearRivers();
         }
     }
 
@@ -118,6 +128,7 @@ public final class LocalTerrainProvider {
     public static void clearCache() {
         CACHE.clear();
         PENDING.clear();
+        clearRivers();
     }
 
     // =========================================================================
@@ -159,6 +170,7 @@ public final class LocalTerrainProvider {
             instanceSeed = newSeed;
             CACHE.clear();
             PENDING.clear();
+            clearRivers();
             return null;
         });
     }
@@ -191,6 +203,67 @@ public final class LocalTerrainProvider {
         return this.genHeightmap(key, i1, j1, i2, j2);
     }
 
+    /** Returns the cached tile for this block region without generating it, or null. */
+    public static HeightmapData peekHeightmap(int i1, int j1, int i2, int j2) {
+        CacheEntry cached = CACHE.get(new CacheKey(i1, j1, i2, j2));
+        if (cached == null) return null;
+        cached.lastAccessed.set(CACHE_CLOCK.incrementAndGet());
+        return cached.data;
+    }
+
+    // =========================================================================
+    // Rivers and lakes
+    // =========================================================================
+
+    private static RiverService riverService;
+
+    private static synchronized RiverService rivers() {
+        if (riverService == null) {
+            RiverMap.Params p = new RiverMap.Params();
+            p.streamQ = TerrainDiffusionConfig.riverStreamThreshold();
+            p.riverQ = TerrainDiffusionConfig.riverRiverThreshold();
+            p.mainQ = TerrainDiffusionConfig.riverMainThreshold();
+            p.lakeMinArea = TerrainDiffusionConfig.lakeMinArea();
+            p.lakeMinDepth = TerrainDiffusionConfig.lakeMinDepth();
+            int margin = Math.max(TerrainDiffusionConfig.riverMargin(), p.flowSteps + 8);
+            riverService = new RiverService(TerrainDiffusionConfig.riverRegionSize(), margin, p);
+        }
+        return riverService;
+    }
+
+    private static synchronized void clearRivers() {
+        if (riverService != null) riverService.clear();
+    }
+
+    /** Carves rivers into a freshly built tile and records where inland water goes. Runs on the inference thread. */
+    private void applyRivers(HeightmapData data, int i1, int j1, int scale) {
+        if (!TerrainDiffusionConfig.riversEnabled()) return;
+        try {
+            RiverService svc = rivers();
+            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            RiverCarver.Result res = RiverCarver.apply(
+                    data.heightmap, data.biomeIds, i1, j1, scale,
+                    m -> HeightConverter.convertToMinecraftHeight((short) m, scale),
+                    svc.regionSize(),
+                    (ri, rj) -> {
+                        boolean cached = svc.isCached(ri, rj);
+                        long t0 = System.nanoTime();
+                        RiverService.Region region = svc.region(ri, rj, source);
+                        if (!cached) {
+                            LOG.info("Terra rivers: region ({}, {}) ready in {} ms", ri, rj,
+                                    (System.nanoTime() - t0) / 1_000_000L);
+                        }
+                        return region;
+                    });
+            if (res != null) {
+                data.surfaceY = res.surfaceY;
+                data.waterY = res.waterY;
+            }
+        } catch (RuntimeException e) {
+            LOG.error("Terra rivers failed for tile at ({}, {}); generating it without rivers", j1, i1, e);
+        }
+    }
+
     private HeightmapData genHeightmap(CacheKey key, int i1, int j1, int i2, int j2) {
         int scale = WorldScaleManager.getCurrentScale();
         FutureTask<HeightmapData> task = new FutureTask<>(() -> {
@@ -198,6 +271,7 @@ public final class LocalTerrainProvider {
             HeightmapData data = scale <= 1
                     ? handle1x(i1, j1, i2, j2)
                     : handleUpsampled(i1, j1, i2, j2, scale);
+            applyRivers(data, i1, j1, Math.max(1, scale));
             long computedWindowCountAfter = pipeline.getTotalComputedWindowCount();
 
             long newlyComputedWindowCount = computedWindowCountAfter - computedWindowCountBefore;
