@@ -3,17 +3,22 @@ package com.github.xandergos.terraindiffusionmc.hydrology;
 import com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite;
 
 /**
- * Turns an elevation + climate window into river classes using {@link DrainageNetwork}.
+ * Turns an elevation + climate window into river / lake classes using {@link DrainageNetwork}.
  *
  * <p>Pure Java (no Minecraft types). All coordinates are native pixels. The caller should pass a
  * window with a generous margin around the area of interest and crop the result, because flow
  * accumulation is truncated at the window border.
  */
 public final class RiverMap {
-    public static final byte NONE = 0, STREAM = 1, RIVER = 2, MAIN = 3;
+    public static final byte NONE = 0, STREAM = 1, RIVER = 2, MAIN = 3, LAKE = 4;
 
-    /** Discharge thresholds in "cell equivalents" of runoff. */
-    private static final float STREAM_Q = 350f, RIVER_Q = 2500f, MAIN_Q = 15000f;
+    /** Discharge thresholds in "cell equivalents" of runoff (1 cell = 1 native pixel of ~1 m/yr rain). */
+    public static final class Params {
+        public float streamQ = 1200f, riverQ = 10000f, mainQ = 60000f;
+        /** Minimum lake size (native pixels) and depth (metres of fill). */
+        public int lakeMinArea = 150;
+        public float lakeMinDepth = 2f;
+    }
 
     private static final FastNoiseLite JITTER = new FastNoiseLite(99);
     static {
@@ -23,24 +28,31 @@ public final class RiverMap {
 
     private RiverMap() { }
 
+    public static byte[] compute(float[] elev, float[] climate, int H, int W, int i0, int j0) {
+        return compute(elev, climate, H, W, i0, j0, new Params());
+    }
+
     /**
      * @param elev    elevation in metres, row-major H*W
      * @param climate 5*H*W climate (temp, t_season, precip, p_cv, ...) or null
      * @param i0      world row of the window's first row (for position-stable jitter noise)
      * @param j0      world column of the window's first column
-     * @return class per cell: NONE / STREAM / RIVER / MAIN
+     * @return class per cell: NONE / STREAM / RIVER / MAIN / LAKE
      */
-    public static byte[] compute(float[] elev, float[] climate, int H, int W, int i0, int j0) {
+    public static byte[] compute(float[] elev, float[] climate, int H, int W, int i0, int j0, Params p) {
         int n = H * W;
-        float[] routing = elev.clone();
+        float[] routing = new float[n];
         float[] runoff = new float[n];
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int i = r * W + c;
-                if (elev[i] > 0f) {
-                    // Small routing-only jitter breaks up straight diagonal D8 flow on smooth ramps.
-                    routing[i] += JITTER.GetNoise(j0 + c, i0 + r) * 6f;
+                float e = elev[i];
+                if (e > 0f) {
+                    // Tiny tie-breaking jitter only; land must never be pushed to or below sea level,
+                    // or the coast gets fake "ocean" cells that make rivers stop short of the sea.
+                    e = Math.max(0.05f, e + JITTER.GetNoise(j0 + c, i0 + r) * 0.3f);
                 }
+                routing[i] = e;
                 float precip = climate != null ? Math.max(0f, climate[2 * n + i]) : 800f;
                 runoff[i] = Math.max(0.05f, Math.min(3f, precip / 800f));
             }
@@ -48,20 +60,47 @@ public final class RiverMap {
 
         DrainageNetwork net = DrainageNetwork.compute(routing, runoff, H, W, 0f, true);
         byte[] out = new byte[n];
+
+        // --- lakes: connected groups of depression cells that are big and deep enough
+        boolean[] lake = new boolean[n];
+        boolean[] seen = new boolean[n];
+        int[] stack = new int[n];
+        int[] members = new int[n];
+        for (int s = 0; s < n; s++) {
+            if (seen[s] || !net.inDepression[s] || elev[s] <= 0f) continue;
+            int sp = 0, count = 0;
+            float maxDepth = 0f;
+            stack[sp++] = s; seen[s] = true;
+            while (sp > 0) {
+                int i = stack[--sp];
+                members[count++] = i;
+                maxDepth = Math.max(maxDepth, net.filled[i] - routing[i]);
+                int r = i / W, c = i % W;
+                if (r > 0)     { int j = i - W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+                if (r < H - 1) { int j = i + W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+                if (c > 0)     { int j = i - 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+                if (c < W - 1) { int j = i + 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+            }
+            if (count >= p.lakeMinArea && maxDepth >= p.lakeMinDepth) {
+                for (int k = 0; k < count; k++) lake[members[k]] = true;
+            }
+        }
+
         for (int i = 0; i < n; i++) {
             float e = elev[i];
             if (e <= 0f) continue;
-            float q = net.discharge[i];
-            byte cls = q >= MAIN_Q ? MAIN : q >= RIVER_Q ? RIVER : q >= STREAM_Q ? STREAM : NONE;
-            if (cls == NONE) continue;
+            // No water on snowy / stony high ground.
+            float temp = climate != null ? climate[i] : 10f;
+            if (temp < -4f || e > 2800f) continue;
 
+            if (lake[i]) { out[i] = LAKE; continue; }
+
+            float q = net.discharge[i];
+            byte cls = q >= p.mainQ ? MAIN : q >= p.riverQ ? RIVER : q >= p.streamQ ? STREAM : NONE;
+            if (cls == NONE) continue;
             // Altitude caps: big rivers only in lowlands, small streams in the mountains.
             if (e > 1500f && cls > STREAM) cls = STREAM;
             else if (e > 700f && cls > RIVER) cls = RIVER;
-
-            // No rivers on snowy / stony high ground.
-            float temp = climate != null ? climate[i] : 10f;
-            if (temp < -4f || e > 2800f) cls = NONE;
             out[i] = cls;
         }
         return out;

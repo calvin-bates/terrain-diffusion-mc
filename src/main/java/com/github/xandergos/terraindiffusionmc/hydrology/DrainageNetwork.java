@@ -92,7 +92,10 @@ public final class DrainageNetwork {
                 closed[j] = true;
                 float fj = elev[j];
                 if (fj <= fi) {
-                    fj = fi + eps;
+                    // Randomised increment: flats drain along meandering paths instead of the
+                    // straight diagonal lines a constant increment produces.
+                    int h = j * 0x9E3779B1; h ^= h >>> 15; h *= 0x85EBCA6B; h ^= h >>> 13;
+                    fj = fi + eps * (0.25f + 1.5f * ((h & 0xFFFF) / 65535f));
                     dep[j] = true;
                 }
                 filled[j] = fj;

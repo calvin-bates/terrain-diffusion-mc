@@ -296,7 +296,12 @@ public final class ExplorerServer {
     }
 
     /** Relief map with rivers overlaid. Hydrology runs on a window with a margin around (i1, j1, H, W). */
-    private static byte[] riversPng(int i1, int j1, int H, int W) throws Exception {
+    private static float getFloat(Map<String, String> q, String key, float def) {
+        try { return Float.parseFloat(q.getOrDefault(key, "")); } catch (Exception e) { return def; }
+    }
+
+    private static byte[] riversPng(int i1, int j1, int H, int W,
+            com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.Params params) throws Exception {
         final int margin = 192;
         int HH = H + 2 * margin, WW = W + 2 * margin;
         float[][] out = LocalTerrainProvider.getPipelineData(
@@ -304,7 +309,7 @@ public final class ExplorerServer {
         float[] elevBig = out[0];
         float[] climateBig = out[1];
         byte[] cls = com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.compute(
-                elevBig, climateBig, HH, WW, i1 - margin, j1 - margin);
+                elevBig, climateBig, HH, WW, i1 - margin, j1 - margin, params);
 
         float[] elev = new float[H * W];
         for (int r = 0; r < H; r++) {
@@ -320,6 +325,7 @@ public final class ExplorerServer {
                 if (k == 1) { cr = 0.50f; cg = 0.69f; cb = 1.00f; }
                 else if (k == 2) { cr = 0.18f; cg = 0.48f; cb = 1.00f; }
                 else if (k == 3) { cr = 0.00f; cg = 0.90f; cb = 1.00f; }
+                else if (k == 4) { cr = 0.08f; cg = 0.28f; cb = 0.80f; }
                 rgba[0][i] = cr; rgba[1][i] = cg; rgba[2][i] = cb; rgba[3][i] = 1f;
             }
         }
@@ -348,7 +354,13 @@ public final class ExplorerServer {
             int H = detailSize, W = detailSize;
 
             if (mode.equals("rivers")) {
-                byte[] png = riversPng(centerI - half, centerJ - half, H, W);
+                var params = new com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.Params();
+                params.streamQ = getFloat(q, "sq", params.streamQ);
+                params.riverQ  = getFloat(q, "rq", params.riverQ);
+                params.mainQ   = getFloat(q, "mq", params.mainQ);
+                params.lakeMinArea  = (int) getFloat(q, "la", params.lakeMinArea);
+                params.lakeMinDepth = getFloat(q, "ld", params.lakeMinDepth);
+                byte[] png = riversPng(centerI - half, centerJ - half, H, W, params);
                 ex.getResponseHeaders().set("Content-Type", "image/png");
                 ex.sendResponseHeaders(200, png.length);
                 ex.getResponseBody().write(png);

@@ -588,6 +588,13 @@
         <button id="mode-rivers">Rivers</button>
         <span class="panel-info" id="detail-info">click coarse map to load</span>
       </div>
+      <div class="panel-header" id="river-params" style="font-size:11px;gap:6px;flex-wrap:wrap">
+        <span>Rivers: stream</span><input id="rp-sq" type="number" value="1200" step="100" style="width:64px">
+        <span>river</span><input id="rp-rq" type="number" value="10000" step="1000" style="width:70px">
+        <span>main</span><input id="rp-mq" type="number" value="60000" step="5000" style="width:70px">
+        <span>lake min px</span><input id="rp-la" type="number" value="150" step="50" style="width:56px">
+        <span>depth m</span><input id="rp-ld" type="number" value="2" step="1" style="width:44px">
+      </div>
       <div class="nav-grid">
         <button class="pan-btn btn-up"    id="detail-up">↑</button>
         <button class="pan-btn btn-left"  id="detail-left">←</button>
@@ -613,6 +620,7 @@
   const COARSE_WINDOW_MAX = 120;
   const DETAIL_PAN_STEP = 256;
   const DETAIL_SIZE = 1024;
+  const rv = k => { const e = document.getElementById('rp-' + k); return e ? e.value : ''; };
 
   const CHANNEL_META = [
     { ch: 0, name: 'Elev',    unit: 'm',  step: 50,   defMin: -8000, defMax: 8000 },
@@ -822,7 +830,7 @@
 
   function detailUrl() {
     const { seed, detailCI: ci, detailCJ: cj, detailPanI: pi, detailPanJ: pj, detailMode: mode } = state;
-    return `/api/detail.png?ci=${ci}&cj=${cj}&detail_size=${DETAIL_SIZE}&pan_i=${pi}&pan_j=${pj}&mode=${mode}&_s=${seed}`;
+    return `/api/detail.png?ci=${ci}&cj=${cj}&detail_size=${DETAIL_SIZE}&pan_i=${pi}&pan_j=${pj}&mode=${mode}&sq=${rv('sq')}&rq=${rv('rq')}&mq=${rv('mq')}&la=${rv('la')}&ld=${rv('ld')}&_s=${seed}`;
   }
 
   // ── Load helpers ──
@@ -1003,6 +1011,11 @@
       loadDetail();
     });
   });
+
+  ['sq','rq','mq','la','ld'].forEach(k =>
+    document.getElementById('rp-' + k).addEventListener('change', () => {
+      if (state.detailMode === 'rivers') loadDetail();
+    }));
 
   // ── Seed ──
   btnSetSeed.addEventListener('click', async () => {
