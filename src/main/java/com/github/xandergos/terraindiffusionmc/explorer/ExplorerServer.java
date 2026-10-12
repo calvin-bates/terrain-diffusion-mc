@@ -295,6 +295,37 @@ public final class ExplorerServer {
         }
     }
 
+    /** Relief map with rivers overlaid. Hydrology runs on a window with a margin around (i1, j1, H, W). */
+    private static byte[] riversPng(int i1, int j1, int H, int W) throws Exception {
+        final int margin = 192;
+        int HH = H + 2 * margin, WW = W + 2 * margin;
+        float[][] out = LocalTerrainProvider.getPipelineData(
+                i1 - margin, j1 - margin, i1 + H + margin, j1 + W + margin, true);
+        float[] elevBig = out[0];
+        float[] climateBig = out[1];
+        byte[] cls = com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.compute(
+                elevBig, climateBig, HH, WW, i1 - margin, j1 - margin);
+
+        float[] elev = new float[H * W];
+        for (int r = 0; r < H; r++) {
+            System.arraycopy(elevBig, (r + margin) * WW + margin, elev, r * W, W);
+        }
+        float[][] relief = ReliefMap.getReliefMap(elev, H, W, 90.0);
+        float[][] rgba = new float[4][H * W];
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int i = r * W + c;
+                float cr = relief[0][i], cg = relief[1][i], cb = relief[2][i];
+                byte k = cls[(r + margin) * WW + (c + margin)];
+                if (k == 1) { cr = 0.50f; cg = 0.69f; cb = 1.00f; }
+                else if (k == 2) { cr = 0.18f; cg = 0.48f; cb = 1.00f; }
+                else if (k == 3) { cr = 0.00f; cg = 0.90f; cb = 1.00f; }
+                rgba[0][i] = cr; rgba[1][i] = cg; rgba[2][i] = cb; rgba[3][i] = 1f;
+            }
+        }
+        return toPng(rgba, H, W);
+    }
+
     /**
      * GET /api/detail.png — port of detail_png().
      * Query params: ci, cj, detail_size, pan_i, pan_j, mode
@@ -314,12 +345,21 @@ public final class ExplorerServer {
             int centerJ = cj * 256 + panJ;
             int half    = detailSize / 2;
 
+            int H = detailSize, W = detailSize;
+
+            if (mode.equals("rivers")) {
+                byte[] png = riversPng(centerI - half, centerJ - half, H, W);
+                ex.getResponseHeaders().set("Content-Type", "image/png");
+                ex.sendResponseHeaders(200, png.length);
+                ex.getResponseBody().write(png);
+                return;
+            }
+
             float[][] out = LocalTerrainProvider.getPipelineData(
                     centerI - half, centerJ - half, centerI + half, centerJ + half,
                     mode.equals("temperature"));
             float[] elevFlat  = out[0];
             float[] climate   = out[1];
-            int H = detailSize, W = detailSize;
 
             float[][] rgba;
             if (mode.equals("elevation")) {

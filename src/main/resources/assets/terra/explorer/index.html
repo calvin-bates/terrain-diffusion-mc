@@ -585,6 +585,7 @@
         <button class="active" id="mode-relief">Relief</button>
         <button id="mode-elevation">Elevation</button>
         <button id="mode-temperature">Temperature</button>
+        <button id="mode-rivers">Rivers</button>
         <span class="panel-info" id="detail-info">click coarse map to load</span>
       </div>
       <div class="nav-grid">
@@ -994,10 +995,10 @@
   }
 
   // ── Detail mode ──
-  ['relief', 'elevation', 'temperature'].forEach(mode => {
+  ['relief', 'elevation', 'temperature', 'rivers'].forEach(mode => {
     document.getElementById(`mode-${mode}`).addEventListener('click', () => {
       state.detailMode = mode;
-      ['relief','elevation','temperature'].forEach(m =>
+      ['relief','elevation','temperature','rivers'].forEach(m =>
         document.getElementById(`mode-${m}`).classList.toggle('active', m === mode));
       loadDetail();
     });
