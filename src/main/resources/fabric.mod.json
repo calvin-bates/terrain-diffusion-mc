@@ -4,7 +4,15 @@
   "version": "${version}",
   "name": "Terra",
   "description": "A playable, realistic terrain generation mod built off of xandergos' Terrain Diffusion.",
-  "authors": [],
+  "authors": [
+    "The_Ponderer",
+    {
+      "name": "xandergos",
+      "contact": {
+        "homepage": "https://github.com/xandergos/terrain-diffusion-mc"
+      }
+    }
+  ],
   "contact": {},
   "license": "MIT",
   "icon": "assets/terra/icon.png",
