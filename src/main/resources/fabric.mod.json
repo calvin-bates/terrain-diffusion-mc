@@ -3,7 +3,7 @@
   "id": "terra",
   "version": "${version}",
   "name": "Terra",
-  "description": "Terra: realistic AI-generated terrain with a tall build height. Based on Terrain Diffusion by xandergos (MIT).",
+  "description": "A playable, realistic terrain generation mod built off of xandergos' Terrain Diffusion.",
   "authors": [],
   "contact": {},
   "license": "MIT",
