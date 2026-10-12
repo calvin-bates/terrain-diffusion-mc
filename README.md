@@ -1,6 +1,6 @@
 # Terra
 
-Terra is a Fabric mod for Minecraft 26.3 that generates realistic, AI-based terrain with a build range up to y=2031. It is a fork of [Terrain Diffusion](https://github.com/xandergos/terrain-diffusion-mc) by xandergos (MIT licensed); the original copyright notice is kept in `LICENSE`. The text below is the upstream README and still describes the original mod.
+Terra is a Fabric mod for Minecraft 26.3 that generates realistic, AI-based terrain with a build range up to y=2031. It is a fork of [Terrain Diffusion](https://github.com/xandergos/terrain-diffusion-mc) by xandergos (MIT licensed); the original copyright notice is kept in `LICENSE.txt`. The text below is the upstream README and still describes the original mod.
 
 ---
 
