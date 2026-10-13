@@ -4,7 +4,6 @@ import com.github.xandergos.terraindiffusionmc.explorer.ExplorerServer;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
 import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
-import com.github.xandergos.terraindiffusionmc.world.RiverWaterPlacer;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionSurfaceLevelFunction;
@@ -50,8 +49,6 @@ public class TerrainDiffusionMc implements ModInitializer {
                 LocalTerrainProvider.init(world.getSeed());
             }
         });
-
-        RiverWaterPlacer.register();
 
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> ExplorerServer.stop());
 
