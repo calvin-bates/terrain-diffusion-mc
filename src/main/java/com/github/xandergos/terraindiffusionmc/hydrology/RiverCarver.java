@@ -137,7 +137,7 @@ public final class RiverCarver {
         final int prefRj = Math.floorDiv(Math.floorDiv(j1 + W / 2, scale), regionSize);
         float[] pt = new float[2];
         RiverService.Region reg = null;
-        int curRi = NO_NEED, curRj = NO_NEED;
+        int curRi = Integer.MIN_VALUE, curRj = Integer.MIN_VALUE;
         for (int pi = pi0; pi <= pi1; pi++) {
             for (int pj = pj0; pj <= pj1; pj++) {
                 int ri = ownerIndex(pi, prefRi, regionSize, trust);
@@ -237,7 +237,7 @@ public final class RiverCarver {
 
         // ---- lakes: flat water over low ground inside (or right next to) lake pixels
         reg = null;
-        curRi = NO_NEED; curRj = NO_NEED;
+        curRi = Integer.MIN_VALUE; curRj = Integer.MIN_VALUE;
         for (int r = 0; r < H; r++) {
             int pi = Math.floorDiv(i1 + r, scale);
             for (int c = 0; c < W; c++) {
