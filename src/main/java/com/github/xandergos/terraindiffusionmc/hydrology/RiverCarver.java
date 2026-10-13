@@ -137,7 +137,7 @@ public final class RiverCarver {
         final int prefRj = Math.floorDiv(Math.floorDiv(j1 + W / 2, scale), regionSize);
         float[] pt = new float[2];
         RiverService.Region reg = null;
-        int curRi = Integer.MIN_VALUE, curRj = Integer.MIN_VALUE;
+        int curRi = NO_NEED, curRj = NO_NEED;
         for (int pi = pi0; pi <= pi1; pi++) {
             for (int pj = pj0; pj <= pj1; pj++) {
                 int ri = ownerIndex(pi, prefRi, regionSize, trust);
@@ -237,7 +237,7 @@ public final class RiverCarver {
 
         // ---- lakes: flat water over low ground inside (or right next to) lake pixels
         reg = null;
-        curRi = Integer.MIN_VALUE; curRj = Integer.MIN_VALUE;
+        curRi = NO_NEED; curRj = NO_NEED;
         for (int r = 0; r < H; r++) {
             int pi = Math.floorDiv(i1 + r, scale);
             for (int c = 0; c < W; c++) {
@@ -280,8 +280,9 @@ public final class RiverCarver {
 
         // ---- lake embankments: ground next to lake water is raised to above the water level and
         // slopes down 1:1, so water is always held in by terrain.
+        final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
         int[] need = new int[n];
-        Arrays.fill(need, Integer.MIN_VALUE);
+        Arrays.fill(need, NO_NEED);
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
@@ -300,10 +301,10 @@ public final class RiverCarver {
                     int idx = r * W + c;
                     if (waterY[r][c] != NONE) continue;
                     int best = next[idx];
-                    if (r > 0     && need[idx - W] - 1 > best) best = need[idx - W] - 1;
-                    if (r < H - 1 && need[idx + W] - 1 > best) best = need[idx + W] - 1;
-                    if (c > 0     && need[idx - 1] - 1 > best) best = need[idx - 1] - 1;
-                    if (c < W - 1 && need[idx + 1] - 1 > best) best = need[idx + 1] - 1;
+                    if (r > 0     && need[idx - W] > NO_NEED && need[idx - W] - 1 > best) best = need[idx - W] - 1;
+                    if (r < H - 1 && need[idx + W] > NO_NEED && need[idx + W] - 1 > best) best = need[idx + W] - 1;
+                    if (c > 0     && need[idx - 1] > NO_NEED && need[idx - 1] - 1 > best) best = need[idx - 1] - 1;
+                    if (c < W - 1 && need[idx + 1] > NO_NEED && need[idx + 1] - 1 > best) best = need[idx + 1] - 1;
                     next[idx] = best;
                 }
             }
@@ -312,7 +313,7 @@ public final class RiverCarver {
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
-                if (need[idx] == Integer.MIN_VALUE || waterY[r][c] != NONE) continue;
+                if (need[idx] == NO_NEED || waterY[r][c] != NONE) continue;
                 int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                 if (top < need[idx]) { surfaceY[r][c] = (short) need[idx]; any = true; }
             }
