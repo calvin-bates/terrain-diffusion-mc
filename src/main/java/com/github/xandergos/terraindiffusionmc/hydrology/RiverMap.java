@@ -19,6 +19,8 @@ public final class RiverMap {
         public int flowSteps = 80;
         /** Minimum lake size (native pixels) and depth (metres of fill). */
         public int lakeMinArea = 150;
+        /** Larger depressions are artefacts of the generated terrain (a basin the sea would drain), not lakes. */
+        public int lakeMaxArea = 2500;
         public float lakeMinDepth = 2f;
     }
 
@@ -99,7 +101,7 @@ public final class RiverMap {
                 if (c > 0)     { int j = i - 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
                 if (c < W - 1) { int j = i + 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
             }
-            if (count >= p.lakeMinArea && maxDepth >= p.lakeMinDepth) {
+            if (count >= p.lakeMinArea && count <= p.lakeMaxArea && maxDepth >= p.lakeMinDepth) {
                 for (int k = 0; k < count; k++) lake[members[k]] = true;
             }
         }

@@ -208,6 +208,7 @@ public final class RiverCarver {
                 if (contains(NO_WATER_BIOMES, biome)) continue;
 
                 int top = ytop[idx];
+                if (top < 60) continue;   // never put river water over the sea floor
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
                 if (sc <= 0f) {
                     int waterTop = ys - 1;
@@ -267,6 +268,8 @@ public final class RiverCarver {
                 int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                 // Inside a lake pixel any low ground is lake bed; in the one-pixel rim only shallow
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
+                if (ytop[idx] < 60) continue;                 // never over the sea floor
+                if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
                 if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     lakeCol[idx] = true;
