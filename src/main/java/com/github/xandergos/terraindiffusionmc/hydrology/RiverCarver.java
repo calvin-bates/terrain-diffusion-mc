@@ -272,6 +272,7 @@ public final class RiverCarver {
                 if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
                 if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
+                    if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
                     lakeCol[idx] = true;
                     any = true;
                 }

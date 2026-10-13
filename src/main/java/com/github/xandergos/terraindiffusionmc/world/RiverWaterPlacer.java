@@ -59,6 +59,7 @@ public final class RiverWaterPlacer {
 
         BlockState water = Blocks.WATER.defaultBlockState();
         BlockState ice = Blocks.ICE.defaultBlockState();
+        BlockState gravel = Blocks.GRAVEL.defaultBlockState();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
         for (int dz = 0; dz < 16; dz++) {
@@ -68,14 +69,35 @@ public final class RiverWaterPlacer {
                 short top = data.waterY[lz][lx];
                 if (top == RiverCarver.NONE) continue;
 
-                boolean frozen = RiverCarver.isFrozen(data.biomeIds[lz & ~3][lx & ~3]);
-                // Fill downwards from the water line until we hit the ground.
-                for (int y = top; y > MIN_Y; y--) {
+                boolean frozen = frozenAround(data.biomeIds, lz, lx);
+                short bed = data.surfaceY != null ? data.surfaceY[lz][lx] : RiverCarver.NONE;
+                int floor = bed != RiverCarver.NONE ? bed : top - 12;
+                // Fill only down to the designed river/lake bed, never further: below it may be a
+                // cave or ravine, and water poured into that would hang as a curtain.
+                for (int y = top; y > floor && y > MIN_Y; y--) {
                     pos.set(x, y, z);
                     if (!chunk.getBlockState(pos).isAir()) break;
                     chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
                 }
+                // If a cave broke through the bed, plug it so the water has a floor.
+                if (bed != RiverCarver.NONE && bed > MIN_Y) {
+                    pos.set(x, bed, z);
+                    if (chunk.getBlockState(pos).isAir()) chunk.setBlockState(pos, gravel, 0);
+                }
             }
         }
+    }
+
+    /** Water only freezes well inside snowy biomes, so streams never ice up at the edge of the snow line. */
+    private static boolean frozenAround(short[][] biomeIds, int lz, int lx) {
+        int h = biomeIds.length, w = biomeIds[0].length;
+        for (int dz = -8; dz <= 8; dz += 4) {
+            for (int dx = -8; dx <= 8; dx += 4) {
+                int z = Math.max(0, Math.min(h - 1, lz + dz));
+                int x = Math.max(0, Math.min(w - 1, lx + dx));
+                if (!RiverCarver.isFrozen(biomeIds[z][x])) return false;
+            }
+        }
+        return true;
     }
 }
