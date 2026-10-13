@@ -80,6 +80,11 @@ public final class TerrainDiffusionConfig {
         return readBoolean("rivers.enabled", true);
     }
 
+    /** Whether river and lake water is placed (terrain carving still happens when false). For debugging. */
+    public static boolean riversPlaceWater() {
+        return readBoolean("rivers.place_water", true);
+    }
+
     /** Side length of a hydrology region in native pixels (30 m each). */
     public static int riverRegionSize() {
         return Math.max(128, readInt("rivers.region_size", 256));

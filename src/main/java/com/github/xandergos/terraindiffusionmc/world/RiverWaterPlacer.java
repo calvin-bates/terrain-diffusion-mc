@@ -11,6 +11,8 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fills river and lake columns with water when a chunk is generated.
@@ -20,7 +22,11 @@ import net.minecraft.world.level.chunk.LevelChunk;
  * records the Y of the highest water block for each column.
  */
 public final class RiverWaterPlacer {
+    private static final Logger LOG = LoggerFactory.getLogger(RiverWaterPlacer.class);
     private static final int MIN_Y = -64;
+    /** Block update flag: do not run onPlace (it would schedule a fluid tick for every water block). */
+    private static final int SKIP_ON_PLACE = 1024;
+    private static volatile boolean loggedFirst;
 
     private RiverWaterPlacer() {
     }
@@ -30,7 +36,16 @@ public final class RiverWaterPlacer {
     }
 
     private static void onChunkGenerate(ServerLevel level, LevelChunk chunk) {
-        if (!TerrainDiffusionConfig.riversEnabled()) return;
+        try {
+            place(level, chunk);
+        } catch (Throwable t) {
+            // Never let water placement break chunk generation.
+            LOG.error("Terra rivers: water placement failed for chunk {}", chunk.getPos(), t);
+        }
+    }
+
+    private static void place(ServerLevel level, LevelChunk chunk) {
+        if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.riversPlaceWater()) return;
         if (!(level.getChunkSource().getGenerator().getBiomeSource() instanceof TerrainDiffusionBiomeSource)) return;
 
         ChunkPos chunkPos = chunk.getPos();
@@ -44,7 +59,12 @@ public final class RiverWaterPlacer {
 
         HeightmapData data = LocalTerrainProvider.peekHeightmap(startZ, startX, startZ + tileSize, startX + tileSize);
         if (data == null) {
-            data = LocalTerrainProvider.getInstance().fetchHeightmap(startZ, startX, startZ + tileSize, startX + tileSize);
+            // Not cached any more (evicted). Skip rather than block the server thread on terrain inference.
+            return;
+        }
+        if (!loggedFirst) {
+            loggedFirst = true;
+            LOG.info("Terra rivers: first generated chunk reached the water placer (tile cached: {})", data != null);
         }
         if (data == null || data.waterY == null) return;
 
@@ -64,7 +84,7 @@ public final class RiverWaterPlacer {
                 for (int y = top; y > MIN_Y; y--) {
                     pos.set(x, y, z);
                     if (!chunk.getBlockState(pos).isAir()) break;
-                    chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
+                    chunk.setBlockState(pos, (frozen && y == top) ? ice : water, SKIP_ON_PLACE);
                 }
             }
         }
