@@ -279,7 +279,7 @@ public final class RiverCarver {
             }
         }
 
-        // ---- lake embankments: ground next to lake water is raised to above the water level and
+        // ---- lake embankments: ground next to lake water is raised to the water level and
         // slopes down 1:1, so water is always held in by terrain.
         final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
         int[] need = new int[n];
@@ -288,7 +288,7 @@ public final class RiverCarver {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
                 if (!lakeCol[idx]) continue;
-                int want = waterY[r][c] + 1;
+                int want = waterY[r][c];   // flush with the water: no levee, so no trench behind it
                 if (r > 0)     { int j = idx - W; if (waterY[r - 1][c] == NONE && need[j] < want) need[j] = want; }
                 if (r < H - 1) { int j = idx + W; if (waterY[r + 1][c] == NONE && need[j] < want) need[j] = want; }
                 if (c > 0)     { int j = idx - 1; if (waterY[r][c - 1] == NONE && need[j] < want) need[j] = want; }
