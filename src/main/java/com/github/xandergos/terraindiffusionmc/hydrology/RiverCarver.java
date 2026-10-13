@@ -28,6 +28,9 @@ public final class RiverCarver {
     /** Biome ids (from the biome classifier) that never get water: snowy / stony peaks and oceans. */
     private static final short[] NO_WATER_BIOMES = {32, 33, 35, 41, 44, 46, 48};
     /** Biome ids that are frozen, so their rivers become frozen rivers. */
+    /** True for cold biomes where river and lake surfaces freeze. */
+    public static boolean isFrozen(short biome) { return contains(FROZEN_BIOMES, biome); }
+
     private static final short[] FROZEN_BIOMES = {3, 16, 32, 33, 48, 116};
 
     /** Distance (blocks) from the channel edge over which banks are shaped. */
@@ -193,7 +196,7 @@ public final class RiverCarver {
         for (short[] row : surfaceY) Arrays.fill(row, NONE);
         for (short[] row : waterY) Arrays.fill(row, NONE);
         boolean any = false;
-        boolean[] riverBiomeCell = new boolean[n];
+        boolean[] lakeCol = new boolean[n];
 
         // ---- finalise river channels and banks
         for (int r = 0; r < H; r++) {
@@ -211,7 +214,6 @@ public final class RiverCarver {
                     int bed = waterTop - DEPTH[cA[idx]];
                     surfaceY[r][c] = (short) Math.min(top, bed);
                     waterY[r][c] = (short) waterTop;
-                    riverBiomeCell[idx] = true;
                     any = true;
                 } else {
                     float t = sc / BANK;
@@ -248,10 +250,12 @@ public final class RiverCarver {
                     curRi = ri; curRj = rj;
                 }
                 float level = Float.NaN;
+                boolean ownLake = false;
                 for (int dr = -1; dr <= 1; dr++) {
                     for (int dc = -1; dc <= 1; dc++) {
                         int k = reg.index(pi + dr, pj + dc);
                         if (k >= 0 && reg.cls[k] == RiverMap.LAKE) {
+                            if (dr == 0 && dc == 0) ownLake = true;
                             float s = reg.surface[k];
                             if (Float.isNaN(level) || s > level) level = s;
                         }
@@ -261,26 +265,59 @@ public final class RiverCarver {
                 int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))) - 1;
                 int idx = r * W + c;
                 int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                if (top < lakeTop) {
+                // Inside a lake pixel any low ground is lake bed; in the one-pixel rim only shallow
+                // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
+                if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
-                    riverBiomeCell[idx] = true;
+                    lakeCol[idx] = true;
                     any = true;
                 }
             }
         }
 
-        if (!any) return null;
-
-        // ---- biomes: the biome grid is 4x4 blocks, so mark the cell's sample column
+        // ---- lake embankments: ground next to lake water is raised to above the water level and
+        // slopes down 1:1, so water is always held in by terrain.
+        int[] need = new int[n];
+        Arrays.fill(need, Integer.MIN_VALUE);
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
-                if (!riverBiomeCell[r * W + c]) continue;
-                int cr = r & ~3, cc = c & ~3;   // tiles are 4-aligned, so this stays inside the tile
-                short old = biomeIds[cr][cc];
-                if (contains(NO_WATER_BIOMES, old) || old == BIOME_RIVER || old == BIOME_FROZEN_RIVER) continue;
-                biomeIds[cr][cc] = contains(FROZEN_BIOMES, old) ? BIOME_FROZEN_RIVER : BIOME_RIVER;
+                int idx = r * W + c;
+                if (!lakeCol[idx]) continue;
+                int want = waterY[r][c] + 1;
+                if (r > 0)     { int j = idx - W; if (waterY[r - 1][c] == NONE && need[j] < want) need[j] = want; }
+                if (r < H - 1) { int j = idx + W; if (waterY[r + 1][c] == NONE && need[j] < want) need[j] = want; }
+                if (c > 0)     { int j = idx - 1; if (waterY[r][c - 1] == NONE && need[j] < want) need[j] = want; }
+                if (c < W - 1) { int j = idx + 1; if (waterY[r][c + 1] == NONE && need[j] < want) need[j] = want; }
             }
         }
+        for (int pass = 0; pass < 5; pass++) {
+            int[] next = need.clone();
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (waterY[r][c] != NONE) continue;
+                    int best = next[idx];
+                    if (r > 0     && need[idx - W] - 1 > best) best = need[idx - W] - 1;
+                    if (r < H - 1 && need[idx + W] - 1 > best) best = need[idx + W] - 1;
+                    if (c > 0     && need[idx - 1] - 1 > best) best = need[idx - 1] - 1;
+                    if (c < W - 1 && need[idx + 1] - 1 > best) best = need[idx + 1] - 1;
+                    next[idx] = best;
+                }
+            }
+            need = next;
+        }
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int idx = r * W + c;
+                if (need[idx] == Integer.MIN_VALUE || waterY[r][c] != NONE) continue;
+                int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
+                if (top < need[idx]) { surfaceY[r][c] = (short) need[idx]; any = true; }
+            }
+        }
+
+        if (!any) return null;
+
+        // Biomes are left untouched so banks and beds keep the surface of the biome they are in.
         return new Result(surfaceY, waterY);
     }
 }

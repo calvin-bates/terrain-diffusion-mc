@@ -68,7 +68,7 @@ public final class RiverWaterPlacer {
                 short top = data.waterY[lz][lx];
                 if (top == RiverCarver.NONE) continue;
 
-                boolean frozen = data.biomeIds[lz & ~3][lx & ~3] == RiverCarver.BIOME_FROZEN_RIVER;
+                boolean frozen = RiverCarver.isFrozen(data.biomeIds[lz & ~3][lx & ~3]);
                 // Fill downwards from the water line until we hit the ground.
                 for (int y = top; y > MIN_Y; y--) {
                     pos.set(x, y, z);
