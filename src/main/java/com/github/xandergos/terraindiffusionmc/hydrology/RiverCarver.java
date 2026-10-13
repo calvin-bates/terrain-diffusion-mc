@@ -63,6 +63,16 @@ public final class RiverCarver {
         }
     }
 
+    /**
+     * Region index (one axis) whose data to use for a pixel: the preferred region if the pixel is
+     * within its trusted area, otherwise the region that owns the pixel.
+     */
+    private static int ownerIndex(int pixel, int preferred, int regionSize, int trust) {
+        int lo = preferred * regionSize - trust;
+        int hi = (preferred + 1) * regionSize + trust;
+        return (pixel >= lo && pixel < hi) ? preferred : Math.floorDiv(pixel, regionSize);
+    }
+
     /** Block-space position of pixel {@code k}'s centre line point: (P_k + 2 P_d + P_dd) / 4. */
     private static void smoothPoint(RiverService.Region reg, int k, int scale, float[] out) {
         int d = reg.downstream[k];
@@ -92,11 +102,13 @@ public final class RiverCarver {
      * @param scale      blocks per native pixel
      * @param metersToY  converts a heightmap value in metres to a Minecraft surface Y
      * @param regionSize native pixels per hydrology region
+     * @param trust      pixels beyond a region's own area where its data is still exact; lets one
+     *                   region serve a whole tile instead of computing every neighbour
      * @param regions    region provider
      * @return result, or null if the tile has no water at all
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
-                               IntUnaryOperator metersToY, int regionSize, Regions regions) {
+                               IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -118,12 +130,15 @@ public final class RiverCarver {
         int pi0 = Math.floorDiv(i1, scale) - pad, pi1 = Math.floorDiv(i1 + H - 1, scale) + pad;
         int pj0 = Math.floorDiv(j1, scale) - pad, pj1 = Math.floorDiv(j1 + W - 1, scale) + pad;
 
+        final int prefRi = Math.floorDiv(Math.floorDiv(i1 + H / 2, scale), regionSize);
+        final int prefRj = Math.floorDiv(Math.floorDiv(j1 + W / 2, scale), regionSize);
         float[] pt = new float[2];
         RiverService.Region reg = null;
         int curRi = Integer.MIN_VALUE, curRj = Integer.MIN_VALUE;
         for (int pi = pi0; pi <= pi1; pi++) {
             for (int pj = pj0; pj <= pj1; pj++) {
-                int ri = Math.floorDiv(pi, regionSize), rj = Math.floorDiv(pj, regionSize);
+                int ri = ownerIndex(pi, prefRi, regionSize, trust);
+                int rj = ownerIndex(pj, prefRj, regionSize, trust);
                 if (reg == null || ri != curRi || rj != curRj) {
                     reg = regions.get(ri, rj);
                     curRi = ri; curRj = rj;
@@ -226,7 +241,8 @@ public final class RiverCarver {
                 if (waterY[r][c] != NONE) continue;
                 if (contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
                 int pj = Math.floorDiv(j1 + c, scale);
-                int ri = Math.floorDiv(pi, regionSize), rj = Math.floorDiv(pj, regionSize);
+                int ri = ownerIndex(pi, prefRi, regionSize, trust);
+                int rj = ownerIndex(pj, prefRj, regionSize, trust);
                 if (reg == null || ri != curRi || rj != curRj) {
                     reg = regions.get(ri, rj);
                     curRi = ri; curRj = rj;

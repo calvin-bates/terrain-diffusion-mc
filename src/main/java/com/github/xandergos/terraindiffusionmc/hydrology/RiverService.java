@@ -60,6 +60,14 @@ public final class RiverService {
         this.params = params;
     }
 
+    /**
+     * How many pixels beyond a region's own area its data is still exact (margin minus the flow
+     * steps that must lie inside the window).
+     */
+    public int trust() {
+        return margin - params.flowSteps;
+    }
+
     public int regionSize() {
         return size;
     }

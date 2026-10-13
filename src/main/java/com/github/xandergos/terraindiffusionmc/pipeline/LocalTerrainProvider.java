@@ -238,15 +238,25 @@ public final class LocalTerrainProvider {
     /** Carves rivers into a freshly built tile and records where inland water goes. Runs on the inference thread. */
     private void applyRivers(HeightmapData data, int i1, int j1, int scale) {
         if (!TerrainDiffusionConfig.riversEnabled()) return;
+        // Open-ocean tiles never get water, so don't pay for hydrology there.
+        boolean anyLand = false;
+        for (short[] row : data.heightmap) {
+            for (short v : row) {
+                if (v > 0) { anyLand = true; break; }
+            }
+            if (anyLand) break;
+        }
+        if (!anyLand) return;
         try {
             RiverService svc = rivers();
             RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
             RiverCarver.Result res = RiverCarver.apply(
                     data.heightmap, data.biomeIds, i1, j1, scale,
                     m -> HeightConverter.convertToMinecraftHeight((short) m, scale),
-                    svc.regionSize(),
+                    svc.regionSize(), svc.trust(),
                     (ri, rj) -> {
                         boolean cached = svc.isCached(ri, rj);
+                        if (!cached) LOG.info("Terra rivers: computing region ({}, {})...", ri, rj);
                         long t0 = System.nanoTime();
                         RiverService.Region region = svc.region(ri, rj, source);
                         if (!cached) {

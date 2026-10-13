@@ -82,12 +82,12 @@ public final class TerrainDiffusionConfig {
 
     /** Side length of a hydrology region in native pixels (30 m each). */
     public static int riverRegionSize() {
-        return Math.max(128, readInt("rivers.region_size", 512));
+        return Math.max(128, readInt("rivers.region_size", 256));
     }
 
     /** Extra native pixels computed around each region so rivers match across region borders. */
     public static int riverMargin() {
-        return readInt("rivers.margin", 128);
+        return readInt("rivers.margin", 96);
     }
 
     public static float riverStreamThreshold() { return readFloat("rivers.stream_threshold", 1200f); }
