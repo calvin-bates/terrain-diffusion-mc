@@ -35,7 +35,7 @@ public final class RiverCarver {
         for (int k = 0; k < 4; k++) {
             int rr = r + dr[k], cc = c + dc[k];
             if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
-            if (Math.abs(ytop[rr * W + cc] - t) >= 4) return true;
+            if (Math.abs(ytop[rr * W + cc] - t) >= 5) return true;
         }
         return false;
     }
@@ -277,10 +277,12 @@ public final class RiverCarver {
                 }
                 float level = Float.NaN;
                 boolean ownLake = false;
+                int lakeNeighbours = 0;
                 for (int dr = -1; dr <= 1; dr++) {
                     for (int dc = -1; dc <= 1; dc++) {
                         int k = reg.index(pi + dr, pj + dc);
                         if (k >= 0 && reg.cls[k] == RiverMap.LAKE) {
+                            lakeNeighbours++;
                             if (dr == 0 && dc == 0) ownLake = true;
                             float s = reg.surface[k];
                             if (Float.isNaN(level) || s > level) level = s;
@@ -298,6 +300,14 @@ public final class RiverCarver {
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
                 if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
                 if (ownLake) { ownLakeCol[idx] = true; lakeLvl[idx] = lakeTop; }
+                // Deep inside a lake (all 8 surrounding pixels are lake too) the ground must be lake bed:
+                // detail noise can leave ridges above the water, so cut those down. At the edge pixels the
+                // shore is left to follow the real ground contour.
+                if (ownLake && lakeNeighbours == 9 && top >= lakeTop && top - lakeTop <= 12) {
+                    surfaceY[r][c] = (short) (lakeTop - 1);
+                    top = lakeTop - 1;
+                    any = true;
+                }
                 if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
