@@ -151,7 +151,7 @@ public final class RiverWaterPlacer {
     }
 
     private static boolean isFillable(BlockState st) {
-        return !st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.ICE) && st.isSolid();
+        return !st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.ICE) && st.canOcclude();
     }
 
     /** Water only freezes well inside snowy biomes, so streams never ice up at the edge of the snow line. */
