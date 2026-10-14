@@ -60,10 +60,13 @@ public final class RiverCarver {
     public static final class Result {
         public final short[][] surfaceY;
         public final short[][] waterY;
+        /** True where the water is a lake (rivers are false). */
+        public final boolean[][] isLake;
 
-        Result(short[][] surfaceY, short[][] waterY) {
+        Result(short[][] surfaceY, short[][] waterY, boolean[][] isLake) {
             this.surfaceY = surfaceY;
             this.waterY = waterY;
+            this.isLake = isLake;
         }
     }
 
@@ -255,7 +258,10 @@ public final class RiverCarver {
             }
         }
 
-        // ---- lakes: flat water over low ground inside (or right next to) lake pixels
+        // ---- lakes: flat water over low ground inside (or right next to) lake pixels. The shore follows
+        // the real ground contour, not the 30 m pixel squares of the lake mask.
+        boolean[] ownLakeCol = new boolean[n];
+        int[] lakeLvl = new int[n];
         reg = null;
         curRi = Integer.MIN_VALUE; curRj = Integer.MIN_VALUE;
         for (int r = 0; r < H; r++) {
@@ -291,16 +297,32 @@ public final class RiverCarver {
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
                 if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
-                if (ownLake && top >= lakeTop && top - lakeTop <= 3) {
-                    // Interpolated ground can poke above the flat lake level inside the lake area;
-                    // lower it so the lake has no dry specks and fills right out to its shore.
-                    surfaceY[r][c] = (short) (lakeTop - 1);
-                    top = lakeTop - 1;
-                    any = true;
-                }
+                if (ownLake) { ownLakeCol[idx] = true; lakeLvl[idx] = lakeTop; }
                 if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
+                    lakeCol[idx] = true;
+                    any = true;
+                }
+            }
+        }
+
+        // Fill small dry specks inside lakes: ground that pokes just above the water but is boxed in by it.
+        for (int iter = 0; iter < 3; iter++) {
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (!ownLakeCol[idx] || waterY[r][c] != NONE) continue;
+                    int wn = 0;
+                    if (r > 0     && waterY[r - 1][c] != NONE) wn++;
+                    if (r < H - 1 && waterY[r + 1][c] != NONE) wn++;
+                    if (c > 0     && waterY[r][c - 1] != NONE) wn++;
+                    if (c < W - 1 && waterY[r][c + 1] != NONE) wn++;
+                    if (wn < 3) continue;
+                    int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
+                    if (ytop[idx] < 60 || top - lakeLvl[idx] > 3) continue;
+                    surfaceY[r][c] = (short) (lakeLvl[idx] - 1);
+                    waterY[r][c] = (short) lakeLvl[idx];
                     lakeCol[idx] = true;
                     any = true;
                 }
@@ -351,6 +373,8 @@ public final class RiverCarver {
         if (!any) return null;
 
         // Biomes are left untouched so banks and beds keep the surface of the biome they are in.
-        return new Result(surfaceY, waterY);
+        boolean[][] isLake = new boolean[H][W];
+        for (int r = 0; r < H; r++) for (int c = 0; c < W; c++) isLake[r][c] = lakeCol[r * W + c];
+        return new Result(surfaceY, waterY, isLake);
     }
 }

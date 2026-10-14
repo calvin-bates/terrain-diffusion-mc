@@ -70,6 +70,7 @@ public final class RiverWaterPlacer {
         BlockState water = Blocks.WATER.defaultBlockState();
         BlockState ice = Blocks.ICE.defaultBlockState();
         BlockState gravel = Blocks.GRAVEL.defaultBlockState();
+        BlockState stone = Blocks.STONE.defaultBlockState();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
         for (int dz = 0; dz < 16; dz++) {
@@ -81,6 +82,26 @@ public final class RiverWaterPlacer {
 
                 boolean frozen = freezeOn && (freezeM > 0f ? top >= freezeY : frozenAround(data.biomeIds, lz, lx));
                 short bed = data.surfaceY != null ? data.surfaceY[lz][lx] : RiverCarver.NONE;
+                // A stream that meets a cave goes underground: leave a solid ford instead of water spilling
+                // into the cave. (Lakes just get their bed plugged below.)
+                boolean isLake = data.waterIsLake != null && data.waterIsLake[lz][lx];
+                if (!isLake && bed != RiverCarver.NONE) {
+                    boolean breach = false;
+                    for (int y = bed; y >= bed - 3 && y > MIN_Y; y--) {
+                        pos.set(x, y, z);
+                        if (chunk.getBlockState(pos).isAir()) { breach = true; break; }
+                    }
+                    if (breach) {
+                        for (int y = bed; y <= top; y++) {
+                            pos.set(x, y, z);
+                            if (!chunk.getBlockState(pos).isAir()) continue;
+                            BlockState fill = matchingFill(chunk, x, y, z, x0, z0, stone);
+                            if (y == top && fill.is(Blocks.DIRT)) fill = Blocks.GRASS_BLOCK.defaultBlockState();
+                            chunk.setBlockState(pos, fill, 0);
+                        }
+                        continue;
+                    }
+                }
                 int floor = bed != RiverCarver.NONE ? bed : top - 12;
                 // Fill only down to the designed river/lake bed, never further: below it may be a
                 // cave or ravine, and water poured into that would hang as a curtain.
@@ -99,7 +120,6 @@ public final class RiverWaterPlacer {
 
         // Seal gaps beside the water: a cave mouth or hollow touching a river or lake would otherwise
         // leave a bare wall of water. Fill those blocks up to the water line with stone.
-        BlockState stone = Blocks.STONE.defaultBlockState();
         int tileH = data.waterY.length, tileW = data.waterY[0].length;
         int[] ddz = {-1, 1, 0, 0}, ddx = {0, 0, -1, 1};
         for (int dz = 0; dz < 16; dz++) {

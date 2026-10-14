@@ -58,6 +58,8 @@ public final class LocalTerrainProvider {
         public short[][] surfaceY;
         /** Y of the highest inland water block or {@link RiverCarver#NONE}; null if the tile has no inland water. */
         public short[][] waterY;
+        /** True where the water at that column is a lake rather than a river. */
+        public boolean[][] waterIsLake;
 
         public HeightmapData(short[][] heightmap, short[][] biomeIds, int width, int height) {
             this.heightmap = heightmap;
@@ -269,6 +271,7 @@ public final class LocalTerrainProvider {
             if (res != null) {
                 data.surfaceY = res.surfaceY;
                 data.waterY = res.waterY;
+                data.waterIsLake = res.isLake;
             }
         } catch (RuntimeException e) {
             LOG.error("Terra rivers failed for tile at ({}, {}); generating it without rivers", j1, i1, e);
