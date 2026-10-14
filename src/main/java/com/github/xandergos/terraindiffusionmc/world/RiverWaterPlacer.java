@@ -78,7 +78,7 @@ public final class RiverWaterPlacer {
                 short top = data.waterY[lz][lx];
                 if (top == RiverCarver.NONE) continue;
 
-                boolean frozen = top >= freezeY && frozenAround(data.biomeIds, lz, lx);
+                boolean frozen = freezeM > 0f ? top >= freezeY : frozenAround(data.biomeIds, lz, lx);
                 short bed = data.surfaceY != null ? data.surfaceY[lz][lx] : RiverCarver.NONE;
                 int floor = bed != RiverCarver.NONE ? bed : top - 12;
                 // Fill only down to the designed river/lake bed, never further: below it may be a
@@ -91,7 +91,7 @@ public final class RiverWaterPlacer {
                 // If a cave broke through the bed, plug it so the water has a floor.
                 if (bed != RiverCarver.NONE && bed > MIN_Y) {
                     pos.set(x, bed, z);
-                    if (chunk.getBlockState(pos).isAir()) chunk.setBlockState(pos, gravel, 0);
+                    if (chunk.getBlockState(pos).isAir()) chunk.setBlockState(pos, matchingFill(chunk, x, bed, z, x0, z0, gravel), 0);
                 }
             }
         }
@@ -115,11 +115,43 @@ public final class RiverWaterPlacer {
                     int low = nBed != RiverCarver.NONE ? nBed : nTop - 3;
                     for (int y = nTop; y > low && y > MIN_Y; y--) {
                         pos.set(x, y, z);
-                        if (chunk.getBlockState(pos).isAir()) chunk.setBlockState(pos, stone, 0);
+                        if (chunk.getBlockState(pos).isAir()) {
+                            chunk.setBlockState(pos, matchingFill(chunk, x, y, z, x0, z0, stone), 0);
+                        }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Picks a block for a gap beside the water so it blends in: the solid block next to it at the same
+     * height, else the first solid block below it. Grass-like tops become dirt when buried.
+     */
+    private static BlockState matchingFill(ChunkAccess chunk, int x, int y, int z, int x0, int z0, BlockState fallback) {
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        int[] ox = {-1, 1, 0, 0}, oz = {0, 0, -1, 1};
+        BlockState found = null;
+        for (int k = 0; k < 4 && found == null; k++) {
+            int nx = x + ox[k], nz = z + oz[k];
+            if (nx < x0 || nx > x0 + 15 || nz < z0 || nz > z0 + 15) continue;
+            BlockState st = chunk.getBlockState(p.set(nx, y, nz));
+            if (isFillable(st)) found = st;
+        }
+        for (int d = 1; d <= 16 && found == null && y - d > MIN_Y; d++) {
+            BlockState st = chunk.getBlockState(p.set(x, y - d, z));
+            if (isFillable(st)) found = st;
+        }
+        if (found == null) return fallback;
+        boolean airAbove = chunk.getBlockState(p.set(x, y + 1, z)).isAir();
+        if (!airAbove && (found.is(Blocks.GRASS_BLOCK) || found.is(Blocks.PODZOL) || found.is(Blocks.MYCELIUM))) {
+            return Blocks.DIRT.defaultBlockState();
+        }
+        return found;
+    }
+
+    private static boolean isFillable(BlockState st) {
+        return !st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.ICE) && st.isSolid();
     }
 
     /** Water only freezes well inside snowy biomes, so streams never ice up at the edge of the snow line. */

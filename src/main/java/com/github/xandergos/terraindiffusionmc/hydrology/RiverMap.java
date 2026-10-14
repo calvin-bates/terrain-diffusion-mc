@@ -22,6 +22,8 @@ public final class RiverMap {
         /** Larger depressions are artefacts of the generated terrain (a basin the sea would drain), not lakes. */
         public int lakeMaxArea = 2500;
         public float lakeMinDepth = 2f;
+        /** No water above this terrain height (metres) or below this temperature (deg C). */
+        public float maxElevM = 4000f, minTempC = -15f;
     }
 
     /** Per-cell results for the whole window. */
@@ -101,7 +103,11 @@ public final class RiverMap {
                 if (c > 0)     { int j = i - 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
                 if (c < W - 1) { int j = i + 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
             }
-            if (count >= p.lakeMinArea && count <= p.lakeMaxArea && maxDepth >= p.lakeMinDepth) {
+            float meanElev = 0f;
+            for (int k = 0; k < count; k++) meanElev += elev[members[k]];
+            meanElev /= count;
+            int minArea = meanElev > 1200f ? Math.max(30, p.lakeMinArea / 4) : p.lakeMinArea;   // small alpine tarns
+            if (count >= minArea && count <= p.lakeMaxArea && maxDepth >= p.lakeMinDepth) {
                 for (int k = 0; k < count; k++) lake[members[k]] = true;
                 // One flat water level per lake (the fill adds tiny random steps that would otherwise
                 // show up as one-block ledges in the water).
@@ -116,17 +122,37 @@ public final class RiverMap {
             if (e <= 0f) continue;
             // No water on snowy / stony high ground.
             float temp = climate != null ? climate[i] : 10f;
-            if (temp < -4f || e > 2800f) continue;
+            if (temp < p.minTempC || e > p.maxElevM) continue;
 
             if (lake[i]) { out[i] = LAKE; continue; }
 
             float d = q[i];
-            byte cls = d >= p.mainQ ? MAIN : d >= p.riverQ ? RIVER : d >= p.streamQ ? STREAM : NONE;
+            float streamQ = e > 1500f ? p.streamQ * 0.6f : p.streamQ;   // mountain streams are small but common
+            byte cls = d >= p.mainQ ? MAIN : d >= p.riverQ ? RIVER : d >= streamQ ? STREAM : NONE;
             if (cls == NONE) continue;
             // Altitude caps: big rivers only in lowlands, small streams in the mountains.
             if (e > 1500f && cls > STREAM) cls = STREAM;
             else if (e > 700f && cls > RIVER) cls = RIVER;
             out[i] = cls;
+        }
+        // A channel never just stops: once a pixel is a stream or river it stays one (at least) all the
+        // way down to the sea or a lake, even where the windowed flow count dips below the threshold.
+        for (int s = 0; s < n; s++) {
+            byte c = out[s];
+            if (c < STREAM || c > MAIN) continue;
+            int i = s;
+            for (int steps = 0; steps < 400; steps++) {
+                int j = net.downstream[i];
+                if (j < 0 || elev[j] <= 0f || lake[j]) break;
+                float tj = climate != null ? climate[j] : 10f;
+                if (tj < p.minTempC || elev[j] > p.maxElevM) break;
+                byte cj = c;
+                if (elev[j] > 1500f) cj = (byte) Math.min(cj, STREAM);
+                else if (elev[j] > 700f) cj = (byte) Math.min(cj, RIVER);
+                if (out[j] >= cj) break;
+                out[j] = cj;
+                i = j;
+            }
         }
         return new Result(out, net.downstream, net.filled);
     }

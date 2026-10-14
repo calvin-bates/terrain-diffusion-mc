@@ -223,6 +223,7 @@ public final class LocalTerrainProvider {
             p.streamQ = TerrainDiffusionConfig.riverStreamThreshold();
             p.riverQ = TerrainDiffusionConfig.riverRiverThreshold();
             p.mainQ = TerrainDiffusionConfig.riverMainThreshold();
+            p.maxElevM = TerrainDiffusionConfig.riverMaxHeightMetres();
             p.lakeMinArea = TerrainDiffusionConfig.lakeMinArea();
             p.lakeMinDepth = TerrainDiffusionConfig.lakeMinDepth();
             int margin = Math.max(TerrainDiffusionConfig.riverMargin(), p.flowSteps + 8);
