@@ -89,6 +89,31 @@ public final class RiverWaterPlacer {
                 }
             }
         }
+
+        // Seal gaps beside the water: a cave mouth or hollow touching a river or lake would otherwise
+        // leave a bare wall of water. Fill those blocks up to the water line with stone.
+        BlockState stone = Blocks.STONE.defaultBlockState();
+        int tileH = data.waterY.length, tileW = data.waterY[0].length;
+        int[] ddz = {-1, 1, 0, 0}, ddx = {0, 0, -1, 1};
+        for (int dz = 0; dz < 16; dz++) {
+            for (int dx = 0; dx < 16; dx++) {
+                int x = x0 + dx, z = z0 + dz;
+                int lx = x - startX, lz = z - startZ;
+                if (data.waterY[lz][lx] != RiverCarver.NONE) continue;
+                for (int k = 0; k < 4; k++) {
+                    int nz = lz + ddz[k], nx = lx + ddx[k];
+                    if (nz < 0 || nx < 0 || nz >= tileH || nx >= tileW) continue;
+                    short nTop = data.waterY[nz][nx];
+                    if (nTop == RiverCarver.NONE) continue;
+                    short nBed = data.surfaceY != null ? data.surfaceY[nz][nx] : RiverCarver.NONE;
+                    int low = nBed != RiverCarver.NONE ? nBed : nTop - 3;
+                    for (int y = nTop; y > low && y > MIN_Y; y--) {
+                        pos.set(x, y, z);
+                        if (chunk.getBlockState(pos).isAir()) chunk.setBlockState(pos, stone, 0);
+                    }
+                }
+            }
+        }
     }
 
     /** Water only freezes well inside snowy biomes, so streams never ice up at the edge of the snow line. */

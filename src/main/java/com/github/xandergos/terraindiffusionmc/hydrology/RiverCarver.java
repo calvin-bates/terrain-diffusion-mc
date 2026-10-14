@@ -241,7 +241,6 @@ public final class RiverCarver {
         for (int r = 0; r < H; r++) {
             int pi = Math.floorDiv(i1 + r, scale);
             for (int c = 0; c < W; c++) {
-                if (waterY[r][c] != NONE) continue;
                 if (contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
                 int pj = Math.floorDiv(j1 + c, scale);
                 int ri = ownerIndex(pi, prefRi, regionSize, trust);
@@ -263,6 +262,8 @@ public final class RiverCarver {
                     }
                 }
                 if (Float.isNaN(level)) continue;
+                // A lake wins over a river channel that runs into it, so no channel is left cut into the lake.
+                if (waterY[r][c] != NONE && !ownLake) continue;
                 int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))) - 1;
                 int idx = r * W + c;
                 int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
@@ -270,7 +271,7 @@ public final class RiverCarver {
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
                 if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
-                if (ownLake && top >= lakeTop && top - lakeTop <= 4) {
+                if (ownLake && top >= lakeTop && top - lakeTop <= 8) {
                     // Interpolated ground can poke above the flat lake level inside the lake area;
                     // lower it so the lake has no dry specks and fills right out to its shore.
                     surfaceY[r][c] = (short) (lakeTop - 1);
