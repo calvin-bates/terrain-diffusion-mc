@@ -95,11 +95,11 @@ public final class TerrainDiffusionConfig {
         return readInt("rivers.margin", 96);
     }
 
-    public static float riverStreamThreshold() { return readFloat("rivers.stream_threshold", 3500f); }
-    public static float riverRiverThreshold() { return readFloat("rivers.river_threshold", 10000f); }
+    public static float riverStreamThreshold() { return readFloat("rivers.stream_threshold", 2400f); }
+    public static float riverRiverThreshold() { return readFloat("rivers.river_threshold", 9000f); }
     public static float riverMainThreshold() { return readFloat("rivers.main_threshold", 25000f); }
     /** Water freezes only above this height (metres of terrain elevation) and inside snowy biomes; 0 = biome only. */
-    public static float riverFreezeHeightMetres() { return readFloat("rivers.freeze_height_m", 2000f); }
+    public static float riverFreezeHeightMetres() { return readFloat("rivers.freeze_height_m", 2500f); }
     public static int lakeMinArea() { return readInt("rivers.lake_min_area", 150); }
     public static float lakeMinDepth() { return readFloat("rivers.lake_min_depth", 2f); }
 

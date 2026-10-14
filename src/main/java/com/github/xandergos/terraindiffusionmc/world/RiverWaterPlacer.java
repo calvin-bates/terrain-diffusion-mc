@@ -24,6 +24,7 @@ public final class RiverWaterPlacer {
     private static final Logger LOG = LoggerFactory.getLogger(RiverWaterPlacer.class);
     private static final int MIN_Y = -64;
     private static volatile boolean loggedFirst;
+    private static volatile boolean loggedFreeze;
 
     private RiverWaterPlacer() {
     }
@@ -60,6 +61,11 @@ public final class RiverWaterPlacer {
         float freezeM = TerrainDiffusionConfig.riverFreezeHeightMetres();
         int freezeY = freezeM <= 0f ? Integer.MIN_VALUE
                 : HeightConverter.convertToMinecraftHeight((short) Math.min(freezeM, 30000f), Math.max(1, WorldScaleManager.getCurrentScale()));
+        if (!loggedFreeze) {
+            loggedFreeze = true;
+            LOG.info("Terra rivers: water freezes at Y >= {} (freeze_height_m={}, scale={})",
+                    freezeY, freezeM, WorldScaleManager.getCurrentScale());
+        }
         BlockState water = Blocks.WATER.defaultBlockState();
         BlockState ice = Blocks.ICE.defaultBlockState();
         BlockState gravel = Blocks.GRAVEL.defaultBlockState();

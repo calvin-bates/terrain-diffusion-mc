@@ -14,7 +14,7 @@ public final class RiverMap {
 
     public static final class Params {
         /** Discharge thresholds in "cell equivalents" of runoff (1 cell = one native pixel of ~800 mm rain). */
-        public float streamQ = 3500f, riverQ = 10000f, mainQ = 25000f;
+        public float streamQ = 2400f, riverQ = 9000f, mainQ = 25000f;
         /** Only upstream area within this many flow steps counts (keeps regions seamless). */
         public int flowSteps = 80;
         /** Minimum lake size (native pixels) and depth (metres of fill). */
