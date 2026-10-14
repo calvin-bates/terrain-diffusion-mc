@@ -100,6 +100,8 @@ public final class TerrainDiffusionConfig {
     public static float riverMainThreshold() { return readFloat("rivers.main_threshold", 25000f); }
     /** Water freezes only above this height (metres of terrain elevation) and inside snowy biomes; 0 = biome only. */
     public static float riverFreezeHeightMetres() { return readFloat("rivers.freeze_height_m", 3500f); }
+    /** Rivers and lakes freezing at all (above rivers.freeze_height_m). Off by default. */
+    public static boolean riverFreezeEnabled() { return readBoolean("rivers.freeze", false); }
     /** No rivers or lakes above this terrain height in metres. */
     public static float riverMaxHeightMetres() { return readFloat("rivers.max_water_m", 4000f); }
     public static int lakeMinArea() { return readInt("rivers.lake_min_area", 150); }

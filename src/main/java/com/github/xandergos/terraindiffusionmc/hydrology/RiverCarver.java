@@ -28,6 +28,18 @@ public final class RiverCarver {
     /** Biome ids (from the biome classifier) that never get water: snowy / stony peaks and oceans. */
     private static final short[] NO_WATER_BIOMES = {32, 33, 35, 41, 44, 46, 48};
     /** Biome ids that are frozen, so their rivers become frozen rivers. */
+    /** True where the ground drops 2+ blocks per block next to (x, z): a cliff, not a stream bed. */
+    private static boolean steepAt(int[] ytop, int H, int W, int r, int c) {
+        int t = ytop[r * W + c];
+        int[] dr = {-2, 2, 0, 0}, dc = {0, 0, -2, 2};
+        for (int k = 0; k < 4; k++) {
+            int rr = r + dr[k], cc = c + dc[k];
+            if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+            if (Math.abs(ytop[rr * W + cc] - t) >= 4) return true;
+        }
+        return false;
+    }
+
     /** True for cold biomes where river and lake surfaces freeze. */
     public static boolean isFrozen(short biome) { return contains(FROZEN_BIOMES, biome); }
 
@@ -211,7 +223,18 @@ public final class RiverCarver {
                 if (top < 60) continue;   // never put river water over the sea floor
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
                 if (sc <= 0f) {
-                    int waterTop = ys - 1;
+                    // Too steep for a stream to hold water: it would only show as scattered ribbons.
+                    if (steepAt(ytop, H, W, r, c)) continue;
+                    // Water never sits higher than the lowest ground beside the channel, otherwise it
+                    // would need an embankment (a ridge along the stream) to stay in place.
+                    int rad = Math.min(5, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
+                    int low = top;
+                    for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
+                        for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
+                            if (ytop[rr * W + cc] < low) low = ytop[rr * W + cc];
+                        }
+                    }
+                    int waterTop = Math.min(ys - 1, low);
                     int bed = waterTop - DEPTH[cA[idx]];
                     surfaceY[r][c] = (short) Math.min(top, bed);
                     waterY[r][c] = (short) waterTop;
@@ -223,10 +246,7 @@ public final class RiverCarver {
                     int newTop = top;
                     if (top > target) {
                         newTop = Math.round(top - w * (top - target));
-                    } else if (top < ys) {
-                        newTop = Math.round(top + w * (ys - top));
-                        if (sc <= 1f) newTop = Math.max(newTop, ys);
-                    }
+                    }   // low banks are left alone: no embankments along streams
                     if (newTop != top) {
                         surfaceY[r][c] = (short) newTop;
                         any = true;
@@ -271,7 +291,7 @@ public final class RiverCarver {
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
                 if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
-                if (ownLake && top >= lakeTop && top - lakeTop <= 8) {
+                if (ownLake && top >= lakeTop && top - lakeTop <= 3) {
                     // Interpolated ground can poke above the flat lake level inside the lake area;
                     // lower it so the lake has no dry specks and fills right out to its shore.
                     surfaceY[r][c] = (short) (lakeTop - 1);
