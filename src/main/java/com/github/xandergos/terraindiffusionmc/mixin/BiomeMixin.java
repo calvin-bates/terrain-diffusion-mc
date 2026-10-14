@@ -1,6 +1,8 @@
 package com.github.xandergos.terraindiffusionmc.mixin;
 
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.biome.Biome;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -31,5 +33,17 @@ public abstract class BiomeMixin {
         }
         // For snowy biomes (base temp < 0.15), let vanilla handle it
     }
-}
 
+    /**
+     * Vanilla's "freeze top layer" feature ices the edges of any water that is cold enough, which
+     * includes high-altitude rivers and lakes. Keep inland water liquid (the sea still freezes).
+     */
+    @Inject(method = "shouldFreeze(Lnet/minecraft/world/level/LevelReader;Lnet/minecraft/core/BlockPos;Z)Z",
+            at = @At("HEAD"), cancellable = true)
+    private void terra$keepInlandWaterLiquid(LevelReader level, BlockPos pos, boolean mustBeAtEdge,
+                                             CallbackInfoReturnable<Boolean> cir) {
+        if (pos.getY() > 64 && !TerrainDiffusionConfig.riverFreezeEnabled()) {
+            cir.setReturnValue(false);
+        }
+    }
+}
