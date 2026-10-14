@@ -270,6 +270,13 @@ public final class RiverCarver {
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
                 if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
+                if (ownLake && top >= lakeTop && top - lakeTop <= 4) {
+                    // Interpolated ground can poke above the flat lake level inside the lake area;
+                    // lower it so the lake has no dry specks and fills right out to its shore.
+                    surfaceY[r][c] = (short) (lakeTop - 1);
+                    top = lakeTop - 1;
+                    any = true;
+                }
                 if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];

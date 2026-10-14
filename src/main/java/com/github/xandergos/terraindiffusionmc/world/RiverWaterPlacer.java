@@ -57,6 +57,9 @@ public final class RiverWaterPlacer {
         }
         if (data == null || data.waterY == null) return;
 
+        float freezeM = TerrainDiffusionConfig.riverFreezeHeightMetres();
+        int freezeY = freezeM <= 0f ? Integer.MIN_VALUE
+                : HeightConverter.convertToMinecraftHeight((short) Math.min(freezeM, 30000f), Math.max(1, WorldScaleManager.getCurrentScale()));
         BlockState water = Blocks.WATER.defaultBlockState();
         BlockState ice = Blocks.ICE.defaultBlockState();
         BlockState gravel = Blocks.GRAVEL.defaultBlockState();
@@ -69,7 +72,7 @@ public final class RiverWaterPlacer {
                 short top = data.waterY[lz][lx];
                 if (top == RiverCarver.NONE) continue;
 
-                boolean frozen = frozenAround(data.biomeIds, lz, lx);
+                boolean frozen = top >= freezeY && frozenAround(data.biomeIds, lz, lx);
                 short bed = data.surfaceY != null ? data.surfaceY[lz][lx] : RiverCarver.NONE;
                 int floor = bed != RiverCarver.NONE ? bed : top - 12;
                 // Fill only down to the designed river/lake bed, never further: below it may be a
