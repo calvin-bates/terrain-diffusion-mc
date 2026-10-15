@@ -85,7 +85,7 @@ public final class RiverWaterPlacer {
                 boolean isLake = data.waterIsLake != null && data.waterIsLake[lz][lx];
                 // Find the ground under the water line. Whether the bed block itself is solid depends on
                 // how the terrain pass rounds, so just look for the first solid block from the top down.
-                int capY = bed != RiverCarver.NONE ? bed - 2 : top - 12;
+                int capY = bed != RiverCarver.NONE ? bed - 8 : top - 12;   // open this far below the bed = a cave
                 int ground = Integer.MIN_VALUE;
                 for (int y = top; y >= capY && y > MIN_Y; y--) {
                     pos.set(x, y, z);
@@ -107,6 +107,25 @@ public final class RiverWaterPlacer {
                     pos.set(x, capY, z);
                     chunk.setBlockState(pos, gravel, 0);
                     ground = capY;
+                }
+                if (!isLake && ground >= top) {
+                    // The terrain pass left ground at or above the water line here (the narrow channel was
+                    // smoothed away), so dig the channel out again instead of leaving a dry carved line.
+                    int surf = top;
+                    for (int y = top + 1; y <= top + 3; y++) {
+                        pos.set(x, y, z);
+                        if (!chunk.getBlockState(pos).isAir()) surf = y;
+                    }
+                    for (int y = top + 1; y <= surf; y++) {
+                        pos.set(x, y, z);
+                        chunk.setBlockState(pos, Blocks.AIR.defaultBlockState(), 0);
+                    }
+                    int lowY = bed != RiverCarver.NONE ? bed + 1 : top - 2;
+                    for (int y = top; y >= lowY && y > MIN_Y; y--) {
+                        pos.set(x, y, z);
+                        chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
+                    }
+                    continue;
                 }
                 for (int y = top; y > ground; y--) {
                     pos.set(x, y, z);
