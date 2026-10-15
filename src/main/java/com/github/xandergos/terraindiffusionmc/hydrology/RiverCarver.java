@@ -374,27 +374,39 @@ public final class RiverCarver {
             }
         }
 
-        // Dry holes: ground in the one-pixel rim that sits below the lake level (the 30 m lake mask and the real
-        // block ground disagree) was left dry and walled in with stone. Let the lake flow into it instead,
-        // spreading from existing water, but only over rim ground that is at or below the water level.
-        for (int iter = 0; iter < 24; iter++) {
-            boolean grew = false;
-            for (int r = 0; r < H; r++) {
-                for (int c = 0; c < W; c++) {
-                    int idx = r * W + c;
-                    if (rimLvl[idx] == NONE || waterY[r][c] != NONE) continue;
-                    if (ytop[idx] < 60 || ytop[idx] > rimLvl[idx]) continue;
-                    boolean wet = (r > 0 && waterY[r - 1][c] != NONE) || (r < H - 1 && waterY[r + 1][c] != NONE)
-                            || (c > 0 && waterY[r][c - 1] != NONE) || (c < W - 1 && waterY[r][c + 1] != NONE);
-                    if (!wet) continue;
-                    waterY[r][c] = (short) rimLvl[idx];
-                    if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
-                    lakeCol[idx] = true;
-                    grew = true;
+        // Flood to the mountain edge: the water spreads from the lake over every connected column whose ground is
+        // at or below the water level, however far below, and stops only where the ground rises to the water
+        // level (the real shore). It is capped in distance so a lake cannot run away down a long valley.
+        {
+            final int FLOOD_REACH = 48;
+            int[] dist = new int[n];
+            int[] srcLvl = new int[n];
+            Arrays.fill(dist, -1);
+            int[] fq = new int[n];
+            int fh = 0, ft = 0;
+            for (int idx = 0; idx < n; idx++) {
+                if (lakeCol[idx]) { dist[idx] = 0; srcLvl[idx] = waterY[idx / W][idx % W]; fq[ft++] = idx; }
+            }
+            while (fh < ft) {
+                int idx = fq[fh++];
+                int d = dist[idx];
+                if (d >= FLOOD_REACH) continue;
+                int r = idx / W, c = idx % W;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || dist[j] >= 0) continue;
+                    int jr = j / W, jc = j % W;
+                    if (waterY[jr][jc] != NONE) continue;                    // river or other water: leave it
+                    if (ytop[j] < 60 || ytop[j] > srcLvl[idx]) continue;     // sea floor, or the shore has been reached
+                    if (contains(NO_WATER_BIOMES, biomeIds[jr][jc])) continue;
+                    dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
+                    waterY[jr][jc] = (short) srcLvl[idx];
+                    if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
+                    lakeCol[j] = true;
                     any = true;
+                    fq[ft++] = j;
                 }
             }
-            if (!grew) break;
         }
 
         // ---- lake spill level: a lake can only hold water up to the lowest part of its rim. Where the rim
