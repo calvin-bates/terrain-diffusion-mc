@@ -294,6 +294,8 @@ public final class RiverCarver {
         // the real ground contour, not the 30 m pixel squares of the lake mask.
         boolean[] ownLakeCol = new boolean[n];
         int[] lakeLvl = new int[n];
+        int[] rimLvl = new int[n];
+        Arrays.fill(rimLvl, NONE);
         reg = null;
         curRi = Integer.MIN_VALUE; curRj = Integer.MIN_VALUE;
         for (int r = 0; r < H; r++) {
@@ -330,6 +332,7 @@ public final class RiverCarver {
                 // Inside a lake pixel any low ground is lake bed; in the one-pixel rim only shallow
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
+                if (!ownLake) rimLvl[idx] = lakeTop;           // candidate for the flood-fill below
                 // Inside a lake pixel the ground is genuinely below the lake level (it is a filled basin), even
                 // in a deep gorge. Only the surrounding rim is limited to shallow ground.
                 if (lakeTop - top > (ownLake ? 120 : 2)) continue;
@@ -363,6 +366,29 @@ public final class RiverCarver {
                     any = true;
                 }
             }
+        }
+
+        // Dry holes: ground in the one-pixel rim that sits below the lake level (the 30 m lake mask and the real
+        // block ground disagree) was left dry and walled in with stone. Let the lake flow into it instead,
+        // spreading from existing water, but only over rim ground that is at or below the water level.
+        for (int iter = 0; iter < 24; iter++) {
+            boolean grew = false;
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (rimLvl[idx] == NONE || waterY[r][c] != NONE) continue;
+                    if (ytop[idx] < 60 || ytop[idx] > rimLvl[idx]) continue;
+                    boolean wet = (r > 0 && waterY[r - 1][c] != NONE) || (r < H - 1 && waterY[r + 1][c] != NONE)
+                            || (c > 0 && waterY[r][c - 1] != NONE) || (c < W - 1 && waterY[r][c + 1] != NONE);
+                    if (!wet) continue;
+                    waterY[r][c] = (short) rimLvl[idx];
+                    if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
+                    lakeCol[idx] = true;
+                    grew = true;
+                    any = true;
+                }
+            }
+            if (!grew) break;
         }
 
         // ---- lake spill level: a lake can only hold water up to the lowest part of its rim. Where the rim
