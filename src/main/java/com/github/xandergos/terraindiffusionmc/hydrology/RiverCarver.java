@@ -30,7 +30,9 @@ public final class RiverCarver {
     public static final short BIOME_RIVER = 120, BIOME_FROZEN_RIVER = 121;
 
     /** Biome ids (from the biome classifier) that never get water: snowy / stony peaks and oceans. */
-    private static final short[] NO_WATER_BIOMES = {32, 33, 35, 41, 44, 46, 48};
+    // Biomes where no water is placed. Empty: streams and rivers are now allowed in stony and snowy peaks too
+    // (previously {32, 33, 35, 41, 44, 46, 48}); the altitude and temperature limits in RiverMap still apply.
+    private static final short[] NO_WATER_BIOMES = {};
     /** Biome ids that are frozen, so their rivers become frozen rivers. */
     /** True where the ground drops 2+ blocks per block next to (x, z): a cliff, not a stream bed. */
     private static boolean steepAt(int[] ytop, int H, int W, int r, int c) {
