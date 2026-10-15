@@ -557,6 +557,36 @@ public final class RiverCarver {
             }
         }
 
+        // Diagnostics: water columns held up by a tall drop on the dry side ("dams"). Logs a few per tile with the
+        // exact numbers so a wall can be traced to the data that produced it.
+        {
+            int logged = 0, dams = 0;
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    if (waterY[r][c] == NONE) continue;
+                    int[] dr = {-1, 1, 0, 0}, dc = {0, 0, -1, 1};
+                    for (int k = 0; k < 4; k++) {
+                        int rr = r + dr[k], cc = c + dc[k];
+                        if (rr < 0 || cc < 0 || rr >= H || cc >= W || waterY[rr][cc] != NONE) continue;
+                        int nIdx = rr * W + cc;
+                        int nTop = surfaceY[rr][cc] != NONE ? surfaceY[rr][cc] : ytop[nIdx];
+                        if (waterY[r][c] - nTop > 8) {
+                            dams++;
+                            if (logged < 6) {
+                                logged++;
+                                int idx = r * W + c;
+                                LOG.info("[Terra] dam at block x={} z={}: water Y{} (lake={}) own ytop Y{} surf {} | dry neighbour x={} z={} ytop Y{} surf {} | cls own/n scores {}/{}",
+                                        j1 + c, i1 + r, waterY[r][c], lakeCol[idx], ytop[idx], surfaceY[r][c],
+                                        j1 + cc, i1 + rr, ytop[nIdx], surfaceY[rr][cc], score[idx], score[nIdx]);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            if (dams > 0) LOG.info("[Terra] tile x={} z={}: {} water columns with a >8 block drop on the dry side", j1, i1, dams);
+        }
+
         if (!any) return null;
 
         // Biomes are left untouched so banks and beds keep the surface of the biome they are in.
