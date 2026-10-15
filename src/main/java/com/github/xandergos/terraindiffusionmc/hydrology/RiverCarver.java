@@ -344,7 +344,7 @@ public final class RiverCarver {
         }
 
         // Fill small dry specks inside lakes: ground that pokes just above the water but is boxed in by it.
-        for (int iter = 0; iter < 3; iter++) {
+        for (int iter = 0; iter < 16; iter++) {
             for (int r = 0; r < H; r++) {
                 for (int c = 0; c < W; c++) {
                     int idx = r * W + c;
@@ -354,9 +354,9 @@ public final class RiverCarver {
                     if (r < H - 1 && waterY[r + 1][c] != NONE) wn++;
                     if (c > 0     && waterY[r][c - 1] != NONE) wn++;
                     if (c < W - 1 && waterY[r][c + 1] != NONE) wn++;
-                    if (wn < 3) continue;
+                    if (wn < 2) continue;   // ridges and peninsulas: flooded from two sides
                     int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                    if (ytop[idx] < 60 || top - lakeLvl[idx] > 3) continue;
+                    if (ytop[idx] < 60 || top - lakeLvl[idx] > 6) continue;
                     surfaceY[r][c] = (short) (lakeLvl[idx] - 1);
                     waterY[r][c] = (short) lakeLvl[idx];
                     lakeCol[idx] = true;
