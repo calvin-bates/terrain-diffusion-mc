@@ -283,7 +283,9 @@ public final class RiverCarver {
                 if (top < 60) continue;
                 float t = sc / BANK;
                 float w = 1f - t * t * (3f - 2f * t);
-                float target = bankWater[idx] + 1 + sc * SLOPE;
+                // A 2-block flat shelf at the water level on each side, then the slope. Terrain is sampled every 4 blocks and
+                // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
+                float target = bankWater[idx] + 1 + Math.max(0f, sc - 2f) * SLOPE;
                 if (top > target) {   // low banks are left alone: no embankments along streams
                     int newTop = Math.round(top - w * (top - target));
                     if (newTop != top) {
@@ -480,83 +482,6 @@ public final class RiverCarver {
                         }
                     }
                 }
-            }
-        }
-
-        // ---- lake beaches: ground just above the water that ends in a sheer step is cut back into a gentle
-        // ramp, so the lake meets the slope with a smooth shore instead of a wall. Only small steps (up to
-        // 8 blocks above the ramp) are softened; real mountain faces are left alone.
-        {
-            final int RAMP_REACH = 20;
-            int[] dist = new int[n];
-            int[] srcLvl = new int[n];
-            Arrays.fill(dist, -1);
-            int[] bq = new int[n];
-            int bh = 0, bt = 0;
-            for (int idx = 0; idx < n; idx++) {
-                if (lakeCol[idx]) { dist[idx] = 0; srcLvl[idx] = waterY[idx / W][idx % W]; bq[bt++] = idx; }
-            }
-            while (bh < bt) {
-                int idx = bq[bh++];
-                int d = dist[idx];
-                if (d >= RAMP_REACH) continue;
-                int r = idx / W, c = idx % W;
-                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
-                for (int j : nb) {
-                    if (j < 0 || dist[j] >= 0 || waterY[j / W][j % W] != NONE) continue;
-                    dist[j] = d + 1; srcLvl[j] = srcLvl[idx]; bq[bt++] = j;
-                }
-            }
-            for (int idx = 0; idx < n; idx++) {
-                int d = dist[idx];
-                if (d <= 0 || ytop[idx] < 60) continue;
-                int r = idx / W, c = idx % W;
-                int target = srcLvl[idx] + 1 + (d * 3) / 4;
-                int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                if (top > target && top - target <= 8) { surfaceY[r][c] = (short) target; any = true; }
-            }
-        }
-
-        // ---- lake embankments: ground next to lake water is raised to the water level and
-        // slopes down 1:1, so water is always held in by terrain.
-        final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
-        int[] need = new int[n];
-        Arrays.fill(need, NO_NEED);
-        for (int r = 0; r < H; r++) {
-            for (int c = 0; c < W; c++) {
-                int idx = r * W + c;
-                if (!lakeCol[idx]) continue;
-                int want = waterY[r][c];   // shore ground flush with the water surface
-                if (r > 0)     { int j = idx - W; if (waterY[r - 1][c] == NONE && need[j] < want) need[j] = want; }
-                if (r < H - 1) { int j = idx + W; if (waterY[r + 1][c] == NONE && need[j] < want) need[j] = want; }
-                if (c > 0)     { int j = idx - 1; if (waterY[r][c - 1] == NONE && need[j] < want) need[j] = want; }
-                if (c < W - 1) { int j = idx + 1; if (waterY[r][c + 1] == NONE && need[j] < want) need[j] = want; }
-            }
-        }
-        for (int pass = 0; pass < 2; pass++) {
-            // Short, gentle lip only: steep shores are sealed by the water placer instead of dammed.
-            final int dec = pass == 0 ? 0 : 1;
-            int[] next = need.clone();
-            for (int r = 0; r < H; r++) {
-                for (int c = 0; c < W; c++) {
-                    int idx = r * W + c;
-                    if (waterY[r][c] != NONE) continue;
-                    int best = next[idx];
-                    if (r > 0     && need[idx - W] > NO_NEED && need[idx - W] - dec > best) best = need[idx - W] - dec;
-                    if (r < H - 1 && need[idx + W] > NO_NEED && need[idx + W] - dec > best) best = need[idx + W] - dec;
-                    if (c > 0     && need[idx - 1] > NO_NEED && need[idx - 1] - dec > best) best = need[idx - 1] - dec;
-                    if (c < W - 1 && need[idx + 1] > NO_NEED && need[idx + 1] - dec > best) best = need[idx + 1] - dec;
-                    next[idx] = best;
-                }
-            }
-            need = next;
-        }
-        for (int r = 0; r < H; r++) {
-            for (int c = 0; c < W; c++) {
-                int idx = r * W + c;
-                if (need[idx] == NO_NEED || waterY[r][c] != NONE) continue;
-                int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                if (top < need[idx] && need[idx] - top <= 2) { surfaceY[r][c] = (short) need[idx]; any = true; }
             }
         }
 
