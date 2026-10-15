@@ -385,9 +385,9 @@ public final class RiverCarver {
             int[] srcLvl = new int[n];
             Arrays.fill(dist, -1);
             int[] fq = new int[n];
-            int fh = 0, ft = 0;
+            int fh = 0, ft = 0, fSeeds = 0;
             for (int idx = 0; idx < n; idx++) {
-                if (lakeCol[idx]) { dist[idx] = 0; srcLvl[idx] = waterY[idx / W][idx % W]; fq[ft++] = idx; }
+                if (lakeCol[idx]) { fSeeds++; dist[idx] = 0; srcLvl[idx] = waterY[idx / W][idx % W]; fq[ft++] = idx; }
             }
             while (fh < ft) {
                 int idx = fq[fh++];
@@ -409,6 +409,7 @@ public final class RiverCarver {
                     fq[ft++] = j;
                 }
             }
+            if (fSeeds > 0) LOG.info("[Terra] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, ft - fSeeds);
         }
 
         // ---- lake spill level: a lake can only hold water up to the lowest part of its rim. Where the rim
