@@ -245,6 +245,9 @@ public final class RiverCarver {
                     }
                 }
                 int waterTop = Math.min(ys - 1, low);
+                // The hydrology surface is a coarse estimate; where it sits far below the real ground the water used to
+                // sag with it and carve a wide ditch. Let it sag at most 2 blocks below the lowest nearby ground.
+                waterTop = Math.max(waterTop, low - 2);
                 int bed = waterTop - DEPTH[cA[idx]];
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
@@ -283,9 +286,9 @@ public final class RiverCarver {
                 if (top < 60) continue;
                 float t = sc / BANK;
                 float w = 1f - t * t * (3f - 2f * t);
-                // A 2-block flat shelf at the water level on each side, then the slope. Terrain is sampled every 4 blocks and
+                // A 1-block flat shelf at the water level on each side, then the slope. Terrain is sampled every 4 blocks and
                 // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
-                float target = bankWater[idx] + 1 + Math.max(0f, sc - 2f) * SLOPE;
+                float target = bankWater[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
                 if (top > target) {   // low banks are left alone: no embankments along streams
                     int newTop = Math.round(top - w * (top - target));
                     if (newTop != top) {
