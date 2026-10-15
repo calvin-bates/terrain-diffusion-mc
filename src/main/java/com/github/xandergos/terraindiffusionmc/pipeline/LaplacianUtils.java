@@ -50,6 +50,57 @@ public final class LaplacianUtils {
         return newLowres;
     }
 
+    /**
+     * Bicubic (Catmull-Rom) resize, same pixel alignment as {@link #bilinearResize}. Smooth through the
+     * source pixels, so contour lines come out round instead of following the pixel grid. Used for terrain
+     * heights only; it can overshoot slightly next to very sharp edges.
+     */
+    public static float[][] bicubicResize(float[][] src, int dstH, int dstW) {
+        int srcH = src.length, srcW = src[0].length;
+        // Columns first (horizontal pass): srcH x dstW
+        float[][] mid = new float[srcH][dstW];
+        for (int c = 0; c < dstW; c++) {
+            float srcC = ((c + 0.5f) * srcW / dstW) - 0.5f;
+            int c0 = (int) Math.floor(srcC);
+            float t = srcC - c0;
+            float[] w = catmullRom(t);
+            for (int r = 0; r < srcH; r++) {
+                float v = 0f;
+                for (int k = 0; k < 4; k++) {
+                    int cc = Math.max(0, Math.min(srcW - 1, c0 - 1 + k));
+                    v += w[k] * src[r][cc];
+                }
+                mid[r][c] = v;
+            }
+        }
+        float[][] dst = new float[dstH][dstW];
+        for (int r = 0; r < dstH; r++) {
+            float srcR = ((r + 0.5f) * srcH / dstH) - 0.5f;
+            int r0 = (int) Math.floor(srcR);
+            float t = srcR - r0;
+            float[] w = catmullRom(t);
+            for (int c = 0; c < dstW; c++) {
+                float v = 0f;
+                for (int k = 0; k < 4; k++) {
+                    int rr = Math.max(0, Math.min(srcH - 1, r0 - 1 + k));
+                    v += w[k] * mid[rr][c];
+                }
+                dst[r][c] = v;
+            }
+        }
+        return dst;
+    }
+
+    private static float[] catmullRom(float t) {
+        float t2 = t * t, t3 = t2 * t;
+        return new float[] {
+                -0.5f * t3 + t2 - 0.5f * t,
+                1.5f * t3 - 2.5f * t2 + 1f,
+                -1.5f * t3 + 2f * t2 + 0.5f * t,
+                0.5f * t3 - 0.5f * t2
+        };
+    }
+
     /** Bilinear resize (align_corners=False, as in PyTorch). */
     public static float[][] bilinearResize(float[][] src, int dstH, int dstW) {
         int srcH = src.length, srcW = src[0].length;
