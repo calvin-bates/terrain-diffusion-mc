@@ -213,43 +213,72 @@ public final class RiverCarver {
         boolean any = false;
         boolean[] lakeCol = new boolean[n];
 
-        // ---- finalise river channels and banks
+        // ---- finalise river channels (pass 1), then blend the banks into them (pass 2)
+        final int NOWATER = Integer.MIN_VALUE;
+        int[] chanWater = new int[n];
+        Arrays.fill(chanWater, NOWATER);
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
                 float sc = score[idx];
-                if (sc == Float.POSITIVE_INFINITY) continue;
-                short biome = biomeIds[r][c];
-                if (contains(NO_WATER_BIOMES, biome)) continue;
-
+                if (sc == Float.POSITIVE_INFINITY || sc > 0f) continue;
+                if (contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
                 int top = ytop[idx];
                 if (top < 60) continue;   // never put river water over the sea floor
+                // Too steep for a stream to hold water: it would only show as scattered ribbons.
+                if (steepAt(ytop, H, W, r, c)) continue;
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
-                if (sc <= 0f) {
-                    // Too steep for a stream to hold water: it would only show as scattered ribbons.
-                    if (steepAt(ytop, H, W, r, c)) continue;
-                    // Water never sits higher than the lowest ground beside the channel, otherwise it
-                    // would need an embankment (a ridge along the stream) to stay in place.
-                    int rad = Math.min(5, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
-                    int low = top;
-                    for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
-                        for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
-                            if (ytop[rr * W + cc] < low) low = ytop[rr * W + cc];
-                        }
+                // Water never sits higher than the lowest ground beside the channel, otherwise it
+                // would need an embankment (a ridge along the stream) to stay in place.
+                int rad = Math.min(5, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
+                int low = top;
+                for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
+                    for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
+                        if (ytop[rr * W + cc] < low) low = ytop[rr * W + cc];
                     }
-                    int waterTop = Math.min(ys - 1, low);
-                    int bed = waterTop - DEPTH[cA[idx]];
-                    surfaceY[r][c] = (short) Math.min(top, bed);
-                    waterY[r][c] = (short) waterTop;
-                    any = true;
-                } else {
-                    float t = sc / BANK;
-                    float w = 1f - t * t * (3f - 2f * t);
-                    float target = ys + sc * SLOPE;
-                    int newTop = top;
-                    if (top > target) {
-                        newTop = Math.round(top - w * (top - target));
-                    }   // low banks are left alone: no embankments along streams
+                }
+                int waterTop = Math.min(ys - 1, low);
+                int bed = waterTop - DEPTH[cA[idx]];
+                surfaceY[r][c] = (short) Math.min(top, bed);
+                waterY[r][c] = (short) waterTop;
+                chanWater[idx] = waterTop;
+                any = true;
+            }
+        }
+
+        // Spread each channel's water level outwards over the bank width, so the banks are shaped
+        // against the water that is really there (not the unadjusted surface) and meet it flush.
+        int[] bankWater = chanWater.clone();
+        int bankReach = (int) Math.ceil(BANK) + 1;
+        for (int pass = 0; pass < bankReach; pass++) {
+            int[] next = bankWater.clone();
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (bankWater[idx] != NOWATER) continue;
+                    int v = NOWATER;
+                    if (r > 0     && bankWater[idx - W] != NOWATER) v = bankWater[idx - W];
+                    else if (r < H - 1 && bankWater[idx + W] != NOWATER) v = bankWater[idx + W];
+                    else if (c > 0     && bankWater[idx - 1] != NOWATER) v = bankWater[idx - 1];
+                    else if (c < W - 1 && bankWater[idx + 1] != NOWATER) v = bankWater[idx + 1];
+                    next[idx] = v;
+                }
+            }
+            bankWater = next;
+        }
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int idx = r * W + c;
+                float sc = score[idx];
+                if (sc == Float.POSITIVE_INFINITY || sc <= 0f) continue;
+                if (bankWater[idx] == NOWATER) continue;
+                int top = ytop[idx];
+                if (top < 60) continue;
+                float t = sc / BANK;
+                float w = 1f - t * t * (3f - 2f * t);
+                float target = bankWater[idx] + 1 + sc * SLOPE;
+                if (top > target) {   // low banks are left alone: no embankments along streams
+                    int newTop = Math.round(top - w * (top - target));
                     if (newTop != top) {
                         surfaceY[r][c] = (short) newTop;
                         any = true;
@@ -302,14 +331,6 @@ public final class RiverCarver {
                 // in a deep gorge. Only the surrounding rim is limited to shallow ground.
                 if (lakeTop - top > (ownLake ? 120 : 2)) continue;
                 if (ownLake) { ownLakeCol[idx] = true; lakeLvl[idx] = lakeTop; }
-                // Deep inside a lake (all 8 surrounding pixels are lake too) the ground must be lake bed:
-                // detail noise can leave ridges above the water, so cut those down. At the edge pixels the
-                // shore is left to follow the real ground contour.
-                if (ownLake && lakeNeighbours == 9 && top >= lakeTop && top - lakeTop <= 12) {
-                    surfaceY[r][c] = (short) (lakeTop - 1);
-                    top = lakeTop - 1;
-                    any = true;
-                }
                 if (top <= lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
