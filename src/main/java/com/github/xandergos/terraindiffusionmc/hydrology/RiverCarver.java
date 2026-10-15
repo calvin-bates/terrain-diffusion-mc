@@ -310,6 +310,7 @@ public final class RiverCarver {
                     curRi = ri; curRj = rj;
                 }
                 float level = Float.NaN;
+                float ownLevel = Float.NaN, minLevel = Float.NaN;
                 boolean ownLake = false;
                 int lakeNeighbours = 0;
                 for (int dr = -1; dr <= 1; dr++) {
@@ -319,11 +320,16 @@ public final class RiverCarver {
                             lakeNeighbours++;
                             if (dr == 0 && dc == 0) ownLake = true;
                             float s = reg.surface[k];
+                            if (dr == 0 && dc == 0) ownLevel = s;
+                            if (Float.isNaN(minLevel) || s < minLevel) minLevel = s;
                             if (Float.isNaN(level) || s > level) level = s;
                         }
                     }
                 }
                 if (Float.isNaN(level)) continue;
+                // A neighbouring lake at a different height must not lend its level (that perched water on walls):
+                // a column in a lake keeps that lake's own level, a rim column takes the lowest adjacent level.
+                level = ownLake ? ownLevel : minLevel;
                 // A lake wins over a river channel that runs into it, so no channel is left cut into the lake.
                 if (waterY[r][c] != NONE && !ownLake) continue;
                 int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))) - 1;
