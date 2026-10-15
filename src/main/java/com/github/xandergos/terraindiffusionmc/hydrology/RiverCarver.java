@@ -596,13 +596,12 @@ public final class RiverCarver {
                 if (d < 1 || !lakeCol[idx]) continue;
                 int r = idx / W, c = idx % W;
                 int level = waterY[r][c];
-                int natural = level - ytop[idx];               // natural depth below the water surface
-                if (natural < 1) continue;                     // ground at or above the water: leave
+                int natural = Math.max(1, level - ytop[idx]);  // natural depth below the water surface (at least 1)
                 float u = Math.min(1f, (d - 1) / (float) (REACH - 1));
                 float w = u * u * (3f - 2f * u);
                 float shoreDepth = 1f + (d - 1) / 3f;          // about 1 block deeper every 3 blocks
                 int depth = Math.round(shoreDepth + (natural - shoreDepth) * w);
-                depth = Math.max(1, Math.min(natural, depth)); // never dig deeper than the natural ground, never < 1
+                depth = Math.max(1, Math.min(Math.max(natural, 6), depth));   // may dig a little to even out ridges, at most 6
                 int bedY = level - depth;
                 if (bedY != (surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx])) { surfaceY[r][c] = (short) bedY; any = true; }
             }
