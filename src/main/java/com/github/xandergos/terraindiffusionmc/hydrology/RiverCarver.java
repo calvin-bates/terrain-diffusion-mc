@@ -362,6 +362,68 @@ public final class RiverCarver {
             }
         }
 
+        // ---- lake spill level: a lake can only hold water up to the lowest part of its rim. Where the rim
+        // drops away (the water hangs over a slope) the level is lowered until the water is held in by
+        // ground that rises all the way around, instead of walling it in with stone.
+        {
+            boolean[] seen = new boolean[n];
+            int[] queue = new int[n];
+            for (int start = 0; start < n; start++) {
+                if (!lakeCol[start] || seen[start]) continue;
+                int qh = 0, qt = 0;
+                queue[qt++] = start; seen[start] = true;
+                while (qh < qt) {
+                    int idx = queue[qh++];
+                    int r = idx / W, c = idx % W;
+                    if (r > 0     && lakeCol[idx - W] && !seen[idx - W]) { seen[idx - W] = true; queue[qt++] = idx - W; }
+                    if (r < H - 1 && lakeCol[idx + W] && !seen[idx + W]) { seen[idx + W] = true; queue[qt++] = idx + W; }
+                    if (c > 0     && lakeCol[idx - 1] && !seen[idx - 1]) { seen[idx - 1] = true; queue[qt++] = idx - 1; }
+                    if (c < W - 1 && lakeCol[idx + 1] && !seen[idx + 1]) { seen[idx + 1] = true; queue[qt++] = idx + 1; }
+                }
+                int count = qt;
+                int level = Integer.MIN_VALUE;
+                for (int k = 0; k < count; k++) { int idx = queue[k]; level = Math.max(level, waterY[idx / W][idx % W]); }
+                boolean touchesEdge = false;
+                for (int k = 0; k < count; k++) {
+                    int idx = queue[k]; int r = idx / W, c = idx % W;
+                    if (r == 0 || c == 0 || r == H - 1 || c == W - 1) { touchesEdge = true; break; }
+                }
+                // Chunks only see part of a big lake; leveling a partial view would make neighbours disagree.
+                if (touchesEdge) continue;
+                int[] ring = new int[count * 4];
+                for (int iter = 0; iter < 5; iter++) {
+                    int rn = 0;
+                    for (int k = 0; k < count; k++) {
+                        int idx = queue[k];
+                        if (!lakeCol[idx]) continue;
+                        int r = idx / W, c = idx % W;
+                        int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                        for (int j : nb) {
+                            if (j < 0 || lakeCol[j] || ytop[j] < 60) continue;
+                            ring[rn++] = ytop[j];
+                        }
+                    }
+                    if (rn == 0) break;
+                    java.util.Arrays.sort(ring, 0, rn);
+                    int spill = ring[Math.min(rn - 1, rn / 12)];
+                    if (spill >= level) break;
+                    level = spill;
+                    for (int k = 0; k < count; k++) {
+                        int idx = queue[k];
+                        if (!lakeCol[idx]) continue;
+                        int r = idx / W, c = idx % W;
+                        if (ytop[idx] >= level) {   // ground at or above the spill level is dry shore
+                            lakeCol[idx] = false;
+                            waterY[r][c] = NONE;
+                            surfaceY[r][c] = NONE;
+                        } else {
+                            waterY[r][c] = (short) level;
+                        }
+                    }
+                }
+            }
+        }
+
         // ---- lake embankments: ground next to lake water is raised to the water level and
         // slopes down 1:1, so water is always held in by terrain.
         final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
