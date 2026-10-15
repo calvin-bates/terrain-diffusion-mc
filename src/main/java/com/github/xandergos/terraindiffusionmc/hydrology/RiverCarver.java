@@ -371,15 +371,15 @@ public final class RiverCarver {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
                 if (!lakeCol[idx]) continue;
-                int want = waterY[r][c] + 1;   // shore ground just above the water surface
+                int want = waterY[r][c];   // shore ground flush with the water surface
                 if (r > 0)     { int j = idx - W; if (waterY[r - 1][c] == NONE && need[j] < want) need[j] = want; }
                 if (r < H - 1) { int j = idx + W; if (waterY[r + 1][c] == NONE && need[j] < want) need[j] = want; }
                 if (c > 0)     { int j = idx - 1; if (waterY[r][c - 1] == NONE && need[j] < want) need[j] = want; }
                 if (c < W - 1) { int j = idx + 1; if (waterY[r][c + 1] == NONE && need[j] < want) need[j] = want; }
             }
         }
-        for (int pass = 0; pass < 5; pass++) {
-            // The first pass keeps the level (a 2-wide flat shore), later passes slope down 1:1.
+        for (int pass = 0; pass < 2; pass++) {
+            // Short, gentle lip only: steep shores are sealed by the water placer instead of dammed.
             final int dec = pass == 0 ? 0 : 1;
             int[] next = need.clone();
             for (int r = 0; r < H; r++) {
@@ -401,7 +401,7 @@ public final class RiverCarver {
                 int idx = r * W + c;
                 if (need[idx] == NO_NEED || waterY[r][c] != NONE) continue;
                 int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                if (top < need[idx]) { surfaceY[r][c] = (short) need[idx]; any = true; }
+                if (top < need[idx] && need[idx] - top <= 2) { surfaceY[r][c] = (short) need[idx]; any = true; }
             }
         }
 
