@@ -459,6 +459,40 @@ public final class RiverCarver {
             }
         }
 
+        // ---- lake beaches: ground just above the water that ends in a sheer step is cut back into a gentle
+        // ramp, so the lake meets the slope with a smooth shore instead of a wall. Only small steps (up to
+        // 8 blocks above the ramp) are softened; real mountain faces are left alone.
+        {
+            final int RAMP_REACH = 20;
+            int[] dist = new int[n];
+            int[] srcLvl = new int[n];
+            Arrays.fill(dist, -1);
+            int[] bq = new int[n];
+            int bh = 0, bt = 0;
+            for (int idx = 0; idx < n; idx++) {
+                if (lakeCol[idx]) { dist[idx] = 0; srcLvl[idx] = waterY[idx / W][idx % W]; bq[bt++] = idx; }
+            }
+            while (bh < bt) {
+                int idx = bq[bh++];
+                int d = dist[idx];
+                if (d >= RAMP_REACH) continue;
+                int r = idx / W, c = idx % W;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || dist[j] >= 0 || waterY[j / W][j % W] != NONE) continue;
+                    dist[j] = d + 1; srcLvl[j] = srcLvl[idx]; bq[bt++] = j;
+                }
+            }
+            for (int idx = 0; idx < n; idx++) {
+                int d = dist[idx];
+                if (d <= 0 || ytop[idx] < 60) continue;
+                int r = idx / W, c = idx % W;
+                int target = srcLvl[idx] + 1 + (d * 3) / 4;
+                int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
+                if (top > target && top - target <= 8) { surfaceY[r][c] = (short) target; any = true; }
+            }
+        }
+
         // ---- lake embankments: ground next to lake water is raised to the water level and
         // slopes down 1:1, so water is always held in by terrain.
         final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
