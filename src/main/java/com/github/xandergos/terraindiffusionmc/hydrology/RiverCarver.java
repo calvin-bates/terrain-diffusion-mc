@@ -303,7 +303,6 @@ public final class RiverCarver {
         for (int r = 0; r < H; r++) {
             int pi = Math.floorDiv(i1 + r, scale);
             for (int c = 0; c < W; c++) {
-                if (contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
                 int pj = Math.floorDiv(j1 + c, scale);
                 int ri = ownerIndex(pi, prefRi, regionSize, trust);
                 int rj = ownerIndex(pj, prefRj, regionSize, trust);
@@ -329,6 +328,9 @@ public final class RiverCarver {
                     }
                 }
                 if (Float.isNaN(level)) continue;
+                // Stony/snowy peak biomes get no rivers, but a lake there is fine: skipping them cut square holes in
+                // alpine lakes, walled in with stone. Only the one-pixel rim keeps the biome exclusion.
+                if (!ownLake && contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
                 // A neighbouring lake at a different height must not lend its level (that perched water on walls):
                 // a column in a lake keeps that lake's own level, a rim column takes the lowest adjacent level.
                 level = ownLake ? ownLevel : minLevel;
@@ -400,7 +402,6 @@ public final class RiverCarver {
                     int jr = j / W, jc = j % W;
                     if (waterY[jr][jc] != NONE) continue;                    // river or other water: leave it
                     if (ytop[j] < 60 || ytop[j] > srcLvl[idx]) continue;     // sea floor, or the shore has been reached
-                    if (contains(NO_WATER_BIOMES, biomeIds[jr][jc])) continue;
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
