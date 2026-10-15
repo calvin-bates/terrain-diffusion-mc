@@ -1,6 +1,8 @@
 package com.github.xandergos.terraindiffusionmc.hydrology;
 
 import java.util.Arrays;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.function.IntUnaryOperator;
 
 /**
@@ -22,6 +24,7 @@ import java.util.function.IntUnaryOperator;
  * <p>Pure Java (no Minecraft types).
  */
 public final class RiverCarver {
+    private static final Logger LOG = LoggerFactory.getLogger(RiverCarver.class);
     public static final short NONE = Short.MIN_VALUE;
     public static final short BIOME_RIVER = 120, BIOME_FROZEN_RIVER = 121;
 
@@ -389,7 +392,11 @@ public final class RiverCarver {
                     if (r == 0 || c == 0 || r == H - 1 || c == W - 1) { touchesEdge = true; break; }
                 }
                 // Chunks only see part of a big lake; leveling a partial view would make neighbours disagree.
-                if (touchesEdge) continue;
+                if (touchesEdge) {
+                    LOG.info("[Terra] lake at block x={} z={}: {} columns, level Y{}, touches tile edge -> not leveled", j1, i1, count, level);
+                    continue;
+                }
+                final int level0 = level;
                 int[] ring = new int[count * 4];
                 for (int iter = 0; iter < 5; iter++) {
                     int rn = 0;
@@ -408,6 +415,7 @@ public final class RiverCarver {
                     int spill = ring[Math.min(rn - 1, rn / 12)];
                     if (spill >= level) break;
                     level = spill;
+                    LOG.info("[Terra] lake in tile x={} z={}: {} columns, spill lowered Y{} -> Y{}", j1, i1, count, level0, level);
                     for (int k = 0; k < count; k++) {
                         int idx = queue[k];
                         if (!lakeCol[idx]) continue;
