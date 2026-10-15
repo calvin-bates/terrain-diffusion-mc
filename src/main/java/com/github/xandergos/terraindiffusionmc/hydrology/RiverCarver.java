@@ -298,7 +298,9 @@ public final class RiverCarver {
                 // Inside a lake pixel any low ground is lake bed; in the one-pixel rim only shallow
                 // ground is flooded, otherwise the lake would hang as a water curtain down a slope.
                 if (ytop[idx] < 60) continue;                 // never over the sea floor
-                if (lakeTop - top > 12) continue;             // implausibly deep: would stand as a water wall
+                // Inside a lake pixel the ground is genuinely below the lake level (it is a filled basin), even
+                // in a deep gorge. Only the surrounding rim is limited to shallow ground.
+                if (lakeTop - top > (ownLake ? 120 : 2)) continue;
                 if (ownLake) { ownLakeCol[idx] = true; lakeLvl[idx] = lakeTop; }
                 // Deep inside a lake (all 8 surrounding pixels are lake too) the ground must be lake bed:
                 // detail noise can leave ridges above the water, so cut those down. At the edge pixels the
