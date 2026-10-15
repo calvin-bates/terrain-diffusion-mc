@@ -113,6 +113,24 @@ public final class RiverCarver {
         out[1] = z * 0.25f * scale;
     }
 
+
+    /** Smooth deterministic value noise in [0,1], lattice spacing 7 blocks, from world block coordinates. */
+    private static float valueNoise(int x, int z) {
+        final int S = 7;
+        int x0 = Math.floorDiv(x, S), z0 = Math.floorDiv(z, S);
+        float fx = (x - x0 * S) / (float) S, fz = (z - z0 * S) / (float) S;
+        fx = fx * fx * (3f - 2f * fx); fz = fz * fz * (3f - 2f * fz);
+        float a = latticeHash(x0, z0), b = latticeHash(x0 + 1, z0), c = latticeHash(x0, z0 + 1), d = latticeHash(x0 + 1, z0 + 1);
+        return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fz;
+    }
+
+    private static float latticeHash(int x, int z) {
+        int h = x * 374761393 + z * 668265263;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        h ^= h >>> 16;
+        return (h & 0xFFFF) / 65535f;
+    }
+
     private static boolean contains(short[] set, short v) {
         for (short s : set) if (s == v) return true;
         return false;
@@ -284,7 +302,10 @@ public final class RiverCarver {
                 if (bankWater[idx] == NOWATER) continue;
                 int top = ytop[idx];
                 if (top < 60) continue;
-                float t = sc / BANK;
+                // Wobble the distance by up to +-1.5 blocks with smooth noise, so the edge of the reshaped bank is an irregular
+                // line instead of a long straight diagonal parallel to the stream.
+                sc = Math.max(0.01f, sc + (valueNoise(j1 + c, i1 + r) - 0.5f) * 3f);
+                float t = Math.min(1f, sc / BANK);
                 float w = 1f - t * t * (3f - 2f * t);
                 // A 1-block flat shelf at the water level on each side, then the slope. Terrain is sampled every 4 blocks and
                 // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
@@ -539,6 +560,51 @@ public final class RiverCarver {
                         }
                     }
                 }
+            }
+        }
+
+        // ---- lake bed: near the shore the bed used to follow the terraced ground (1 deep, up, down again). Within 14
+        // blocks of the shore it now slopes smoothly from 1 block deep at the edge towards the natural depth.
+        {
+            final int REACH = 14;
+            int[] bd = new int[n];
+            Arrays.fill(bd, -1);
+            int[] bq2 = new int[n];
+            int bh2 = 0, bt2 = 0;
+            for (int idx = 0; idx < n; idx++) {
+                if (!lakeCol[idx]) continue;
+                int r = idx / W, c = idx % W;
+                boolean shore = (r > 0 && !lakeCol[idx - W] && waterY[r - 1][c] == NONE)
+                        || (r < H - 1 && !lakeCol[idx + W] && waterY[r + 1][c] == NONE)
+                        || (c > 0 && !lakeCol[idx - 1] && waterY[r][c - 1] == NONE)
+                        || (c < W - 1 && !lakeCol[idx + 1] && waterY[r][c + 1] == NONE);
+                if (shore) { bd[idx] = 1; bq2[bt2++] = idx; }
+            }
+            while (bh2 < bt2) {
+                int idx = bq2[bh2++];
+                int d = bd[idx];
+                if (d >= REACH) continue;
+                int r = idx / W, c = idx % W;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || !lakeCol[j] || bd[j] >= 0) continue;
+                    bd[j] = d + 1; bq2[bt2++] = j;
+                }
+            }
+            for (int idx = 0; idx < n; idx++) {
+                int d = bd[idx];
+                if (d < 1 || !lakeCol[idx]) continue;
+                int r = idx / W, c = idx % W;
+                int level = waterY[r][c];
+                int natural = level - ytop[idx];               // natural depth below the water surface
+                if (natural < 1) continue;                     // ground at or above the water: leave
+                float u = Math.min(1f, (d - 1) / (float) (REACH - 1));
+                float w = u * u * (3f - 2f * u);
+                float shoreDepth = 1f + (d - 1) / 3f;          // about 1 block deeper every 3 blocks
+                int depth = Math.round(shoreDepth + (natural - shoreDepth) * w);
+                depth = Math.max(1, Math.min(natural, depth)); // never dig deeper than the natural ground, never < 1
+                int bedY = level - depth;
+                if (bedY != (surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx])) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 
