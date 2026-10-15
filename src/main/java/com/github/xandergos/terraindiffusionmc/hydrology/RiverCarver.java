@@ -52,7 +52,7 @@ public final class RiverCarver {
     private static final short[] FROZEN_BIOMES = {3, 16, 32, 33, 48, 116};
 
     /** Distance (blocks) from the channel edge over which banks are shaped. */
-    private static final float BANK = 8f;
+    private static final float BANK = 4f;   // how far a stream reshapes the ground beside it (was 8: diagonal steps reached too far)
     /** Bank rise per block of distance from the channel edge. */
     private static final float SLOPE = 1f;
     /** Water depth in blocks for stream / river / main river. */
@@ -418,6 +418,60 @@ public final class RiverCarver {
                 }
             }
             if (fSeeds > 0) LOG.info("[Terra] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, ft - fSeeds);
+        }
+
+        // ---- round the shore: the water mask follows 6-block lake pixels, which leaves right-angle corners. A 5x5
+        // majority filter rounds them. It only touches shoreline cells whose ground is within 2 blocks of the water
+        // level, so it moves the waterline by a block or two and never builds or digs anything large.
+        for (int pass = 0; pass < 2; pass++) {
+            final int R = 2;
+            boolean[] flipToWater = new boolean[n], flipToDry = new boolean[n];
+            int[] flipLvl = new int[n];
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    boolean isW = lakeCol[idx];
+                    if (!isW && waterY[r][c] != NONE) continue;      // a river: leave it
+                    if (ytop[idx] < 60) continue;
+                    // boundary cells only: a 4-neighbour with the other state
+                    boolean edge = false;
+                    int lvl = NONE;
+                    if (r > 0     && lakeCol[idx - W] != isW) { edge = true; if (!isW) lvl = waterY[r - 1][c]; }
+                    if (r < H - 1 && lakeCol[idx + W] != isW) { edge = true; if (!isW && lvl == NONE) lvl = waterY[r + 1][c]; }
+                    if (c > 0     && lakeCol[idx - 1] != isW) { edge = true; if (!isW && lvl == NONE) lvl = waterY[r][c - 1]; }
+                    if (c < W - 1 && lakeCol[idx + 1] != isW) { edge = true; if (!isW && lvl == NONE) lvl = waterY[r][c + 1]; }
+                    if (!edge) continue;
+                    int wet = 0, tot = 0;
+                    for (int dr = -R; dr <= R; dr++) {
+                        for (int dc = -R; dc <= R; dc++) {
+                            int rr = r + dr, cc = c + dc;
+                            if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+                            tot++;
+                            if (lakeCol[rr * W + cc]) wet++;
+                        }
+                    }
+                    int ground = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
+                    if (!isW && wet * 2 > tot && lvl != NONE && ground - lvl <= 2) {
+                        flipToWater[idx] = true; flipLvl[idx] = lvl;
+                    } else if (isW && wet * 2 < tot && waterY[r][c] - ground <= 2) {
+                        flipToDry[idx] = true; flipLvl[idx] = waterY[r][c];
+                    }
+                }
+            }
+            boolean changed = false;
+            for (int idx = 0; idx < n; idx++) {
+                int r = idx / W, c = idx % W;
+                if (flipToWater[idx]) {
+                    waterY[r][c] = (short) flipLvl[idx];
+                    surfaceY[r][c] = (short) (flipLvl[idx] - 1);   // a 1-block-deep bed
+                    lakeCol[idx] = true; changed = true; any = true;
+                } else if (flipToDry[idx]) {
+                    waterY[r][c] = NONE;
+                    surfaceY[r][c] = (short) flipLvl[idx];         // land flush with the old water surface
+                    lakeCol[idx] = false; changed = true; any = true;
+                }
+            }
+            if (!changed) break;
         }
 
         // ---- lake spill level: a lake can only hold water up to the lowest part of its rim. Where the rim
