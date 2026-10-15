@@ -82,38 +82,35 @@ public final class RiverWaterPlacer {
 
                 boolean frozen = freezeOn && (freezeM > 0f ? top >= freezeY : frozenAround(data.biomeIds, lz, lx));
                 short bed = data.surfaceY != null ? data.surfaceY[lz][lx] : RiverCarver.NONE;
-                // A stream that meets a cave goes underground: leave a solid ford instead of water spilling
-                // into the cave. (Lakes just get their bed plugged below.)
                 boolean isLake = data.waterIsLake != null && data.waterIsLake[lz][lx];
-                if (!isLake && bed != RiverCarver.NONE) {
-                    boolean breach = false;
-                    for (int y = bed; y >= bed - 3 && y > MIN_Y; y--) {
-                        pos.set(x, y, z);
-                        if (chunk.getBlockState(pos).isAir()) { breach = true; break; }
-                    }
-                    if (breach) {
-                        for (int y = bed; y <= top; y++) {
+                // Find the ground under the water line. Whether the bed block itself is solid depends on
+                // how the terrain pass rounds, so just look for the first solid block from the top down.
+                int capY = bed != RiverCarver.NONE ? bed - 2 : top - 12;
+                int ground = Integer.MIN_VALUE;
+                for (int y = top; y >= capY && y > MIN_Y; y--) {
+                    pos.set(x, y, z);
+                    if (!chunk.getBlockState(pos).isAir()) { ground = y; break; }
+                }
+                if (ground == Integer.MIN_VALUE) {
+                    // Nothing solid down to the bed: a cave runs right under the channel.
+                    if (!isLake) {
+                        // A stream that meets a cave goes underground: leave a solid ford.
+                        for (int y = top; y >= capY && y > MIN_Y; y--) {
                             pos.set(x, y, z);
-                            if (!chunk.getBlockState(pos).isAir()) continue;
                             BlockState fill = matchingFill(chunk, x, y, z, x0, z0, stone);
                             if (y == top && fill.is(Blocks.DIRT)) fill = Blocks.GRASS_BLOCK.defaultBlockState();
                             chunk.setBlockState(pos, fill, 0);
                         }
                         continue;
                     }
+                    // A lake just gets a plugged floor.
+                    pos.set(x, capY, z);
+                    chunk.setBlockState(pos, gravel, 0);
+                    ground = capY;
                 }
-                int floor = bed != RiverCarver.NONE ? bed : top - 12;
-                // Fill only down to the designed river/lake bed, never further: below it may be a
-                // cave or ravine, and water poured into that would hang as a curtain.
-                for (int y = top; y > floor && y > MIN_Y; y--) {
+                for (int y = top; y > ground; y--) {
                     pos.set(x, y, z);
-                    if (!chunk.getBlockState(pos).isAir()) break;
                     chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
-                }
-                // If a cave broke through the bed, plug it so the water has a floor.
-                if (bed != RiverCarver.NONE && bed > MIN_Y) {
-                    pos.set(x, bed, z);
-                    if (chunk.getBlockState(pos).isAir()) chunk.setBlockState(pos, matchingFill(chunk, x, bed, z, x0, z0, gravel), 0);
                 }
             }
         }
@@ -134,7 +131,7 @@ public final class RiverWaterPlacer {
                     if (nTop == RiverCarver.NONE) continue;
                     short nBed = data.surfaceY != null ? data.surfaceY[nz][nx] : RiverCarver.NONE;
                     int low = nBed != RiverCarver.NONE ? nBed : nTop - 3;
-                    for (int y = nTop; y > low && y > MIN_Y; y--) {
+                    for (int y = nTop; y >= low && y > MIN_Y; y--) {
                         pos.set(x, y, z);
                         if (chunk.getBlockState(pos).isAir()) {
                             chunk.setBlockState(pos, matchingFill(chunk, x, y, z, x0, z0, stone), 0);

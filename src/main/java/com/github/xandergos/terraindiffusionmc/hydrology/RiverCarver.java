@@ -308,7 +308,7 @@ public final class RiverCarver {
                     top = lakeTop - 1;
                     any = true;
                 }
-                if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
+                if (top <= lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
                     lakeCol[idx] = true;
@@ -339,6 +339,41 @@ public final class RiverCarver {
             }
         }
 
+        // Lake beds deepen gradually away from the shore (a bowl) instead of a flat one-block shelf with
+        // random deeper spots. Ground that is already deeper than the bowl is left alone.
+        final int FAR = 1 << 20;
+        int[] dist = new int[n];
+        for (int i = 0; i < n; i++) dist[i] = lakeCol[i] ? FAR : 0;
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int i = r * W + c;
+                if (dist[i] == 0) continue;
+                int d = dist[i];
+                if (r > 0 && dist[i - W] + 1 < d) d = dist[i - W] + 1;
+                if (c > 0 && dist[i - 1] + 1 < d) d = dist[i - 1] + 1;
+                dist[i] = d;
+            }
+        }
+        for (int r = H - 1; r >= 0; r--) {
+            for (int c = W - 1; c >= 0; c--) {
+                int i = r * W + c;
+                if (dist[i] == 0) continue;
+                int d = dist[i];
+                if (r < H - 1 && dist[i + W] + 1 < d) d = dist[i + W] + 1;
+                if (c < W - 1 && dist[i + 1] + 1 < d) d = dist[i + 1] + 1;
+                dist[i] = d;
+            }
+        }
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int i = r * W + c;
+                if (!lakeCol[i] || waterY[r][c] == NONE || dist[i] >= FAR) continue;
+                int depth = Math.min(5, 1 + (dist[i] - 1) / 2);
+                int bowl = waterY[r][c] - depth;
+                if (surfaceY[r][c] == NONE || surfaceY[r][c] > bowl) surfaceY[r][c] = (short) bowl;
+            }
+        }
+
         // ---- lake embankments: ground next to lake water is raised to the water level and
         // slopes down 1:1, so water is always held in by terrain.
         final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
@@ -348,7 +383,7 @@ public final class RiverCarver {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
                 if (!lakeCol[idx]) continue;
-                int want = waterY[r][c];   // flush with the water: no levee, so no trench behind it
+                int want = waterY[r][c] + 1;   // shore ground just above the water surface
                 if (r > 0)     { int j = idx - W; if (waterY[r - 1][c] == NONE && need[j] < want) need[j] = want; }
                 if (r < H - 1) { int j = idx + W; if (waterY[r + 1][c] == NONE && need[j] < want) need[j] = want; }
                 if (c > 0)     { int j = idx - 1; if (waterY[r][c - 1] == NONE && need[j] < want) need[j] = want; }
@@ -356,16 +391,18 @@ public final class RiverCarver {
             }
         }
         for (int pass = 0; pass < 5; pass++) {
+            // The first pass keeps the level (a 2-wide flat shore), later passes slope down 1:1.
+            final int dec = pass == 0 ? 0 : 1;
             int[] next = need.clone();
             for (int r = 0; r < H; r++) {
                 for (int c = 0; c < W; c++) {
                     int idx = r * W + c;
                     if (waterY[r][c] != NONE) continue;
                     int best = next[idx];
-                    if (r > 0     && need[idx - W] > NO_NEED && need[idx - W] - 1 > best) best = need[idx - W] - 1;
-                    if (r < H - 1 && need[idx + W] > NO_NEED && need[idx + W] - 1 > best) best = need[idx + W] - 1;
-                    if (c > 0     && need[idx - 1] > NO_NEED && need[idx - 1] - 1 > best) best = need[idx - 1] - 1;
-                    if (c < W - 1 && need[idx + 1] > NO_NEED && need[idx + 1] - 1 > best) best = need[idx + 1] - 1;
+                    if (r > 0     && need[idx - W] > NO_NEED && need[idx - W] - dec > best) best = need[idx - W] - dec;
+                    if (r < H - 1 && need[idx + W] > NO_NEED && need[idx + W] - dec > best) best = need[idx + W] - dec;
+                    if (c > 0     && need[idx - 1] > NO_NEED && need[idx - 1] - dec > best) best = need[idx - 1] - dec;
+                    if (c < W - 1 && need[idx + 1] > NO_NEED && need[idx + 1] - dec > best) best = need[idx + 1] - dec;
                     next[idx] = best;
                 }
             }
