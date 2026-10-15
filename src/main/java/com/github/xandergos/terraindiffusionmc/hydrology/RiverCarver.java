@@ -25,6 +25,7 @@ import java.util.function.IntUnaryOperator;
  */
 public final class RiverCarver {
     private static final Logger LOG = LoggerFactory.getLogger(RiverCarver.class);
+    private static boolean LOGGED_BUILD;
     public static final short NONE = Short.MIN_VALUE;
     public static final short BIOME_RIVER = 120, BIOME_FROZEN_RIVER = 121;
 
@@ -130,6 +131,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: flood-to-shore v7 (a59f687+)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
