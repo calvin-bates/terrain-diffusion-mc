@@ -362,41 +362,6 @@ public final class RiverCarver {
             }
         }
 
-        // Lake beds deepen gradually away from the shore (a bowl) instead of a flat one-block shelf with
-        // random deeper spots. Ground that is already deeper than the bowl is left alone.
-        final int FAR = 1 << 20;
-        int[] dist = new int[n];
-        for (int i = 0; i < n; i++) dist[i] = lakeCol[i] ? FAR : 0;
-        for (int r = 0; r < H; r++) {
-            for (int c = 0; c < W; c++) {
-                int i = r * W + c;
-                if (dist[i] == 0) continue;
-                int d = dist[i];
-                if (r > 0 && dist[i - W] + 1 < d) d = dist[i - W] + 1;
-                if (c > 0 && dist[i - 1] + 1 < d) d = dist[i - 1] + 1;
-                dist[i] = d;
-            }
-        }
-        for (int r = H - 1; r >= 0; r--) {
-            for (int c = W - 1; c >= 0; c--) {
-                int i = r * W + c;
-                if (dist[i] == 0) continue;
-                int d = dist[i];
-                if (r < H - 1 && dist[i + W] + 1 < d) d = dist[i + W] + 1;
-                if (c < W - 1 && dist[i + 1] + 1 < d) d = dist[i + 1] + 1;
-                dist[i] = d;
-            }
-        }
-        for (int r = 0; r < H; r++) {
-            for (int c = 0; c < W; c++) {
-                int i = r * W + c;
-                if (!lakeCol[i] || waterY[r][c] == NONE || dist[i] >= FAR) continue;
-                int depth = Math.min(5, 1 + (dist[i] - 1) / 2);
-                int bowl = waterY[r][c] - depth;
-                if (surfaceY[r][c] == NONE || surfaceY[r][c] > bowl) surfaceY[r][c] = (short) bowl;
-            }
-        }
-
         // ---- lake embankments: ground next to lake water is raised to the water level and
         // slopes down 1:1, so water is always held in by terrain.
         final int NO_NEED = -1000000;   // sentinel; far from overflow when 1 is subtracted
