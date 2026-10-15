@@ -413,6 +413,7 @@ public final class RiverCarver {
                     if (rn == 0) break;
                     java.util.Arrays.sort(ring, 0, rn);
                     int spill = ring[Math.min(rn - 1, rn / 12)];
+                    LOG.info("[Terra] lake tile x={} z={}: {} columns, level Y{}, rim min Y{} / spill Y{} / max Y{} ({} rim cells), iter {}", j1, i1, count, level, ring[0], spill, ring[rn - 1], rn, iter);
                     if (spill >= level) break;
                     level = spill;
                     LOG.info("[Terra] lake in tile x={} z={}: {} columns, spill lowered Y{} -> Y{}", j1, i1, count, level0, level);
