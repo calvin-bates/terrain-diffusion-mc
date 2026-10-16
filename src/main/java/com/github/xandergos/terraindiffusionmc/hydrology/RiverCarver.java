@@ -152,7 +152,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v11 flush lakes (v10 + lake level at the rim, no shore creep)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v12 smooth lake floors (v11 + blurred lake bed)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -775,12 +775,33 @@ public final class RiverCarver {
                     bd[j] = bd[idx] + 1; bq2[bt2++] = j;
                 }
             }
+            // The generated floor of a shallow, flat basin shows every one-block step of the terrain, and some of those run
+            // dead straight (seams in the terrain model's tiles), which reads as straight lines through clear water. The bed
+            // follows a blurred copy of the natural ground instead, as sediment would, so its steps follow soft curves.
+            float[] smooth = new float[n];
+            {
+                final int SR = 4;
+                final float inv2s2 = 1f / (2f * 2.2f * 2.2f);
+                for (int q = 0; q < bt2; q++) {
+                    int idx = bq2[q];
+                    int r = idx / W, c = idx % W;
+                    float acc = 0f, ws = 0f;
+                    for (int rr = Math.max(0, r - SR); rr <= Math.min(H - 1, r + SR); rr++) {
+                        for (int cc = Math.max(0, c - SR); cc <= Math.min(W - 1, c + SR); cc++) {
+                            float d2 = (rr - r) * (rr - r) + (cc - c) * (cc - c);
+                            float wgt = (float) Math.exp(-d2 * inv2s2);
+                            acc += wgt * ytop[rr * W + cc]; ws += wgt;
+                        }
+                    }
+                    smooth[idx] = acc / ws;
+                }
+            }
             int[] depth = new int[n];
             for (int q = 0; q < bt2; q++) {
                 int idx = bq2[q];
                 int r = idx / W, c = idx % W;
                 int level = waterY[r][c];
-                int natural = Math.max(1, level - ytop[idx]);
+                int natural = Math.max(1, level - Math.round(smooth[idx]));
                 // Variety right at the shore: the first 3 blocks get a slowly changing +-1 block of extra or less depth
                 // (smooth noise, 11-block lattice), so the drop from shore to lake floor is not the same everywhere.
                 int off = 0;
@@ -799,7 +820,9 @@ public final class RiverCarver {
                 depth[idx] = d;
                 int bedY = level - d;
                 int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                if (bedY < cur || (bedY > cur && off < 0)) { surfaceY[r][c] = (short) bedY; any = true; }
+                // The smoothed bed may sit above or below the generated ground (it fills small dips and shaves small humps).
+                if (bedY != cur && Math.abs(bedY - ytop[idx]) <= 3) { surfaceY[r][c] = (short) bedY; any = true; }
+                else if (bedY < cur) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 
