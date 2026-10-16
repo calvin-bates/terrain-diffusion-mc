@@ -152,7 +152,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: flood-to-shore v7 (a59f687+)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: stream-ramp v8 (flood-to-shore v7 + 1:1 bank ramp + stream level smoothing)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -275,6 +275,31 @@ public final class RiverCarver {
             }
         }
 
+        // Neighbouring channel columns never differ by more than one block of water level. On rough ground the "lowest nearby
+        // ground" rule jumps by several blocks between adjacent columns, which showed as broken, stepped water and gaps along
+        // the stream. Higher columns are lowered to meet the lower ones (a 45-degree cone around any dip, never raised).
+        for (int pass = 0; pass < 40; pass++) {
+            boolean changed = false;
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (chanWater[idx] == NOWATER) continue;
+                    int lim = chanWater[idx];
+                    if (r > 0     && chanWater[idx - W] != NOWATER) lim = Math.min(lim, chanWater[idx - W] + 1);
+                    if (r < H - 1 && chanWater[idx + W] != NOWATER) lim = Math.min(lim, chanWater[idx + W] + 1);
+                    if (c > 0     && chanWater[idx - 1] != NOWATER) lim = Math.min(lim, chanWater[idx - 1] + 1);
+                    if (c < W - 1 && chanWater[idx + 1] != NOWATER) lim = Math.min(lim, chanWater[idx + 1] + 1);
+                    if (lim < chanWater[idx]) {
+                        chanWater[idx] = lim;
+                        waterY[r][c] = (short) lim;
+                        surfaceY[r][c] = (short) Math.min(ytop[idx], lim - DEPTH[cA[idx]]);
+                        changed = true;
+                    }
+                }
+            }
+            if (!changed) break;
+        }
+
         // Spread each channel's water level outwards over the bank width, so the banks are shaped
         // against the water that is really there (not the unadjusted surface) and meet it flush.
         int[] bankWater = chanWater.clone();
@@ -329,18 +354,17 @@ public final class RiverCarver {
                 if (bankWater[idx] == NOWATER) continue;
                 int top = ytop[idx];
                 if (top < 60) continue;
-                // Wobble the distance by up to +-1.5 blocks with smooth noise, so the edge of the reshaped bank is an irregular
-                // line instead of a long straight diagonal parallel to the stream.
-                sc = Math.max(0.01f, sc + (valueNoise(j1 + c, i1 + r) - 0.5f) * 3f);
-                float t = Math.min(1f, sc / BANK);
-                float w = 1f - t * t * (3f - 2f * t);
-                // A 1-block flat shelf at the water level on each side, then the slope. Terrain is sampled every 4 blocks and
-                // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
-                float target = bwF[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
-                if (top > target) {   // low banks are left alone: no embankments along streams
-                    int newTop = Math.round(top - w * (top - target));
-                    if (newTop > top) newTop = top;
-                    if (newTop != top) {
+                // The bank is a 1:1 ramp up from the water's edge, cut only where the ground is higher than the ramp, and never
+                // deeper than a cap that shrinks by one block per block of distance. Each column is therefore at most one block
+                // below its outer neighbour: a continuous slope. (Blending with a smooth weight and rounding put every rounding
+                // step on a straight line parallel to the stream, which showed as a long diagonal strip.)
+                sc = Math.max(0f, sc + (valueNoise(j1 + c, i1 + r) - 0.5f) * 1.2f);
+                float ramp = bwF[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
+                int rampI = Math.round(ramp);
+                int cap = (int) Math.floor(Math.max(0f, BANK - sc));
+                if (top > rampI && cap > 0) {   // low banks are left alone: no embankments along streams
+                    int newTop = Math.max(rampI, top - cap);
+                    if (newTop < top) {
                         surfaceY[r][c] = (short) newTop;
                         any = true;
                     }
