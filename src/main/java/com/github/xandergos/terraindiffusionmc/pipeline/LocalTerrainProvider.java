@@ -255,7 +255,9 @@ public final class LocalTerrainProvider {
             RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
             RiverCarver.Result res = RiverCarver.apply(
                     data.heightmap, data.biomeIds, i1, j1, scale,
-                    m -> HeightConverter.convertToMinecraftHeight((short) m, scale),
+                    // The terrain density is (height - y), so a block is solid only strictly below the converted height:
+                    // the top solid block is one lower. The river code works with real top blocks.
+                    m -> HeightConverter.convertToMinecraftHeight((short) m, scale) - 1,
                     svc.regionSize(), svc.trust(),
                     (ri, rj) -> {
                         boolean cached = svc.isCached(ri, rj);

@@ -88,7 +88,7 @@ public class TerrainDiffusionMc implements ModInitializer {
                         tiles.put(key, d);
                     }
                     int lx = x - tx, lz = z - tz;
-                    int o = com.github.xandergos.terraindiffusionmc.world.HeightConverter.convertToMinecraftHeight(d.heightmap[lz][lx], scale);
+                    int o = com.github.xandergos.terraindiffusionmc.world.HeightConverter.convertToMinecraftHeight(d.heightmap[lz][lx], scale) - 1;   // top solid block (see applyRivers)
                     short sy = d.surfaceY == null ? Short.MIN_VALUE : d.surfaceY[lz][lx];
                     short wy = d.waterY == null ? Short.MIN_VALUE : d.waterY[lz][lx];
                     orig[dz + R][dx + R] = o;

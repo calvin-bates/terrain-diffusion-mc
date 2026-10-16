@@ -86,7 +86,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
             short[][] carved = tile.surfaceY;
             if (carved != null) {
                 short v = carved[localZ][localX];
-                if (v != Short.MIN_VALUE) return v;
+                if (v != Short.MIN_VALUE) return v + 1;   // surfaceY is the top solid block; density needs the first air block
             }
             return HeightConverter.convertToMinecraftHeight(tile.heightmap[localZ][localX]);
         }
