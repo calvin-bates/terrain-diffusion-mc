@@ -152,7 +152,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v12 smooth lake floors (v11 + blurred lake bed)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v13 (v12 + no lake-bed trenches, stream cut limited, water biome)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -316,6 +316,9 @@ public final class RiverCarver {
         // Neighbouring channel columns never differ by more than one block of water level. On rough ground the "lowest nearby
         // ground" rule jumps by several blocks between adjacent columns, which showed as broken, stepped water and gaps along
         // the stream. Higher columns are lowered to meet the lower ones (a 45-degree cone around any dip, never raised).
+        // A column is lowered by at most 2 blocks: on a steep slope the cone otherwise cut a deep trench with walls down the
+        // mountainside. Bigger steps stay as steps; they are marked to flow, so they show as small waterfalls.
+        final int[] chanOrig = chanWater.clone();
         for (int pass = 0; pass < 40; pass++) {
             boolean changed = false;
             for (int r = 0; r < H; r++) {
@@ -327,6 +330,7 @@ public final class RiverCarver {
                     if (r < H - 1 && chanWater[idx + W] != NOWATER) lim = Math.min(lim, chanWater[idx + W] + 1);
                     if (c > 0     && chanWater[idx - 1] != NOWATER) lim = Math.min(lim, chanWater[idx - 1] + 1);
                     if (c < W - 1 && chanWater[idx + 1] != NOWATER) lim = Math.min(lim, chanWater[idx + 1] + 1);
+                    lim = Math.max(lim, chanOrig[idx] - 2);
                     if (lim < chanWater[idx]) {
                         chanWater[idx] = lim;
                         waterY[r][c] = (short) lim;
@@ -816,13 +820,14 @@ public final class RiverCarver {
                     if (j >= 0 && lakeCol[j] && bd[j] == bd[idx] - 1 && depth[j] > 0) minShore = Math.min(minShore, depth[j]);
                 }
                 int d = natural;
-                if (minShore != Integer.MAX_VALUE && minShore > natural) d = Math.min(minShore, natural + 6);
+                // At most one block deeper than the natural bed: allowing up to 6 passed one deep spot's depth on through the
+                // whole lake and cut trenches with vertical walls.
+                if (minShore != Integer.MAX_VALUE && minShore > natural) d = Math.min(minShore, natural + 1);
                 depth[idx] = d;
                 int bedY = level - d;
                 int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                 // The smoothed bed may sit above or below the generated ground (it fills small dips and shaves small humps).
                 if (bedY != cur && Math.abs(bedY - ytop[idx]) <= 3) { surfaceY[r][c] = (short) bedY; any = true; }
-                else if (bedY < cur) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 

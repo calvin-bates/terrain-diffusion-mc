@@ -124,7 +124,19 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
         if (data != null && data.biomeIds != null) {
             int localX = Math.max(0, Math.min(data.width  - 1, blockX - blockStartX));
             int localZ = Math.max(0, Math.min(data.height - 1, blockZ - blockStartZ));
-            Holder<Biome> entry = biomeIdMap.get(data.biomeIds[localZ][localX]);
+            short id = data.biomeIds[localZ][localX];
+            // From the water surface down, inland water reports a river biome (frozen river where the land is frozen), as
+            // vanilla rivers do. Structures check the biome at their base, so igloos, villages and the like no longer start
+            // on top of lakes and streams. Dry ground, and everything above the water, keeps its land biome.
+            if (data.waterY != null) {
+                short wy = data.waterY[localZ][localX];
+                if (wy != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE && QuartPos.toBlock(y) <= wy) {
+                    id = com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.isFrozen(id)
+                            ? com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.BIOME_FROZEN_RIVER
+                            : com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.BIOME_RIVER;
+                }
+            }
+            Holder<Biome> entry = biomeIdMap.get(id);
             if (entry != null) return entry;
         }
 
