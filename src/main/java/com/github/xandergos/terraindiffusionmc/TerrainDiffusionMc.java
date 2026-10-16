@@ -124,6 +124,26 @@ public class TerrainDiffusionMc implements ModInitializer {
                 log.append('\n');
             }
             log.append("(digit = world higher by that many, letter a/b/c.. = world lower by 1/2/3.., ! = solid ground above the water line)\n");
+            log.append("water blocks in the world (W still water, f flowing water, i ice, a air, x something else at the water line; _ no water in the data), then water depth in the data (water Y minus bed):\n");
+            for (int r = 0; r <= 2 * R; r++) {
+                for (int c = 0; c <= 2 * R; c++) {
+                    char ch = '_';
+                    if (wat[r][c] != Short.MIN_VALUE) {
+                        net.minecraft.world.level.block.state.BlockState st = level.getBlockState(
+                                new net.minecraft.core.BlockPos(p.getX() + c - R, wat[r][c], p.getZ() + r - R));
+                        if (st.getFluidState().isSource()) ch = 'W';
+                        else if (!st.getFluidState().isEmpty()) ch = 'f';
+                        else if (st.is(net.minecraft.world.level.block.Blocks.ICE)) ch = 'i';
+                        else if (st.isAir()) ch = 'a';
+                        else ch = 'x';
+                    }
+                    if (r == R && c == R) ch = '@';
+                    log.append(ch);
+                }
+                log.append("   ");
+                for (int c = 0; c <= 2 * R; c++) log.append(wat[r][c] == Short.MIN_VALUE ? "  ." : String.format("%3d", wat[r][c] - fin[r][c]));
+                log.append('\n');
+            }
             LOG.info(log.toString());
             final int mismatches = mism;
             ctx.getSource().sendSuccess(() -> Component.literal("Column " + p.getX() + " " + p.getZ() + ": generated Y "

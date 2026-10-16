@@ -78,8 +78,8 @@ public final class RiverMap {
                 float ro = Math.max(0.05f, Math.min(3f, precip / 800f));
                 // Mountains wring rain and snowmelt out of the air even in a dry climate, so high ground never yields
                 // less than a moderate runoff (otherwise whole mountain valleys in dry regions had no streams at all).
-                if (e > 1500f) ro = Math.max(ro, 0.5f);
-                else if (e > 700f) ro = Math.max(ro, 0.3f);
+                if (e > 1500f) ro = Math.max(ro, 0.35f);
+                else if (e > 700f) ro = Math.max(ro, 0.2f);
                 runoff[i] = ro;
             }
         }
@@ -132,7 +132,7 @@ public final class RiverMap {
             if (lake[i]) { out[i] = LAKE; continue; }
 
             float d = q[i];
-            float streamQ = e > 1500f ? p.streamQ * 0.5f : p.streamQ;   // mountain streams are small but common
+            float streamQ = e > 1500f ? p.streamQ * 0.6f : p.streamQ;   // mountain streams are small but common
             byte cls = d >= p.mainQ ? MAIN : d >= p.riverQ ? RIVER : d >= streamQ ? STREAM : NONE;
             if (cls == NONE) continue;
             // Altitude caps: big rivers only in lowlands, small streams in the mountains.
