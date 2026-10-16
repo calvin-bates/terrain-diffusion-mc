@@ -266,7 +266,7 @@ public final class RiverCarver {
                 int waterTop = Math.min(ys - 1, low);
                 // The hydrology surface is a coarse estimate; where it sits far below the real ground the water used to
                 // sag with it and carve a wide ditch. Let it sag at most 2 blocks below the lowest nearby ground.
-                waterTop = Math.max(waterTop, low - 2);
+                waterTop = Math.max(waterTop, low - 1);
                 int bed = waterTop - DEPTH[cA[idx]];
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
@@ -338,9 +338,7 @@ public final class RiverCarver {
                 // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
                 float target = bwF[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
                 if (top > target) {   // low banks are left alone: no embankments along streams
-                    // Dithered rounding: a fine noise decides which way each column rounds, so the 1-block step between
-                    // reshaped and natural ground is ragged and patchy instead of one clean straight line.
-                    int newTop = (int) Math.floor(top - w * (top - target) + valueNoise(j1 + c + 311, i1 + r - 97, 3));
+                    int newTop = Math.round(top - w * (top - target));
                     if (newTop > top) newTop = top;
                     if (newTop != top) {
                         surfaceY[r][c] = (short) newTop;
