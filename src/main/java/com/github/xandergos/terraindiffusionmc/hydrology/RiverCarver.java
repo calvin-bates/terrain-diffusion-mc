@@ -527,17 +527,97 @@ public final class RiverCarver {
                 for (int j : nb) {
                     if (j < 0 || dist[j] >= 0) continue;
                     int jr = j / W, jc = j % W;
-                    if (waterY[jr][jc] != NONE) continue;                    // river or other water: leave it
+                    // A stream column that sits below the lake level where it meets the lake is the "low point" between
+                    // stream and lake: raise it to the lake level (it keeps its carved bed). Streams already at or above
+                    // the lake level are left alone.
+                    boolean river = waterY[jr][jc] != NONE;
+                    if (river && waterY[jr][jc] >= srcLvl[idx]) continue;
                     if (ytop[j] < 60 || ytop[j] > srcLvl[idx]) continue;     // sea floor, or the shore has been reached
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
-                    lakeCol[j] = true;
+                    if (!river) lakeCol[j] = true;
                     any = true;
                     fq[ft++] = j;
                 }
             }
             if (fSeeds > 0) LOG.info("[Terra] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, ft - fSeeds);
+        }
+
+        // ---- connect streams to lakes: a stream that starts or ends a few blocks from a lake, with dry ground in
+        // between (an outlet that never reaches the water), is joined to it by a short channel whose water level
+        // runs smoothly from the lake level to the stream's. Streams already touching a lake, or too far away, are left.
+        {
+            final int CONNECT_REACH = 12;
+            int[] ld = new int[n], lsrc = new int[n];
+            Arrays.fill(ld, -1);
+            int[] cq = new int[n];
+            int ch = 0, ct = 0;
+            for (int idx = 0; idx < n; idx++) if (lakeCol[idx]) { ld[idx] = 0; lsrc[idx] = idx; cq[ct++] = idx; }
+            while (ch < ct) {
+                int idx = cq[ch++];
+                if (ld[idx] >= CONNECT_REACH) continue;
+                int r = idx / W, c = idx % W;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || ld[j] >= 0) continue;
+                    ld[j] = ld[idx] + 1; lsrc[j] = lsrc[idx]; cq[ct++] = j;
+                }
+            }
+            int[] comp = new int[n];
+            Arrays.fill(comp, -1);
+            int[] sq = new int[n];
+            for (int start = 0; start < n; start++) {
+                if (waterY[start / W][start % W] == NONE || lakeCol[start] || comp[start] >= 0) continue;
+                int sh = 0, st = 0;
+                sq[st++] = start; comp[start] = start;
+                int best = -1;
+                boolean touching = false;
+                while (sh < st) {
+                    int idx = sq[sh++];
+                    if (ld[idx] == 1) touching = true;
+                    if (ld[idx] >= 0 && (best < 0 || ld[idx] < ld[best])) best = idx;
+                    int r = idx / W, c = idx % W;
+                    int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                    for (int j : nb) {
+                        if (j < 0 || comp[j] >= 0 || lakeCol[j] || waterY[j / W][j % W] == NONE) continue;
+                        comp[j] = start; sq[st++] = j;
+                    }
+                }
+                if (touching || best < 0 || ld[best] < 2) continue;
+                int src = lsrc[best];
+                int sr = src / W, sc2 = src % W, dr0 = best / W, dc0 = best % W;
+                int lakeLevel = waterY[sr][sc2], streamLevel = waterY[dr0][dc0];
+                // Bresenham line from the lake column to the stream column.
+                int steps = Math.max(Math.abs(dr0 - sr), Math.abs(dc0 - sc2));
+                if (steps < 2) continue;
+                int[] pathIdx = new int[steps + 1];
+                boolean ok = true;
+                for (int k = 0; k <= steps; k++) {
+                    float t = k / (float) steps;
+                    int pr = Math.round(sr + (dr0 - sr) * t), pc = Math.round(sc2 + (dc0 - sc2) * t);
+                    int pidx = pr * W + pc;
+                    pathIdx[k] = pidx;
+                    int lvl = Math.round(lakeLevel + (streamLevel - lakeLevel) * t);
+                    if (waterY[pr][pc] == NONE && ytop[pidx] - lvl > 6) { ok = false; break; }   // do not cut through a hill
+                }
+                if (!ok) continue;
+                for (int k = 1; k < steps; k++) {
+                    float t = k / (float) steps;
+                    int lvl = Math.round(lakeLevel + (streamLevel - lakeLevel) * t);
+                    int pidx = pathIdx[k];
+                    int pr = pidx / W, pc = pidx % W;
+                    // the line plus its 4-neighbours: a channel about 3 wide
+                    int[] cells = { pidx, pr > 0 ? pidx - W : -1, pr < H - 1 ? pidx + W : -1, pc > 0 ? pidx - 1 : -1, pc < W - 1 ? pidx + 1 : -1 };
+                    for (int q : cells) {
+                        if (q < 0 || waterY[q / W][q % W] != NONE || lakeCol[q] || ytop[q] < 60) continue;
+                        int top = surfaceY[q / W][q % W] != NONE ? surfaceY[q / W][q % W] : ytop[q];
+                        waterY[q / W][q % W] = (short) lvl;
+                        surfaceY[q / W][q % W] = (short) Math.min(top, lvl - 1);
+                        any = true;
+                    }
+                }
+            }
         }
 
         // ---- round the shore: the water mask follows 6-block lake pixels, which leaves right-angle corners. A 5x5
