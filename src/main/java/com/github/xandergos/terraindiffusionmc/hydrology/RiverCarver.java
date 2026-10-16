@@ -152,7 +152,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v9 top-block fix (stream-ramp v8 + river heights use the real top block)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v10 flush streams (v9 top-block fix + water level with the banks)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -263,10 +263,10 @@ public final class RiverCarver {
                         if (ytop[rr * W + cc] < low) low = ytop[rr * W + cc];
                     }
                 }
-                int waterTop = Math.min(ys - 1, low);
-                // The hydrology surface is a coarse estimate; where it sits far below the real ground the water used to
-                // sag with it and carve a wide ditch. Let it sag at most 2 blocks below the lowest nearby ground.
-                waterTop = Math.max(waterTop, low - 1);
+                // The water's top block is level with the lowest ground beside the channel, so the stream sits flush with its
+                // banks. (The hydrology surface is a coarse estimate; letting the water sag below the ground with it left a
+                // one-block bank along almost every stream.) ys is unused now but kept for reference.
+                int waterTop = low;
                 int bed = waterTop - DEPTH[cA[idx]];
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
@@ -359,8 +359,17 @@ public final class RiverCarver {
                 // below its outer neighbour: a continuous slope. (Blending with a smooth weight and rounding put every rounding
                 // step on a straight line parallel to the stream, which showed as a long diagonal strip.)
                 sc = Math.max(0f, sc + (valueNoise(j1 + c, i1 + r) - 0.5f) * 1.2f);
-                float ramp = bwF[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
+                float ramp = bwF[idx] + Math.max(0f, sc - 1f) * SLOPE;   // flush with the water for the first block, then 1:1
                 int rampI = Math.round(ramp);
+                // Never cut a bank below the water right beside it, or the water would have nothing to hold it.
+                for (int dr = -1; dr <= 1; dr++) {
+                    for (int dc = -1; dc <= 1; dc++) {
+                        int rr = r + dr, cc = c + dc;
+                        if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+                        int cw = chanWater[rr * W + cc];
+                        if (cw != NOWATER && cw > rampI) rampI = cw;
+                    }
+                }
                 int cap = (int) Math.floor(Math.max(0f, BANK - sc));
                 if (top > rampI && cap > 0) {   // low banks are left alone: no embankments along streams
                     int newTop = Math.max(rampI, top - cap);
