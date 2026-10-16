@@ -243,6 +243,7 @@ public final class RiverCarver {
         final int NOWATER = Integer.MIN_VALUE;
         int[] chanWater = new int[n];
         Arrays.fill(chanWater, NOWATER);
+        boolean[] steepSkip = new boolean[n];   // channel columns skipped for being too steep (gaps to bridge later)
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
@@ -252,7 +253,7 @@ public final class RiverCarver {
                 int top = ytop[idx];
                 if (top < 60) continue;   // never put river water over the sea floor
                 // Too steep for a stream to hold water: it would only show as scattered ribbons.
-                if (steepAt(ytop, H, W, r, c)) continue;
+                if (steepAt(ytop, H, W, r, c)) { steepSkip[idx] = true; continue; }
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
                 // Water never sits higher than the lowest ground beside the channel, otherwise it
                 // would need an embankment (a ridge along the stream) to stay in place.
@@ -273,6 +274,43 @@ public final class RiverCarver {
                 chanWater[idx] = waterTop;
                 any = true;
             }
+        }
+
+        // Bridge short gaps: a channel column skipped for steepness that sits between two stretches of water would
+        // leave a hole in the stream. Join it to its neighbours at their lowest level, as long as the ground there is
+        // at most 3 blocks above the water (the water placer can dig that much); a real drop is left as a gap.
+        for (int pass = 0; pass < 3; pass++) {
+            boolean grew = false;
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (!steepSkip[idx] || chanWater[idx] != NOWATER) continue;
+                    float sc = score[idx];
+                    if (sc == Float.POSITIVE_INFINITY || sc > 0f) continue;
+                    int top = ytop[idx];
+                    if (top < 60) continue;
+                    int minLvl = Integer.MAX_VALUE, count = 0;
+                    for (int dr = -1; dr <= 1; dr++) {
+                        for (int dc = -1; dc <= 1; dc++) {
+                            if (dr == 0 && dc == 0) continue;
+                            int rr = r + dr, cc = c + dc;
+                            if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+                            int cw = chanWater[rr * W + cc];
+                            if (cw == NOWATER) continue;
+                            count++;
+                            if (cw < minLvl) minLvl = cw;
+                        }
+                    }
+                    if (count < 2 || top - minLvl > 3) continue;
+                    int bed = minLvl - DEPTH[cA[idx]];
+                    surfaceY[r][c] = (short) Math.min(top, bed);
+                    waterY[r][c] = (short) minLvl;
+                    chanWater[idx] = minLvl;
+                    grew = true;
+                    any = true;
+                }
+            }
+            if (!grew) break;
         }
 
         // Neighbouring channel columns never differ by more than one block of water level. On rough ground the "lowest nearby
