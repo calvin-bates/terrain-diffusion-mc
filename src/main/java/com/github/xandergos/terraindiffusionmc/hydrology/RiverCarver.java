@@ -708,6 +708,41 @@ public final class RiverCarver {
             }
         }
 
+        // ---- one-block pits: a dry column near water that is lower than at least 3 of its dry 4-neighbours (all of them
+        // higher) is a pit left by the carving and rounding passes. Fill it up to its lowest neighbour (at most 2 blocks).
+        {
+            boolean[] near = new boolean[n];
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    if (waterY[r][c] == NONE) continue;
+                    for (int rr = Math.max(0, r - 3); rr <= Math.min(H - 1, r + 3); rr++)
+                        for (int cc = Math.max(0, c - 3); cc <= Math.min(W - 1, c + 3); cc++) near[rr * W + cc] = true;
+                }
+            }
+            int[] g = new int[n];
+            for (int r = 0; r < H; r++)
+                for (int c = 0; c < W; c++) g[r * W + c] = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[r * W + c];
+            for (int r = 1; r < H - 1; r++) {
+                for (int c = 1; c < W - 1; c++) {
+                    int idx = r * W + c;
+                    if (!near[idx] || waterY[r][c] != NONE || ytop[idx] < 60) continue;
+                    int[] nb = { idx - W, idx + W, idx - 1, idx + 1 };
+                    int dry = 0, minN = Integer.MAX_VALUE;
+                    boolean allHigher = true;
+                    for (int j : nb) {
+                        if (waterY[j / W][j % W] != NONE) continue;
+                        dry++;
+                        if (g[j] <= g[idx]) allHigher = false;
+                        if (g[j] < minN) minN = g[j];
+                    }
+                    if (dry >= 3 && allHigher && minN - g[idx] <= 2) {
+                        surfaceY[r][c] = (short) minN;
+                        any = true;
+                    }
+                }
+            }
+        }
+
         // Diagnostics: water columns held up by a tall drop on the dry side ("dams"). Logs a few per tile with the
         // exact numbers so a wall can be traced to the data that produced it.
         {
