@@ -75,6 +75,8 @@ public class TerrainDiffusionMc implements ModInitializer {
             int[][] orig = new int[2 * R + 1][2 * R + 1];
             int[][] fin = new int[2 * R + 1][2 * R + 1];
             int[][] wat = new int[2 * R + 1][2 * R + 1];
+            int[][] act = new int[2 * R + 1][2 * R + 1];
+            net.minecraft.server.level.ServerLevel level = ctx.getSource().getLevel();
             for (int dz = -R; dz <= R; dz++) {
                 for (int dx = -R; dx <= R; dx++) {
                     int x = p.getX() + dx, z = p.getZ() + dz;
@@ -92,6 +94,8 @@ public class TerrainDiffusionMc implements ModInitializer {
                     orig[dz + R][dx + R] = o;
                     fin[dz + R][dx + R] = sy == Short.MIN_VALUE ? o : sy;
                     wat[dz + R][dx + R] = wy;
+                    // What is really in the world: the top block that blocks movement (water and plants excluded).
+                    act[dz + R][dx + R] = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, x, z) - 1;
                 }
             }
             StringBuilder log = new StringBuilder("[Terra] terra-column at " + p.getX() + " " + p.getZ()
@@ -103,9 +107,28 @@ public class TerrainDiffusionMc implements ModInitializer {
                 for (int c = 0; c <= 2 * R; c++) log.append(String.format("%3d", orig[r][c] - orig[R][R]));
                 log.append('\n');
             }
+            log.append("world vs data (top solid block in the world vs the expected one; _ = matches; W = data says water), then water Y minus centre ground:\n");
+            int mism = 0;
+            for (int r = 0; r <= 2 * R; r++) {
+                for (int c = 0; c <= 2 * R; c++) {
+                    int d = act[r][c] - fin[r][c];
+                    char ch;
+                    if (r == R && c == R) ch = '@';
+                    else if (wat[r][c] != Short.MIN_VALUE) ch = d == 0 || act[r][c] <= wat[r][c] ? 'W' : '!';
+                    else if (d == 0) ch = '_';
+                    else { ch = d > 0 ? (char) ('0' + Math.min(9, d)) : (char) ('a' + Math.min(25, -d - 1)); mism++; }
+                    log.append(ch);
+                }
+                log.append("   ");
+                for (int c = 0; c <= 2 * R; c++) log.append(wat[r][c] == Short.MIN_VALUE ? "  ." : String.format("%3d", wat[r][c] - orig[R][R]));
+                log.append('\n');
+            }
+            log.append("(digit = world higher by that many, letter a/b/c.. = world lower by 1/2/3.., ! = solid ground above the water line)\n");
             LOG.info(log.toString());
+            final int mismatches = mism;
             ctx.getSource().sendSuccess(() -> Component.literal("Column " + p.getX() + " " + p.getZ() + ": generated Y "
                     + orig[R][R] + ", final " + fin[R][R] + (wat[R][R] != Short.MIN_VALUE ? ", water " + wat[R][R] : "")
+                    + ", world top here " + act[R][R] + ", columns where the world differs from the data: " + mismatches
                     + "  (W water, _ untouched, digit lowered, @ you; north up; full map in log)"), false);
             for (int r = R - 7; r <= R + 7; r++) {
                 StringBuilder row = new StringBuilder();
