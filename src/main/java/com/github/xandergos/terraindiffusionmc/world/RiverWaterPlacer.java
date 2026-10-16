@@ -179,8 +179,44 @@ public final class RiverWaterPlacer {
                 }
                 if (!stepsDown) continue;
                 pos.set(x, top, z);
-                if (chunk.getBlockState(pos).is(Blocks.WATER)) chunk.markPosForPostprocessing(pos.immutable());
+                if (chunk.getBlockState(pos).is(Blocks.WATER)) markForUpdate(chunk, pos.immutable());
             }
+        }
+    }
+
+    private static volatile java.lang.reflect.Method postProcessMethod;
+    private static volatile boolean postProcessLookedUp;
+
+    /**
+     * Marks a block for the post-generation update (vanilla's "post-processing", used for aquifer water). The method's
+     * name has changed between versions, so it is found by reflection once; if none is found, the candidate method
+     * names are logged and water steps simply stay as they are.
+     */
+    private static void markForUpdate(ChunkAccess chunk, BlockPos pos) {
+        if (!postProcessLookedUp) {
+            synchronized (RiverWaterPlacer.class) {
+                if (!postProcessLookedUp) {
+                    java.lang.reflect.Method found = null;
+                    StringBuilder names = new StringBuilder();
+                    for (java.lang.reflect.Method m : chunk.getClass().getMethods()) {
+                        String n = m.getName().toLowerCase(java.util.Locale.ROOT);
+                        if (n.contains("post") || n.contains("tick")) names.append(m.getName()).append(java.util.Arrays.toString(m.getParameterTypes())).append(' ');
+                        if (n.contains("postprocess") && m.getParameterCount() == 1 && m.getParameterTypes()[0].isAssignableFrom(BlockPos.class)) found = m;
+                    }
+                    postProcessMethod = found;
+                    postProcessLookedUp = true;
+                    if (found != null) LOG.info("Terra rivers: water steps use {}.{}", found.getDeclaringClass().getSimpleName(), found.getName());
+                    else LOG.warn("Terra rivers: no post-processing method found, water steps will not flow. Candidates: {}", names);
+                }
+            }
+        }
+        java.lang.reflect.Method m = postProcessMethod;
+        if (m == null) return;
+        try {
+            m.invoke(chunk, pos);
+        } catch (ReflectiveOperationException e) {
+            postProcessMethod = null;
+            LOG.warn("Terra rivers: post-processing call failed, water steps will not flow", e);
         }
     }
 
