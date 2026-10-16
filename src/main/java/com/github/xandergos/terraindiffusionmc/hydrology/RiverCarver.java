@@ -56,7 +56,15 @@ public final class RiverCarver {
     /** Bank rise per block of distance from the channel edge. */
     private static final float SLOPE = 1f;
     /** Water depth in blocks for stream / river / main river. */
-    private static final int[] DEPTH = {0, 1, 2, 3};
+    private static final int[] DEPTH = {0, 1, 3, 5};   // rivers deeper (were 2 and 3) so boats can use them
+
+    /** Water depth of a channel column: rivers deepen from 1 block at the edge to their full depth in the middle. */
+    private static int channelDepth(byte cls, float sc, float hw) {
+        int d = DEPTH[cls];
+        if (d <= 1) return d;
+        float frac = Math.max(0f, Math.min(1f, -sc / (0.6f * hw)));
+        return 1 + Math.round((d - 1) * frac);
+    }
 
     /** Provides the region that owns a given region index. */
     public interface Regions {
@@ -82,8 +90,8 @@ public final class RiverCarver {
     static float halfWidth(byte cls, int scale) {
         switch (cls) {
             case RiverMap.STREAM: return Math.max(1.0f, 0.45f * scale);
-            case RiverMap.RIVER:  return Math.max(2.0f, 0.90f * scale);
-            default:              return Math.max(3.5f, 1.50f * scale);
+            case RiverMap.RIVER:  return Math.max(3.5f, 1.60f * scale);   // wider, navigable (was 2.0 / 0.90)
+            default:              return Math.max(6.0f, 2.60f * scale);   // main rivers (was 3.5 / 1.50)
         }
     }
 
@@ -152,7 +160,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v13 (v12 + no lake-bed trenches, stream cut limited, water biome)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v14 (deeper lake middles, wider deeper rivers)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -257,7 +265,7 @@ public final class RiverCarver {
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
                 // Water never sits higher than the lowest ground beside the channel, otherwise it
                 // would need an embankment (a ridge along the stream) to stay in place.
-                int rad = Math.min(5, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
+                int rad = Math.min(8, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
                 int low = top;
                 for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
                     for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
@@ -268,7 +276,7 @@ public final class RiverCarver {
                 // banks. (The hydrology surface is a coarse estimate; letting the water sag below the ground with it left a
                 // one-block bank along almost every stream.) ys is unused now but kept for reference.
                 int waterTop = low;
-                int bed = waterTop - DEPTH[cA[idx]];
+                int bed = waterTop - channelDepth(cA[idx], sc, halfWidth(cA[idx], scale));
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
                 chanWater[idx] = waterTop;
@@ -302,7 +310,7 @@ public final class RiverCarver {
                         }
                     }
                     if (count < 2 || top - minLvl > 3) continue;
-                    int bed = minLvl - DEPTH[cA[idx]];
+                    int bed = minLvl - channelDepth(cA[idx], sc, halfWidth(cA[idx], scale));
                     surfaceY[r][c] = (short) Math.min(top, bed);
                     waterY[r][c] = (short) minLvl;
                     chanWater[idx] = minLvl;
@@ -334,7 +342,7 @@ public final class RiverCarver {
                     if (lim < chanWater[idx]) {
                         chanWater[idx] = lim;
                         waterY[r][c] = (short) lim;
-                        surfaceY[r][c] = (short) Math.min(ytop[idx], lim - DEPTH[cA[idx]]);
+                        surfaceY[r][c] = (short) Math.min(ytop[idx], lim - channelDepth(cA[idx], score[idx], halfWidth(cA[idx], scale)));
                         changed = true;
                     }
                 }
@@ -685,6 +693,50 @@ public final class RiverCarver {
             if (!changed) break;
         }
 
+        // ---- dry patches inside a lake: ground at (or below) the water level stays dry at the shore, but a patch of it that
+        // the lake surrounds on every side reads as missing water. Such enclosed patches (up to 400 columns) are flooded.
+        {
+            boolean[] seenP = new boolean[n];
+            int[] pq = new int[n];
+            for (int s0 = 0; s0 < n; s0++) {
+                if (seenP[s0] || lakeCol[s0] || waterY[s0 / W][s0 % W] != NONE || ytop[s0] < 60) continue;
+                // only start from a column next to the lake, at or below its level
+                int r0 = s0 / W, c0 = s0 % W, lvl0 = NONE;
+                if (r0 > 0 && lakeCol[s0 - W]) lvl0 = waterY[r0 - 1][c0];
+                else if (r0 < H - 1 && lakeCol[s0 + W]) lvl0 = waterY[r0 + 1][c0];
+                else if (c0 > 0 && lakeCol[s0 - 1]) lvl0 = waterY[r0][c0 - 1];
+                else if (c0 < W - 1 && lakeCol[s0 + 1]) lvl0 = waterY[r0][c0 + 1];
+                int top0 = surfaceY[r0][c0] != NONE ? surfaceY[r0][c0] : ytop[s0];
+                if (lvl0 == NONE || top0 > lvl0) continue;
+                int dph = 0, dpt = 0;
+                pq[dpt++] = s0; seenP[s0] = true;
+                boolean enclosed = true;
+                while (dph < dpt) {
+                    int idx = pq[dph++];
+                    int r = idx / W, c = idx % W;
+                    if (r == 0 || c == 0 || r == H - 1 || c == W - 1) enclosed = false;
+                    int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                    for (int j : nb) {
+                        if (j < 0 || lakeCol[j] || seenP[j]) continue;
+                        int jr = j / W, jc = j % W;
+                        int tj = surfaceY[jr][jc] != NONE ? surfaceY[jr][jc] : ytop[j];
+                        if (waterY[jr][jc] != NONE || tj > lvl0 || ytop[j] < 60) { enclosed = false; continue; }
+                        seenP[j] = true;
+                        if (dpt < 400) pq[dpt++] = j; else enclosed = false;
+                    }
+                }
+                if (!enclosed) continue;
+                for (int k = 0; k < dpt; k++) {
+                    int idx = pq[k];
+                    int r = idx / W, c = idx % W;
+                    waterY[r][c] = (short) lvl0;
+                    surfaceY[r][c] = (short) Math.min(lvl0 - 1, surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx]);
+                    lakeCol[idx] = true;
+                    any = true;
+                }
+            }
+        }
+
         // ---- lake spill level: a lake can only hold water up to the lowest part of its rim. Where the rim
         // drops away (the water hangs over a slope) the level is lowered until the water is held in by
         // ground that rises all the way around, instead of walling it in with stone.
@@ -800,12 +852,55 @@ public final class RiverCarver {
                     smooth[idx] = acc / ws;
                 }
             }
+            // Lakes get deeper toward the middle: extra depth grows with the distance to the nearest non-lake pixel of the
+            // hydrology lake mask (about 1 block per 4.5 blocks, up to 5, with a slow +-25% wobble). The distance is taken
+            // from the region data, not this tile's shoreline, so a lake that crosses tile borders gets the same depth on
+            // both sides.
+            float[] extra = new float[n];
+            {
+                final float EXTRA_PER_BLOCK = 0.22f, EXTRA_MAX = 5f;
+                final int maxD = (int) Math.ceil(EXTRA_MAX / EXTRA_PER_BLOCK);
+                final int rpx = maxD / scale + 2;
+                int gi0 = Math.floorDiv(i1, scale) - rpx, gi1 = Math.floorDiv(i1 + H - 1, scale) + rpx;
+                int gj0 = Math.floorDiv(j1, scale) - rpx, gj1 = Math.floorDiv(j1 + W - 1, scale) + rpx;
+                int gh = gi1 - gi0 + 1, gw = gj1 - gj0 + 1;
+                boolean[] lakePx = new boolean[gh * gw];
+                RiverService.Region rg = null;
+                int cri = Integer.MIN_VALUE, crj = Integer.MIN_VALUE;
+                for (int a = 0; a < gh; a++) {
+                    for (int b = 0; b < gw; b++) {
+                        int pi = gi0 + a, pj = gj0 + b;
+                        int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
+                        if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
+                        int k = rg.index(pi, pj);
+                        lakePx[a * gw + b] = k >= 0 && rg.cls[k] == RiverMap.LAKE;
+                    }
+                }
+                for (int q = 0; q < bt2; q++) {
+                    int idx = bq2[q];
+                    int r = idx / W, c = idx % W;
+                    float px = j1 + c + 0.5f, pz = i1 + r + 0.5f;
+                    int pi = Math.floorDiv(i1 + r, scale), pj = Math.floorDiv(j1 + c, scale);
+                    float best = maxD;
+                    for (int a = pi - rpx; a <= pi + rpx; a++) {
+                        for (int b = pj - rpx; b <= pj + rpx; b++) {
+                            if (lakePx[(a - gi0) * gw + (b - gj0)]) continue;
+                            float dx = Math.max(0f, Math.max(b * scale - px, px - (b + 1) * scale));
+                            float dz = Math.max(0f, Math.max(a * scale - pz, pz - (a + 1) * scale));
+                            float d = (float) Math.sqrt(dx * dx + dz * dz);
+                            if (d < best) best = d;
+                        }
+                    }
+                    float wobble = 0.75f + 0.5f * valueNoise(j1 + c, i1 + r, 19);
+                    extra[idx] = Math.min(EXTRA_MAX, best * EXTRA_PER_BLOCK) * wobble;
+                }
+            }
             int[] depth = new int[n];
             for (int q = 0; q < bt2; q++) {
                 int idx = bq2[q];
                 int r = idx / W, c = idx % W;
                 int level = waterY[r][c];
-                int natural = Math.max(1, level - Math.round(smooth[idx]));
+                int natural = Math.max(1, Math.round(level - smooth[idx] + extra[idx]));
                 // Variety right at the shore: the first 3 blocks get a slowly changing +-1 block of extra or less depth
                 // (smooth noise, 11-block lattice), so the drop from shore to lake floor is not the same everywhere.
                 int off = 0;
@@ -827,7 +922,10 @@ public final class RiverCarver {
                 int bedY = level - d;
                 int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                 // The smoothed bed may sit above or below the generated ground (it fills small dips and shaves small humps).
-                if (bedY != cur && Math.abs(bedY - ytop[idx]) <= 3) { surfaceY[r][c] = (short) bedY; any = true; }
+                // The bed may shave small humps or fill small dips (up to 3 blocks) and is carved down by the extra middle depth.
+                if (bedY != cur && bedY - ytop[idx] <= 3 && ytop[idx] - bedY <= 3 + (int) Math.ceil(extra[idx])) {
+                    surfaceY[r][c] = (short) bedY; any = true;
+                }
             }
         }
 
