@@ -6,7 +6,8 @@
   "mixins": [
     "BiomeMixin",
     "MinecraftServerMixin",
-    "NoiseBasedChunkGeneratorMixin"
+    "NoiseBasedChunkGeneratorMixin",
+    "StructureMixin"
   ],
   "injectors": {
     "defaultRequire": 1
