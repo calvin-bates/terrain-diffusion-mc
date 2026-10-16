@@ -55,6 +55,8 @@ public final class RiverCarver {
     private static final float BANK = 4f;   // how far a stream reshapes the ground beside it (was 8: diagonal steps reached too far)
     /** Bank rise per block of distance from the channel edge. */
     private static final float SLOPE = 1f;
+    /** Diagnostic: false leaves the ground beside streams exactly as generated (only the channel itself is cut). */
+    private static final boolean CARVE_BANKS = false;
     /** Water depth in blocks for stream / river / main river. */
     private static final int[] DEPTH = {0, 1, 2, 3};
 
@@ -152,7 +154,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: stream-ramp v8 (flood-to-shore v7 + 1:1 bank ramp + stream level smoothing)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: NOBANK diagnostic (stream-ramp v8 with bank carving off)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -351,7 +353,7 @@ public final class RiverCarver {
                 int idx = r * W + c;
                 float sc = score[idx];
                 if (sc == Float.POSITIVE_INFINITY || sc <= 0f) continue;
-                if (bankWater[idx] == NOWATER) continue;
+                if (!CARVE_BANKS || bankWater[idx] == NOWATER) continue;
                 int top = ytop[idx];
                 if (top < 60) continue;
                 // The bank is a 1:1 ramp up from the water's edge, cut only where the ground is higher than the ramp, and never
