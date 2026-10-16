@@ -108,6 +108,30 @@ public final class RiverWaterPlacer {
                     chunk.setBlockState(pos, gravel, 0);
                     ground = capY;
                 }
+                if (isLake && ground >= top) {
+                    // Ground reaches the water line inside a lake. If the column is boxed in by water (3 or more of its
+                    // 4 neighbours) it is a hole or a stub, not shore: dig it out and flood it one block deep.
+                    int wetNeighbours = 0;
+                    int th = data.waterY.length, tw = data.waterY[0].length;
+                    if (lz > 0      && data.waterY[lz - 1][lx] != RiverCarver.NONE) wetNeighbours++;
+                    if (lz < th - 1 && data.waterY[lz + 1][lx] != RiverCarver.NONE) wetNeighbours++;
+                    if (lx > 0      && data.waterY[lz][lx - 1] != RiverCarver.NONE) wetNeighbours++;
+                    if (lx < tw - 1 && data.waterY[lz][lx + 1] != RiverCarver.NONE) wetNeighbours++;
+                    if (wetNeighbours >= 3) {
+                        int surf = top;
+                        for (int y = top + 1; y <= top + 2; y++) {
+                            pos.set(x, y, z);
+                            if (!chunk.getBlockState(pos).isAir()) surf = y;
+                        }
+                        for (int y = top + 1; y <= surf; y++) {
+                            pos.set(x, y, z);
+                            chunk.setBlockState(pos, Blocks.AIR.defaultBlockState(), 0);
+                        }
+                        pos.set(x, top, z);
+                        chunk.setBlockState(pos, frozen ? ice : water, 0);
+                        continue;
+                    }
+                }
                 if (!isLake && ground >= top) {
                     // The terrain pass left ground at or above the water line here (the narrow channel was
                     // smoothed away), so dig the channel out again instead of leaving a dry carved line.
