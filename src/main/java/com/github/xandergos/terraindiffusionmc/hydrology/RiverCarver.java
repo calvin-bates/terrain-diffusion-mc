@@ -774,6 +774,14 @@ public final class RiverCarver {
                 int r = idx / W, c = idx % W;
                 int level = waterY[r][c];
                 int natural = Math.max(1, level - ytop[idx]);
+                // Variety right at the shore: the first 3 blocks get a slowly changing +-1 block of extra or less depth
+                // (smooth noise, 11-block lattice), so the drop from shore to lake floor is not the same everywhere.
+                int off = 0;
+                if (bd[idx] <= 3) {
+                    float fade = (4 - bd[idx]) / 3f;
+                    off = Math.round((valueNoise(j1 + c, i1 + r, 11) - 0.5f) * 2.6f * fade);
+                }
+                natural = Math.max(1, natural + off);
                 int minShore = Integer.MAX_VALUE;
                 int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
                 for (int j : nb) {
@@ -784,7 +792,7 @@ public final class RiverCarver {
                 depth[idx] = d;
                 int bedY = level - d;
                 int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                if (bedY < cur) { surfaceY[r][c] = (short) bedY; any = true; }
+                if (bedY < cur || (bedY > cur && off < 0)) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 
