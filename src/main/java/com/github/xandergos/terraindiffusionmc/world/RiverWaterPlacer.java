@@ -159,6 +159,29 @@ public final class RiverWaterPlacer {
                 }
             }
         }
+
+        // Where a stream steps down to a lower water level, the higher water would otherwise stay frozen as a wall above
+        // the lower water: water placed during generation is not simulated. Mark those top blocks for the post-generation
+        // update (vanilla does the same for aquifer water), so they flow down once the chunk is loaded.
+        for (int dz = 0; dz < 16; dz++) {
+            for (int dx = 0; dx < 16; dx++) {
+                int x = x0 + dx, z = z0 + dz;
+                int lx = x - startX, lz = z - startZ;
+                short top = data.waterY[lz][lx];
+                if (top == RiverCarver.NONE) continue;
+                if (data.waterIsLake != null && data.waterIsLake[lz][lx]) continue;
+                boolean stepsDown = false;
+                for (int k = 0; k < 4 && !stepsDown; k++) {
+                    int nz = lz + ddz[k], nx = lx + ddx[k];
+                    if (nz < 0 || nx < 0 || nz >= tileH || nx >= tileW) continue;
+                    short nTop = data.waterY[nz][nx];
+                    if (nTop != RiverCarver.NONE && nTop < top) stepsDown = true;
+                }
+                if (!stepsDown) continue;
+                pos.set(x, top, z);
+                if (chunk.getBlockState(pos).is(Blocks.WATER)) chunk.markPosForPostprocessing(pos.immutable());
+            }
+        }
     }
 
     /**
