@@ -295,6 +295,32 @@ public final class RiverCarver {
             }
             bankWater = next;
         }
+        // Bank water level as a distance-weighted average of the nearby channel levels. Copying the nearest channel's
+        // level (a 4-neighbour dilation) made diamond-shaped zones, so wherever two neighbouring stretches of stream
+        // sat one block apart the bank had a straight 45-degree step. The average has no such seams.
+        float[] bwF = new float[n];
+        {
+            final int WR = bankReach;
+            final float inv2s2 = 1f / (2f * 2.5f * 2.5f);
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    bwF[idx] = bankWater[idx] == NOWATER ? 0f : bankWater[idx];
+                    if (bankWater[idx] == NOWATER || chanWater[idx] != NOWATER) continue;
+                    float acc = 0f, wsum = 0f;
+                    for (int rr = Math.max(0, r - WR); rr <= Math.min(H - 1, r + WR); rr++) {
+                        for (int cc = Math.max(0, c - WR); cc <= Math.min(W - 1, c + WR); cc++) {
+                            int cw = chanWater[rr * W + cc];
+                            if (cw == NOWATER) continue;
+                            float d2 = (rr - r) * (rr - r) + (cc - c) * (cc - c);
+                            float wgt = (float) Math.exp(-d2 * inv2s2);
+                            acc += wgt * cw; wsum += wgt;
+                        }
+                    }
+                    if (wsum > 1e-4f) bwF[idx] = acc / wsum;
+                }
+            }
+        }
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
@@ -310,7 +336,7 @@ public final class RiverCarver {
                 float w = 1f - t * t * (3f - 2f * t);
                 // A 1-block flat shelf at the water level on each side, then the slope. Terrain is sampled every 4 blocks and
                 // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
-                float target = bankWater[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
+                float target = bwF[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
                 if (top > target) {   // low banks are left alone: no embankments along streams
                     // Dithered rounding: a fine noise decides which way each column rounds, so the 1-block step between
                     // reshaped and natural ground is ragged and patchy instead of one clean straight line.
@@ -564,6 +590,52 @@ public final class RiverCarver {
                         }
                     }
                 }
+            }
+        }
+
+        // ---- lake bed: from the shore to the middle the bed should only go down, never come back up. A column
+        // shallower than the nearest shoreward neighbour (a bench or ridge in the natural ground) is dug down to it, by at
+        // most 6 blocks. Nothing else is touched, so the natural bed stays natural everywhere it already descends.
+        {
+            int[] bd = new int[n];
+            Arrays.fill(bd, -1);
+            int[] bq2 = new int[n];
+            int bh2 = 0, bt2 = 0;
+            for (int idx = 0; idx < n; idx++) {
+                if (!lakeCol[idx]) continue;
+                int r = idx / W, c = idx % W;
+                boolean shore = (r > 0 && !lakeCol[idx - W] && waterY[r - 1][c] == NONE)
+                        || (r < H - 1 && !lakeCol[idx + W] && waterY[r + 1][c] == NONE)
+                        || (c > 0 && !lakeCol[idx - 1] && waterY[r][c - 1] == NONE)
+                        || (c < W - 1 && !lakeCol[idx + 1] && waterY[r][c + 1] == NONE);
+                if (shore) { bd[idx] = 1; bq2[bt2++] = idx; }
+            }
+            for (int q = 0; q < bt2; q++) {
+                int idx = bq2[q];
+                int r = idx / W, c = idx % W;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || !lakeCol[j] || bd[j] >= 0) continue;
+                    bd[j] = bd[idx] + 1; bq2[bt2++] = j;
+                }
+            }
+            int[] depth = new int[n];
+            for (int q = 0; q < bt2; q++) {
+                int idx = bq2[q];
+                int r = idx / W, c = idx % W;
+                int level = waterY[r][c];
+                int natural = Math.max(1, level - ytop[idx]);
+                int minShore = Integer.MAX_VALUE;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j >= 0 && lakeCol[j] && bd[j] == bd[idx] - 1 && depth[j] > 0) minShore = Math.min(minShore, depth[j]);
+                }
+                int d = natural;
+                if (minShore != Integer.MAX_VALUE && minShore > natural) d = Math.min(minShore, natural + 6);
+                depth[idx] = d;
+                int bedY = level - d;
+                int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
+                if (bedY < cur) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 
