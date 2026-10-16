@@ -115,8 +115,9 @@ public final class RiverCarver {
 
 
     /** Smooth deterministic value noise in [0,1], lattice spacing 7 blocks, from world block coordinates. */
-    private static float valueNoise(int x, int z) {
-        final int S = 7;
+    private static float valueNoise(int x, int z) { return valueNoise(x, z, 7); }
+
+    private static float valueNoise(int x, int z, int S) {
         int x0 = Math.floorDiv(x, S), z0 = Math.floorDiv(z, S);
         float fx = (x - x0 * S) / (float) S, fz = (z - z0 * S) / (float) S;
         fx = fx * fx * (3f - 2f * fx); fz = fz * fz * (3f - 2f * fz);
@@ -311,7 +312,10 @@ public final class RiverCarver {
                 // interpolated, so a narrower shelf is smeared upwards and the water placer has to cut vertical walls.
                 float target = bankWater[idx] + 1 + Math.max(0f, sc - 1f) * SLOPE;
                 if (top > target) {   // low banks are left alone: no embankments along streams
-                    int newTop = Math.round(top - w * (top - target));
+                    // Dithered rounding: a fine noise decides which way each column rounds, so the 1-block step between
+                    // reshaped and natural ground is ragged and patchy instead of one clean straight line.
+                    int newTop = (int) Math.floor(top - w * (top - target) + valueNoise(j1 + c + 311, i1 + r - 97, 3));
+                    if (newTop > top) newTop = top;
                     if (newTop != top) {
                         surfaceY[r][c] = (short) newTop;
                         any = true;
@@ -560,50 +564,6 @@ public final class RiverCarver {
                         }
                     }
                 }
-            }
-        }
-
-        // ---- lake bed: near the shore the bed used to follow the terraced ground (1 deep, up, down again). Within 14
-        // blocks of the shore it now slopes smoothly from 1 block deep at the edge towards the natural depth.
-        {
-            final int REACH = 14;
-            int[] bd = new int[n];
-            Arrays.fill(bd, -1);
-            int[] bq2 = new int[n];
-            int bh2 = 0, bt2 = 0;
-            for (int idx = 0; idx < n; idx++) {
-                if (!lakeCol[idx]) continue;
-                int r = idx / W, c = idx % W;
-                boolean shore = (r > 0 && !lakeCol[idx - W] && waterY[r - 1][c] == NONE)
-                        || (r < H - 1 && !lakeCol[idx + W] && waterY[r + 1][c] == NONE)
-                        || (c > 0 && !lakeCol[idx - 1] && waterY[r][c - 1] == NONE)
-                        || (c < W - 1 && !lakeCol[idx + 1] && waterY[r][c + 1] == NONE);
-                if (shore) { bd[idx] = 1; bq2[bt2++] = idx; }
-            }
-            while (bh2 < bt2) {
-                int idx = bq2[bh2++];
-                int d = bd[idx];
-                if (d >= REACH) continue;
-                int r = idx / W, c = idx % W;
-                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
-                for (int j : nb) {
-                    if (j < 0 || !lakeCol[j] || bd[j] >= 0) continue;
-                    bd[j] = d + 1; bq2[bt2++] = j;
-                }
-            }
-            for (int idx = 0; idx < n; idx++) {
-                int d = bd[idx];
-                if (d < 1 || !lakeCol[idx]) continue;
-                int r = idx / W, c = idx % W;
-                int level = waterY[r][c];
-                int natural = Math.max(1, level - ytop[idx]);  // natural depth below the water surface (at least 1)
-                float u = Math.min(1f, (d - 1) / (float) (REACH - 1));
-                float w = u * u * (3f - 2f * u);
-                float shoreDepth = 1f + (d - 1) / 3f;          // about 1 block deeper every 3 blocks
-                int depth = Math.round(shoreDepth + (natural - shoreDepth) * w);
-                depth = Math.max(1, Math.min(Math.max(natural, 6), depth));   // may dig a little to even out ridges, at most 6
-                int bedY = level - depth;
-                if (bedY != (surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx])) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 
