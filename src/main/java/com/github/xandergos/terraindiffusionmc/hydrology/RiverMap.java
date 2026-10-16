@@ -159,6 +159,28 @@ public final class RiverMap {
                 i = j;
             }
         }
+        // A lake's overflow always reaches the stream it feeds: the path from the lake's outlet down to that stream is a
+        // stream too, even where the windowed flow count is still below the threshold (it left a dry gap between lake and
+        // stream). Only paths that reach an existing stream within 40 steps are filled in, so no new streams appear.
+        int[] path = new int[40];
+        for (int s = 0; s < n; s++) {
+            if (!lake[s]) continue;
+            int j = net.downstream[s];
+            if (j < 0 || lake[j] || out[j] >= STREAM) continue;
+            int len = 0;
+            boolean reached = false;
+            int i = j;
+            while (i >= 0 && len < path.length) {
+                if (elev[i] <= 0f || lake[i]) break;
+                if (out[i] >= STREAM && out[i] <= MAIN) { reached = true; break; }
+                float ti = climate != null ? climate[i] : 10f;
+                if (ti < p.minTempC || elev[i] > p.maxElevM) break;
+                path[len++] = i;
+                i = net.downstream[i];
+            }
+            if (!reached) continue;
+            for (int k = 0; k < len; k++) if (out[path[k]] == NONE) out[path[k]] = STREAM;
+        }
         return new Result(out, net.downstream, net.filled);
     }
 }

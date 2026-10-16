@@ -203,7 +203,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v15 (v14 + streams carried through lake margins)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v16 (v15 + no floor terraces, lake outlets always streams)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -955,23 +955,17 @@ public final class RiverCarver {
                     off = Math.round((valueNoise(j1 + c, i1 + r, 11) - 0.5f) * 2.6f * fade);
                 }
                 natural = Math.max(1, natural + off);
-                int minShore = Integer.MAX_VALUE;
-                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
-                for (int j : nb) {
-                    if (j >= 0 && lakeCol[j] && bd[j] == bd[idx] - 1 && depth[j] > 0) minShore = Math.min(minShore, depth[j]);
-                }
+                // No "only deeper toward the middle" rule any more: it worked along grid-step distance layers and left terraces
+                // with straight diagonal edges. The extra middle depth already makes lakes deepen toward the middle.
                 int d = natural;
-                // At most one block deeper than the natural bed: allowing up to 6 passed one deep spot's depth on through the
-                // whole lake and cut trenches with vertical walls.
-                if (minShore != Integer.MAX_VALUE && minShore > natural) d = Math.min(minShore, natural + 1);
                 depth[idx] = d;
                 int bedY = level - d;
+                // The bed may fill small dips and shave small humps (up to 3 blocks) and is carved down by the extra middle
+                // depth. Out-of-range values are clamped (skipping them left steps between neighbouring columns).
+                bedY = Math.max(bedY, ytop[idx] - 3 - (int) Math.ceil(extra[idx]));
+                bedY = Math.min(bedY, Math.min(ytop[idx] + 3, level - 1));
                 int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                // The smoothed bed may sit above or below the generated ground (it fills small dips and shaves small humps).
-                // The bed may shave small humps or fill small dips (up to 3 blocks) and is carved down by the extra middle depth.
-                if (bedY != cur && bedY - ytop[idx] <= 3 && ytop[idx] - bedY <= 3 + (int) Math.ceil(extra[idx])) {
-                    surfaceY[r][c] = (short) bedY; any = true;
-                }
+                if (bedY != cur) { surfaceY[r][c] = (short) bedY; any = true; }
             }
         }
 
