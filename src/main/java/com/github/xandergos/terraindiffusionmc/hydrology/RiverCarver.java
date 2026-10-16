@@ -152,7 +152,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v10 flush streams (v9 top-block fix + water level with the banks)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v11 flush lakes (v10 + lake level at the rim, no shore creep)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -463,7 +463,9 @@ public final class RiverCarver {
                 level = ownLake ? ownLevel : minLevel;
                 // A lake wins over a river channel that runs into it, so no channel is left cut into the lake.
                 if (waterY[r][c] != NONE && !ownLake) continue;
-                int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))) - 1;
+                // metersToY already gives the real top block, so the water's top block is level with the basin's rim (it used
+                // to subtract another block, which left every lake one block below its shore).
+                int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level)));
                 int idx = r * W + c;
                 int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                 // Inside a lake pixel any low ground is lake bed; in the one-pixel rim only shallow
@@ -495,9 +497,11 @@ public final class RiverCarver {
                     if (r < H - 1 && waterY[r + 1][c] != NONE) wn++;
                     if (c > 0     && waterY[r][c - 1] != NONE) wn++;
                     if (c < W - 1 && waterY[r][c + 1] != NONE) wn++;
-                    if (wn < 2) continue;   // ridges and peninsulas: flooded from two sides
+                    // Only real specks, boxed in on three or four sides and barely above the water. (Two sides and up to 6 blocks
+                    // let it creep along the whole shore, flooding and digging out the land at the edge of the lake mask.)
+                    if (wn < 3) continue;
                     int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                    if (ytop[idx] < 60 || top - lakeLvl[idx] > 6) continue;
+                    if (ytop[idx] < 60 || top - lakeLvl[idx] > 1) continue;
                     surfaceY[r][c] = (short) (lakeLvl[idx] - 1);
                     waterY[r][c] = (short) lakeLvl[idx];
                     lakeCol[idx] = true;
