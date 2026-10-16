@@ -474,7 +474,8 @@ public final class RiverCarver {
                 // in a deep gorge. Only the surrounding rim is limited to shallow ground.
                 if (lakeTop - top > (ownLake ? 120 : 2)) continue;
                 if (ownLake) { ownLakeCol[idx] = true; lakeLvl[idx] = lakeTop; }
-                if (top <= lakeTop && (ownLake || lakeTop - top <= 2)) {
+                // Ground at the water level stays dry, level with the water (a flush shore); only lower ground is lake.
+                if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
                     waterY[r][c] = (short) lakeTop;
                     if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
                     lakeCol[idx] = true;
@@ -532,7 +533,9 @@ public final class RiverCarver {
                     // the lake level are left alone.
                     boolean river = waterY[jr][jc] != NONE;
                     if (river && waterY[jr][jc] >= srcLvl[idx]) continue;
-                    if (ytop[j] < 60 || ytop[j] > srcLvl[idx]) continue;     // sea floor, or the shore has been reached
+                    // Sea floor, or the shore has been reached: ground at the water level is the shore, left dry and flush with
+                    // the water (flooding it and digging a 1-block bed made every shore a 2-block drop from land to floor).
+                    if (ytop[j] < 60 || ytop[j] >= srcLvl[idx]) continue;
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
@@ -651,7 +654,7 @@ public final class RiverCarver {
                         }
                     }
                     int ground = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
-                    if (!isW && wet * 2 > tot && lvl != NONE && ground - lvl <= 2) {
+                    if (!isW && wet * 2 > tot && lvl != NONE && ground - lvl <= 0) {   // only land level with the water: no new banks
                         flipToWater[idx] = true; flipLvl[idx] = lvl;
                     } else if (isW && wet * 2 < tot && waterY[r][c] - ground <= 2) {
                         flipToDry[idx] = true; flipLvl[idx] = waterY[r][c];
