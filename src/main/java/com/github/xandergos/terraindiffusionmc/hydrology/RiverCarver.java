@@ -105,6 +105,49 @@ public final class RiverCarver {
         return (pixel >= lo && pixel < hi) ? preferred : Math.floorDiv(pixel, regionSize);
     }
 
+    /** How many lake pixels a stream's channel is carried into (inlets) or out of (outlets) a lake. */
+    private static final int LAKE_LINK = 8;
+
+    /** Rasterises one flow segment (pixel k to its downstream pixel q) into the per-column channel score. */
+    private static void drawSegment(RiverService.Region reg, int k, int q, byte cls, int scale, int i1, int j1, int H, int W,
+                                    float[] score, float[] sA, byte[] cA, float[] pt) {
+        float sp = reg.surface[k], sq = reg.surface[q];
+        float hw = halfWidth(cls, scale);
+        float reach = hw + BANK;
+        // Centre line smoothed with a 1-2-1 filter along the flow direction so the D8
+        // staircase turns into gentle curves (all branches of a confluence still meet).
+        smoothPoint(reg, k, scale, pt);
+        float ax = pt[0], az = pt[1];
+        smoothPoint(reg, q, scale, pt);
+        float bx = pt[0], bz = pt[1];
+
+        int cMin = Math.max(0, (int) Math.floor(Math.min(ax, bx) - reach - j1));
+        int cMax = Math.min(W - 1, (int) Math.ceil(Math.max(ax, bx) + reach - j1));
+        int rMin = Math.max(0, (int) Math.floor(Math.min(az, bz) - reach - i1));
+        int rMax = Math.min(H - 1, (int) Math.ceil(Math.max(az, bz) + reach - i1));
+        if (cMin > cMax || rMin > rMax) return;
+
+        float dx = bx - ax, dz = bz - az;
+        float len2 = dx * dx + dz * dz;
+        for (int r = rMin; r <= rMax; r++) {
+            float pz = i1 + r + 0.5f;
+            for (int c = cMin; c <= cMax; c++) {
+                float px = j1 + c + 0.5f;
+                float t = len2 > 0f ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0f;
+                t = t < 0f ? 0f : (t > 1f ? 1f : t);
+                float ex = ax + t * dx - px, ez = az + t * dz - pz;
+                float sc = (float) Math.sqrt(ex * ex + ez * ez) - hw;
+                if (sc >= BANK) continue;
+                int idx = r * W + c;
+                if (sc < score[idx] - 1e-3f || (Math.abs(sc - score[idx]) <= 1e-3f && cls > cA[idx])) {
+                    score[idx] = sc;
+                    sA[idx] = sp + (sq - sp) * t;
+                    cA[idx] = cls;
+                }
+            }
+        }
+    }
+
     /** Block-space position of pixel {@code k}'s centre line point: (P_k + 2 P_d + P_dd) / 4. */
     private static void smoothPoint(RiverService.Region reg, int k, int scale, float[] out) {
         int d = reg.downstream[k];
@@ -160,7 +203,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v14 (deeper lake middles, wider deeper rivers)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v15 (v14 + streams carried through lake margins)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -197,45 +240,46 @@ public final class RiverCarver {
                 }
                 int k = reg.index(pi, pj);
                 if (k < 0) continue;
-                byte cls = reg.cls[k];
-                if (cls < RiverMap.STREAM || cls > RiverMap.MAIN) continue;
-                int q = reg.downstream[k];
-                if (q < 0) continue;
-
-                float sp = reg.surface[k], sq = reg.surface[q];
-                float hw = halfWidth(cls, scale);
-                float reach = hw + BANK;
-                // Centre line smoothed with a 1-2-1 filter along the flow direction so the D8
-                // staircase turns into gentle curves (all branches of a confluence still meet).
-                smoothPoint(reg, k, scale, pt);
-                float ax = pt[0], az = pt[1];
-                smoothPoint(reg, q, scale, pt);
-                float bx = pt[0], bz = pt[1];
-
-                int cMin = Math.max(0, (int) Math.floor(Math.min(ax, bx) - reach - j1));
-                int cMax = Math.min(W - 1, (int) Math.ceil(Math.max(ax, bx) + reach - j1));
-                int rMin = Math.max(0, (int) Math.floor(Math.min(az, bz) - reach - i1));
-                int rMax = Math.min(H - 1, (int) Math.ceil(Math.max(az, bz) + reach - i1));
-                if (cMin > cMax || rMin > rMax) continue;
-
-                float dx = bx - ax, dz = bz - az;
-                float len2 = dx * dx + dz * dz;
-                for (int r = rMin; r <= rMax; r++) {
-                    float pz = i1 + r + 0.5f;
-                    for (int c = cMin; c <= cMax; c++) {
-                        float px = j1 + c + 0.5f;
-                        float t = len2 > 0f ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0f;
-                        t = t < 0f ? 0f : (t > 1f ? 1f : t);
-                        float ex = ax + t * dx - px, ez = az + t * dz - pz;
-                        float sc = (float) Math.sqrt(ex * ex + ez * ez) - hw;
-                        if (sc >= BANK) continue;
-                        int idx = r * W + c;
-                        if (sc < score[idx] - 1e-3f || (Math.abs(sc - score[idx]) <= 1e-3f && cls > cA[idx])) {
-                            score[idx] = sc;
-                            sA[idx] = sp + (sq - sp) * t;
-                            cA[idx] = cls;
-                        }
+                byte cls0 = reg.cls[k];
+                int q0 = reg.downstream[k];
+                if (q0 < 0) continue;
+                // A channel also runs through the edge of a lake's pixels: a lake pixel whose flow leaves the lake within
+                // LAKE_LINK pixels carries the outlet stream, and a stream entering a lake continues LAKE_LINK pixels in.
+                // Otherwise the flat ground inside the lake mask but level with the water (left dry) cut the stream off.
+                byte cls;
+                boolean inlet = false;
+                if (cls0 >= RiverMap.STREAM && cls0 <= RiverMap.MAIN) {
+                    cls = cls0;
+                    inlet = true;
+                } else if (cls0 == RiverMap.LAKE) {
+                    // Only the lake pixel that drains straight into a stream (the outlet). Its channel is carried straight
+                    // back into the lake, against the stream's direction, so it is one line and not a fan of every lake
+                    // pixel that drains toward the outlet.
+                    byte cq = reg.cls[q0];
+                    if (cq < RiverMap.STREAM || cq > RiverMap.MAIN) continue;
+                    int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
+                    int dr = qr - kr, dc = qc - kc;
+                    drawSegment(reg, k, q0, cq, scale, i1, j1, H, W, score, sA, cA, pt);
+                    int curR = kr, curC = kc;
+                    for (int st = 0; st < LAKE_LINK; st++) {
+                        int prR = curR - dr, prC = curC - dc;
+                        if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
+                        int prev = prR * reg.width + prC;
+                        if (reg.cls[prev] != RiverMap.LAKE) break;
+                        drawSegment(reg, prev, curR * reg.width + curC, cq, scale, i1, j1, H, W, score, sA, cA, pt);
+                        curR = prR; curC = prC;
                     }
+                    continue;
+                } else {
+                    continue;
+                }
+                int segK = k, q = q0;
+                for (int seg = 0; seg <= LAKE_LINK; seg++) {
+                    drawSegment(reg, segK, q, cls, scale, i1, j1, H, W, score, sA, cA, pt);
+                    if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
+                    segK = q;
+                    q = reg.downstream[segK];
+                    if (q < 0) break;
                 }
             }
         }
@@ -474,7 +518,9 @@ public final class RiverCarver {
                 // a column in a lake keeps that lake's own level, a rim column takes the lowest adjacent level.
                 level = ownLake ? ownLevel : minLevel;
                 // A lake wins over a river channel that runs into it, so no channel is left cut into the lake.
-                if (waterY[r][c] != NONE && !ownLake) continue;
+                // ... except where the channel crosses ground at or above the lake level (the dry, flush margin of the lake
+                // mask): there it stays a stream, so it reaches the water instead of ending at the margin.
+                if (waterY[r][c] != NONE && (!ownLake || ytop[r * W + c] >= metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))))) continue;
                 // metersToY already gives the real top block, so the water's top block is level with the basin's rim (it used
                 // to subtract another block, which left every lake one block below its shore).
                 int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level)));
