@@ -110,7 +110,7 @@ public final class RiverCarver {
 
     /** Rasterises one flow segment (pixel k to its downstream pixel q) into the per-column channel score. */
     private static void drawSegment(RiverService.Region reg, int k, int q, byte cls, int scale, int i1, int j1, int H, int W,
-                                    float[] score, float[] sA, byte[] cA, float[] pt) {
+                                    float[] score, float[] sA, byte[] cA, float[] cpx, float[] cpz, float[] pt) {
         float sp = reg.surface[k], sq = reg.surface[q];
         float hw = halfWidth(cls, scale);
         float reach = hw + BANK;
@@ -143,6 +143,8 @@ public final class RiverCarver {
                     score[idx] = sc;
                     sA[idx] = sp + (sq - sp) * t;
                     cA[idx] = cls;
+                    cpx[idx] = ax + t * dx;   // nearest point on the centre line: identifies the channel's cross-section
+                    cpz[idx] = az + t * dz;
                 }
             }
         }
@@ -214,7 +216,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v24 (v23 + shallow lakes on flat ground fill their whole lake area)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v25 (one water level across a river channel; its high side becomes bank)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -228,6 +230,7 @@ public final class RiverCarver {
         float[] score = new float[n];
         Arrays.fill(score, Float.POSITIVE_INFINITY);
         float[] sA = new float[n];
+        float[] cpx = new float[n], cpz = new float[n];
         byte[] cA = new byte[n];
 
         // ---- rivers: rasterise flow segments (pixel centre -> downstream pixel centre)
@@ -317,14 +320,14 @@ public final class RiverCarver {
                     if (cq < RiverMap.STREAM || cq > RiverMap.MAIN) continue;
                     int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
                     int dr = qr - kr, dc = qc - kc;
-                    drawSegment(reg, k, q0, cq, scale, i1, j1, H, W, score, sA, cA, pt);
+                    drawSegment(reg, k, q0, cq, scale, i1, j1, H, W, score, sA, cA, cpx, cpz, pt);
                     int curR = kr, curC = kc;
                     for (int st = 0; st < LAKE_LINK; st++) {
                         int prR = curR - dr, prC = curC - dc;
                         if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
                         int prev = prR * reg.width + prC;
                         if (reg.cls[prev] != RiverMap.LAKE) break;
-                        drawSegment(reg, prev, curR * reg.width + curC, cq, scale, i1, j1, H, W, score, sA, cA, pt);
+                        drawSegment(reg, prev, curR * reg.width + curC, cq, scale, i1, j1, H, W, score, sA, cA, cpx, cpz, pt);
                         curR = prR; curC = prC;
                     }
                     continue;
@@ -333,7 +336,7 @@ public final class RiverCarver {
                 }
                 int segK = k, q = q0;
                 for (int seg = 0; seg <= LAKE_LINK; seg++) {
-                    drawSegment(reg, segK, q, cls, scale, i1, j1, H, W, score, sA, cA, pt);
+                    drawSegment(reg, segK, q, cls, scale, i1, j1, H, W, score, sA, cA, cpx, cpz, pt);
                     if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
                     segK = q;
                     q = reg.downstream[segK];
@@ -453,6 +456,92 @@ public final class RiverCarver {
                 }
             }
             if (!changed) break;
+        }
+
+        // One water level across the channel (v25). Each column's level comes from the lowest ground near it, so where a
+        // wide river's strip runs up a sloping bank (on the inside of a bend, say) the high side got its own, higher level:
+        // a sheet of water stepping up the bank one block at a time, every step pouring down as a little waterfall. The
+        // cross-section is the set of channel columns whose nearest centre-line points lie within a block and a half of
+        // each other. A column more than a block above it is not river: it becomes bank, shaped below as a slope rising
+        // from the water.
+        // Rivers (wide and gentle) take the cross-section's lowest level: a column one block above it is lowered to it, so
+        // the surface is flat from bank to bank (along the river a one-block step just moves up to a block and a half
+        // upstream), and a column on ground more than 3 blocks above the water becomes bank too. Streams keep their own levels (lowering them left the water a block below the banks) and only shed
+        // columns more than a block above their centre.
+        {
+            boolean[] dropped = new boolean[n];
+            int[] lowerTo = new int[n];
+            Arrays.fill(lowerTo, NOWATER);
+            int dropCount = 0;
+            for (int r = 0; r < H; r++) {
+                for (int c = 0; c < W; c++) {
+                    int idx = r * W + c;
+                    if (chanWater[idx] == NOWATER) continue;
+                    int rr0 = (int) Math.ceil(halfWidth(cA[idx], scale)) + 1;
+                    int ref = chanWater[idx], min = chanWater[idx], minTop = ytop[idx];
+                    float best = score[idx];
+                    for (int rr = Math.max(0, r - 2 * rr0); rr <= Math.min(H - 1, r + 2 * rr0); rr++) {
+                        for (int cc = Math.max(0, c - 2 * rr0); cc <= Math.min(W - 1, c + 2 * rr0); cc++) {
+                            int j = rr * W + cc;
+                            if (chanWater[j] == NOWATER) continue;
+                            float ddx = cpx[j] - cpx[idx], ddz = cpz[j] - cpz[idx];
+                            if (ddx * ddx + ddz * ddz > 2.25f) continue;
+                            if (chanWater[j] < min) min = chanWater[j];
+                            if (ytop[j] < minTop) minTop = ytop[j];
+                            if (score[j] < best) { best = score[j]; ref = chanWater[j]; }
+                        }
+                    }
+                    if (cA[idx] >= RiverMap.RIVER) {
+                        // Ground more than 3 above the water is hillside, not river bed (it was cut down into a trench with a
+                        // dirt wall at the edge), unless the whole cross-section is that high: a ridge the river cuts through.
+                        boolean hillside = ytop[idx] > min + 3 && minTop <= min + 3;
+                        if (chanWater[idx] > min + 1 || hillside) { dropped[idx] = true; dropCount++; }
+                        else if (chanWater[idx] > min) lowerTo[idx] = min;
+                    } else if (chanWater[idx] > ref + 1) { dropped[idx] = true; dropCount++; }
+                }
+            }
+            for (int idx = 0; idx < n; idx++) {
+                if (lowerTo[idx] == NOWATER || dropped[idx]) continue;
+                int r = idx / W, c = idx % W;
+                chanWater[idx] = lowerTo[idx];
+                waterY[r][c] = (short) lowerTo[idx];
+                surfaceY[r][c] = (short) Math.min(ytop[idx], lowerTo[idx] - channelDepth(cA[idx], score[idx], halfWidth(cA[idx], scale)));
+            }
+            if (dropCount > 0) {
+                // Distance (in blocks) from the remaining water, used as the dropped columns' bank score.
+                int[] dq = new int[n];
+                int[] dd = new int[n];
+                Arrays.fill(dd, -1);
+                int dh = 0, dt = 0;
+                for (int idx = 0; idx < n; idx++) {
+                    if (dropped[idx]) {
+                        int r = idx / W, c = idx % W;
+                        chanWater[idx] = NOWATER;
+                        chanOrig[idx] = NOWATER;
+                        waterY[r][c] = NONE;
+                        surfaceY[r][c] = NONE;
+                    }
+                }
+                // Bank columns measure their distance from the water that is left, not from the channel's old edge (the old
+                // bank beyond a dropped strip was otherwise cut as if the water were right beside it: a dip behind the bank).
+                for (int idx = 0; idx < n; idx++) if (chanWater[idx] != NOWATER) { dd[idx] = 0; dq[dt++] = idx; }
+                while (dh < dt) {
+                    int idx = dq[dh++];
+                    if (dd[idx] > BANK) continue;
+                    int r = idx / W, c = idx % W;
+                    int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                    for (int j : nb) {
+                        if (j < 0 || dd[j] >= 0 || chanWater[j] != NOWATER) continue;
+                        dd[j] = dd[idx] + 1;
+                        dq[dt++] = j;
+                    }
+                }
+                for (int idx = 0; idx < n; idx++) {
+                    float far = dd[idx] > 0 ? dd[idx] : BANK + 1;
+                    if (dropped[idx]) score[idx] = far;
+                    else if (score[idx] > 0f && score[idx] != Float.POSITIVE_INFINITY) score[idx] = Math.max(score[idx], far);
+                }
+            }
         }
 
         // Spread each channel's water level outwards over the bank width, so the banks are shaped
