@@ -203,7 +203,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v18 (v17 + lakes do not spread down open valleys)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v19 (v18 + streams below a lake keep their own level)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -600,6 +600,10 @@ public final class RiverCarver {
                     // (A stream column on ground at the lake level is still raised: otherwise the stream dips a block
                     // below the lake right where it meets it.)
                     if (ytop[j] < 60 || ytop[j] > srcLvl[idx] || (!river && ytop[j] == srcLvl[idx])) continue;
+                    // Only a stream on ground within a block of the lake level is raised to it (the dip where it meets the
+                    // lake). A stream running downhill away from the lake keeps its own level: raising every stream column
+                    // below the lake level perched it up to 48 blocks along its valley, walled in with dirt.
+                    if (river && srcLvl[idx] - ytop[j] > 1) continue;
                     // Outside the lake's own pixels the water only spreads over shallow ground (within 3 blocks of the level).
                     // Where the basin's rim is broken, spreading "however far below" ran the lake out down the next valley,
                     // held up by walls, whenever the lake crossed a tile border (the spill-level fix skips those lakes).

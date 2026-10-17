@@ -193,7 +193,7 @@ public final class RiverWaterPlacer {
                 int lx = x - startX, lz = z - startZ;
                 short top = data.waterY[lz][lx];
                 if (top == RiverCarver.NONE) continue;
-                if (data.waterIsLake != null && data.waterIsLake[lz][lx]) continue;
+                // (Lakes too: where a lake drains into a lower stream, its edge water spills down instead of standing as a wall.)
                 boolean stepsDown = false;
                 for (int k = 0; k < 4 && !stepsDown; k++) {
                     int nz = lz + ddz[k], nx = lx + ddx[k];
