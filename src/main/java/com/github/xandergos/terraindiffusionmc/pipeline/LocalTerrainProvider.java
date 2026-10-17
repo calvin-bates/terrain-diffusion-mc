@@ -234,6 +234,22 @@ public final class LocalTerrainProvider {
         return riverService;
     }
 
+    /**
+     * Debug: the hydrology class of the native pixel under block (x, z): 0 none, 1 stream, 2 river, 3 main river, 4 lake,
+     * or -1 if unavailable. Runs the region on the inference thread if it is not cached yet.
+     */
+    public static byte hydrologyClassAt(int blockX, int blockZ) {
+        try {
+            int scale = Math.max(1, WorldScaleManager.getCurrentScale());
+            int pi = Math.floorDiv(blockZ, scale), pj = Math.floorDiv(blockX, scale);
+            RiverService.Region reg = rivers().regionOfPixel(pi, pj, (a, b, c, d) -> getPipelineData(a, b, c, d, true));
+            int k = reg.index(pi, pj);
+            return k < 0 ? (byte) -1 : reg.cls[k];
+        } catch (Exception e) {
+            return (byte) -1;
+        }
+    }
+
     private static synchronized void clearRivers() {
         if (riverService != null) riverService.clear();
     }

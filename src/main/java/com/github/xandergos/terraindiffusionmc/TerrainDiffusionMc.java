@@ -76,6 +76,7 @@ public class TerrainDiffusionMc implements ModInitializer {
             int[][] fin = new int[2 * R + 1][2 * R + 1];
             int[][] wat = new int[2 * R + 1][2 * R + 1];
             int[][] act = new int[2 * R + 1][2 * R + 1];
+            boolean[][] lakeAt = new boolean[2 * R + 1][2 * R + 1];
             net.minecraft.server.level.ServerLevel level = ctx.getSource().getLevel();
             for (int dz = -R; dz <= R; dz++) {
                 for (int dx = -R; dx <= R; dx++) {
@@ -94,6 +95,7 @@ public class TerrainDiffusionMc implements ModInitializer {
                     orig[dz + R][dx + R] = o;
                     fin[dz + R][dx + R] = sy == Short.MIN_VALUE ? o : sy;
                     wat[dz + R][dx + R] = wy;
+                    lakeAt[dz + R][dx + R] = d.waterIsLake != null && d.waterIsLake[lz][lx];
                     // What is really in the world: the top block that blocks movement (water and plants excluded).
                     act[dz + R][dx + R] = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, x, z) - 1;
                 }
@@ -124,14 +126,14 @@ public class TerrainDiffusionMc implements ModInitializer {
                 log.append('\n');
             }
             log.append("(digit = world higher by that many, letter a/b/c.. = world lower by 1/2/3.., ! = solid ground above the water line)\n");
-            log.append("water blocks in the world (W still water, f flowing water, i ice, a air, x something else at the water line; _ no water in the data), then water depth in the data (water Y minus bed):\n");
+            log.append("water blocks in the world (L still lake water, S still stream water, f flowing water, i ice, a air, x something else at the water line; _ no water in the data), then water depth in the data (water Y minus bed):\n");
             for (int r = 0; r <= 2 * R; r++) {
                 for (int c = 0; c <= 2 * R; c++) {
                     char ch = '_';
                     if (wat[r][c] != Short.MIN_VALUE) {
                         net.minecraft.world.level.block.state.BlockState st = level.getBlockState(
                                 new net.minecraft.core.BlockPos(p.getX() + c - R, wat[r][c], p.getZ() + r - R));
-                        if (st.getFluidState().isSource()) ch = 'W';
+                        if (st.getFluidState().isSource()) ch = lakeAt[r][c] ? 'L' : 'S';
                         else if (!st.getFluidState().isEmpty()) ch = 'f';
                         else if (st.is(net.minecraft.world.level.block.Blocks.ICE)) ch = 'i';
                         else if (st.isAir()) ch = 'a';
@@ -142,6 +144,15 @@ public class TerrainDiffusionMc implements ModInitializer {
                 }
                 log.append("   ");
                 for (int c = 0; c <= 2 * R; c++) log.append(wat[r][c] == Short.MIN_VALUE ? "  ." : String.format("%3d", wat[r][c] - fin[r][c]));
+                log.append('\n');
+            }
+            log.append("hydrology map under each column (L lake, s stream, r river, m main river, . none, ? unavailable):\n");
+            for (int r = 0; r <= 2 * R; r++) {
+                for (int c = 0; c <= 2 * R; c++) {
+                    if (r == R && c == R) { log.append('@'); continue; }
+                    byte k = LocalTerrainProvider.hydrologyClassAt(p.getX() + c - R, p.getZ() + r - R);
+                    log.append(k == 4 ? 'L' : k == 1 ? 's' : k == 2 ? 'r' : k == 3 ? 'm' : k == 0 ? '.' : '?');
+                }
                 log.append('\n');
             }
             LOG.info(log.toString());
