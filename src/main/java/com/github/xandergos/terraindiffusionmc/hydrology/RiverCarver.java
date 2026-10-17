@@ -203,7 +203,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v16 (v15 + no floor terraces, lake outlets always streams)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v17 (v16 + streams raised to the lake level where they meet)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -597,7 +597,9 @@ public final class RiverCarver {
                     if (river && waterY[jr][jc] >= srcLvl[idx]) continue;
                     // Sea floor, or the shore has been reached: ground at the water level is the shore, left dry and flush with
                     // the water (flooding it and digging a 1-block bed made every shore a 2-block drop from land to floor).
-                    if (ytop[j] < 60 || ytop[j] >= srcLvl[idx]) continue;
+                    // (A stream column on ground at the lake level is still raised: otherwise the stream dips a block
+                    // below the lake right where it meets it.)
+                    if (ytop[j] < 60 || ytop[j] > srcLvl[idx] || (!river && ytop[j] == srcLvl[idx])) continue;
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
