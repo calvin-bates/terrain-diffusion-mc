@@ -159,7 +159,8 @@ public final class RiverWaterPlacer {
                     pos.set(x, y, z);
                     chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
                 }
-                if (isLake) plantLakeFloor(chunk, pos, x, z, ground, top, frozen);
+                // Lakes from two blocks of water, rivers from three (streams are shallower and stay bare).
+                plantFloor(chunk, pos, x, z, ground, top, frozen, isLake ? 2 : 3);
             }
         }
 
@@ -214,15 +215,15 @@ public final class RiverWaterPlacer {
     }
 
     /**
-     * Seagrass on lake floors, in meadows: dense patches (about ten blocks across) with sparse plants between them.
-     * Only on floors at least two blocks under the water (the shallow edge stays bare), tall seagrass where there are
-     * three or more. Kelp is left to the sea.
+     * Seagrass on lake and river floors, in meadows: dense patches (about ten blocks across) with sparse plants between
+     * them. Only where at least {@code minDepth} blocks of water cover the floor (shallow edges and streams stay bare),
+     * tall seagrass where there is a block more. Kelp is left to the sea.
      */
-    private static void plantLakeFloor(ChunkAccess chunk, BlockPos.MutableBlockPos pos, int x, int z, int ground, int top,
-                                       boolean frozen) {
-        int waterTop = frozen ? top - 1 : top;   // a frozen lake has ice as its top block
+    private static void plantFloor(ChunkAccess chunk, BlockPos.MutableBlockPos pos, int x, int z, int ground, int top,
+                                   boolean frozen, int minDepth) {
+        int waterTop = frozen ? top - 1 : top;   // frozen water has ice as its top block
         int depth = waterTop - ground;           // water blocks above the floor
-        if (depth < 2) return;
+        if (depth < minDepth) return;
         pos.set(x, ground, z);
         BlockState floor = chunk.getBlockState(pos);
         if (!floor.isFaceSturdy(chunk, pos, Direction.UP) || floor.is(BlockTags.CANNOT_SUPPORT_SEAGRASS)) return;
@@ -232,7 +233,7 @@ public final class RiverWaterPlacer {
         int h = hash(x, z, seed);
         if ((h & 0xFFFF) / 65536f >= chance) return;
         pos.set(x, ground + 1, z);
-        if (depth >= 3 && ((h >>> 16) & 0xFF) < 77) {   // about 30% tall where there is room
+        if (depth >= Math.max(3, minDepth + 1) && ((h >>> 16) & 0xFF) < 77) {   // about 30% tall where there is room
             chunk.setBlockState(pos, Blocks.TALL_SEAGRASS.defaultBlockState().setValue(TallSeagrassBlock.HALF, DoubleBlockHalf.LOWER), 0);
             pos.set(x, ground + 2, z);
             chunk.setBlockState(pos, Blocks.TALL_SEAGRASS.defaultBlockState().setValue(TallSeagrassBlock.HALF, DoubleBlockHalf.UPPER), 0);
