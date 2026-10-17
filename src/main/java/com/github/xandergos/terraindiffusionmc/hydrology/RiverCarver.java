@@ -183,6 +183,17 @@ public final class RiverCarver {
         return (h & 0xFFFF) / 65535f;
     }
 
+    /** True if a 4-neighbour of the column holds stream (non-lake) water. Shore rounding keeps such lake columns: drying
+     *  one left a strip of land between a stream and the lake it runs into. */
+    private static boolean besideStream(int idx, int H, int W, short[][] waterY, boolean[] lakeCol) {
+        int r = idx / W, c = idx % W;
+        if (r > 0     && !lakeCol[idx - W] && waterY[r - 1][c] != NONE) return true;
+        if (r < H - 1 && !lakeCol[idx + W] && waterY[r + 1][c] != NONE) return true;
+        if (c > 0     && !lakeCol[idx - 1] && waterY[r][c - 1] != NONE) return true;
+        if (c < W - 1 && !lakeCol[idx + 1] && waterY[r][c + 1] != NONE) return true;
+        return false;
+    }
+
     private static boolean contains(short[] set, short v) {
         for (short s : set) if (s == v) return true;
         return false;
@@ -203,7 +214,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v19 (v18 + streams below a lake keep their own level)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v21 (lake water stays near its lake; stream mouths join at the final lake level)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -227,6 +238,53 @@ public final class RiverCarver {
 
         final int prefRi = Math.floorDiv(Math.floorDiv(i1 + H / 2, scale), regionSize);
         final int prefRj = Math.floorDiv(Math.floorDiv(j1 + W / 2, scale), regionSize);
+
+        // Distance (in blocks, Chebyshev) from each column to the nearest lake pixel of the hydrology mask: 0 inside a lake
+        // pixel, LAKE_NEAR + 1 for anything further than LAKE_NEAR. Taken from the region data, so it agrees across tiles.
+        // Lake water may spread only this far outside the mask (v21): further out, ground below the lake level is not
+        // part of the lake (it is the slope below an outlet), and spreading over it ran lake water along hillsides.
+        final int LAKE_NEAR = Math.max(3, scale);
+        final int[] lakeDist = new int[n];
+        {
+            final int rpx = LAKE_NEAR / scale + 1;
+            int gi0 = Math.floorDiv(i1, scale) - rpx, gi1 = Math.floorDiv(i1 + H - 1, scale) + rpx;
+            int gj0 = Math.floorDiv(j1, scale) - rpx, gj1 = Math.floorDiv(j1 + W - 1, scale) + rpx;
+            int gh = gi1 - gi0 + 1, gw = gj1 - gj0 + 1;
+            boolean[] lk = new boolean[gh * gw];
+            boolean anyLake = false;
+            RiverService.Region rg = null;
+            int cri = Integer.MIN_VALUE, crj = Integer.MIN_VALUE;
+            for (int a = 0; a < gh; a++) {
+                for (int b = 0; b < gw; b++) {
+                    int pi = gi0 + a, pj = gj0 + b;
+                    int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
+                    if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
+                    int k = rg.index(pi, pj);
+                    lk[a * gw + b] = k >= 0 && rg.cls[k] == RiverMap.LAKE;
+                    anyLake |= lk[a * gw + b];
+                }
+            }
+            Arrays.fill(lakeDist, LAKE_NEAR + 1);
+            if (anyLake) {
+                for (int r = 0; r < H; r++) {
+                    int I = i1 + r, pi = Math.floorDiv(I, scale);
+                    for (int c = 0; c < W; c++) {
+                        int J = j1 + c, pj = Math.floorDiv(J, scale);
+                        int best = LAKE_NEAR + 1;
+                        for (int a = pi - rpx; a <= pi + rpx && best > 0; a++) {
+                            for (int b = pj - rpx; b <= pj + rpx; b++) {
+                                if (!lk[(a - gi0) * gw + (b - gj0)]) continue;
+                                int dz = Math.max(0, Math.max(a * scale - I, I - (a * scale + scale - 1)));
+                                int dx = Math.max(0, Math.max(b * scale - J, J - (b * scale + scale - 1)));
+                                int d = Math.max(dx, dz);
+                                if (d < best) best = d;
+                            }
+                        }
+                        lakeDist[r * W + c] = best;
+                    }
+                }
+            }
+        }
         float[] pt = new float[2];
         RiverService.Region reg = null;
         int curRi = Integer.MIN_VALUE, curRj = Integer.MIN_VALUE;
@@ -313,6 +371,9 @@ public final class RiverCarver {
                 int low = top;
                 for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
                     for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
+                        // The ground of a lake's basin is not a bank: counting it cut a stream down to the lake floor where
+                        // it meets the lake, several blocks below the lake's water.
+                        if (lakeDist[rr * W + cc] == 0) continue;
                         if (ytop[rr * W + cc] < low) low = ytop[rr * W + cc];
                     }
                 }
@@ -568,16 +629,21 @@ public final class RiverCarver {
             }
         }
 
-        // Flood to the mountain edge: the water spreads from the lake over every connected column whose ground is
-        // at or below the water level, however far below, and stops only where the ground rises to the water
-        // level (the real shore). It is capped in distance so a lake cannot run away down a long valley.
+        // Flood to the shore: the water spreads from the lake over connected columns whose ground is below the water level,
+        // and stops where the ground rises to the water level (the real shore). Outside the lake's own pixels it spreads only
+        // over shallow ground (within 3 blocks of the level) and only near the lake mask (LAKE_NEAR blocks, v21).
+        // Spreading "however far below" ran the lake down the next valley where the basin's rim is broken; spreading over
+        // shallow ground up to 48 blocks away ran lake water along the hillside beside an outlet stream (a "fork" that just
+        // ends, held up by a dam), and could leave a ring of low dry ground that let the spill step drain the whole lake.
+        // Stream columns are not changed here: they are joined to the lake after the spill step, at the lake's final level
+        // (see "stream mouths").
         {
             final int FLOOD_REACH = 48;
             int[] dist = new int[n];
             int[] srcLvl = new int[n];
             Arrays.fill(dist, -1);
             int[] fq = new int[n];
-            int fh = 0, ft = 0, fSeeds = 0;
+            int fh = 0, ft = 0, fSeeds = 0, flooded = 0;
             for (int idx = 0; idx < n; idx++) {
                 if (lakeCol[idx]) { fSeeds++; dist[idx] = 0; srcLvl[idx] = waterY[idx / W][idx % W]; fq[ft++] = idx; }
             }
@@ -590,33 +656,25 @@ public final class RiverCarver {
                 for (int j : nb) {
                     if (j < 0 || dist[j] >= 0) continue;
                     int jr = j / W, jc = j % W;
-                    // A stream column that sits below the lake level where it meets the lake is the "low point" between
-                    // stream and lake: raise it to the lake level (it keeps its carved bed). Streams already at or above
-                    // the lake level are left alone.
                     boolean river = waterY[jr][jc] != NONE;
-                    if (river && waterY[jr][jc] >= srcLvl[idx]) continue;
                     // Sea floor, or the shore has been reached: ground at the water level is the shore, left dry and flush with
                     // the water (flooding it and digging a 1-block bed made every shore a 2-block drop from land to floor).
-                    // (A stream column on ground at the lake level is still raised: otherwise the stream dips a block
-                    // below the lake right where it meets it.)
-                    if (ytop[j] < 60 || ytop[j] > srcLvl[idx] || (!river && ytop[j] == srcLvl[idx])) continue;
-                    // Only a stream on ground within a block of the lake level is raised to it (the dip where it meets the
-                    // lake). A stream running downhill away from the lake keeps its own level: raising every stream column
-                    // below the lake level perched it up to 48 blocks along its valley, walled in with dirt.
-                    if (river && srcLvl[idx] - ytop[j] > 1) continue;
-                    // Outside the lake's own pixels the water only spreads over shallow ground (within 3 blocks of the level).
-                    // Where the basin's rim is broken, spreading "however far below" ran the lake out down the next valley,
-                    // held up by walls, whenever the lake crossed a tile border (the spill-level fix skips those lakes).
-                    if (!ownLakeCol[j] && !river && srcLvl[idx] - ytop[j] > 3) continue;
+                    if (ytop[j] < 60 || ytop[j] >= srcLvl[idx]) continue;
+                    if (!ownLakeCol[j] && srcLvl[idx] - ytop[j] > 3) continue;
+                    if (lakeDist[j] > LAKE_NEAR) continue;
+                    // Not across a stream either: that flooded the ground on its far side, and once the spill step lowered
+                    // the lake those patches were left as puddles beside the stream.
+                    if (river) continue;
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
+                    fq[ft++] = j;
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
-                    if (!river) lakeCol[j] = true;
+                    lakeCol[j] = true;
+                    flooded++;
                     any = true;
-                    fq[ft++] = j;
                 }
             }
-            if (fSeeds > 0) LOG.info("[Terra] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, ft - fSeeds);
+            if (fSeeds > 0) LOG.info("[Terra] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, flooded);
         }
 
         // ---- connect streams to lakes: a stream that starts or ends a few blocks from a lake, with dry ground in
@@ -728,7 +786,7 @@ public final class RiverCarver {
                     int ground = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                     if (!isW && wet * 2 > tot && lvl != NONE && ground - lvl <= 0) {   // only land level with the water: no new banks
                         flipToWater[idx] = true; flipLvl[idx] = lvl;
-                    } else if (isW && wet * 2 < tot && waterY[r][c] - ground <= 2) {
+                    } else if (isW && wet * 2 < tot && waterY[r][c] - ground <= 2 && !besideStream(idx, H, W, waterY, lakeCol)) {
                         flipToDry[idx] = true; flipLvl[idx] = waterY[r][c];
                     }
                 }
@@ -859,6 +917,118 @@ public final class RiverCarver {
                     }
                 }
             }
+        }
+
+        // ---- puddles (v21): lake water entirely outside the lake's own pixels (shallow ground in the one-pixel rim) that
+        // is not connected to its lake (cut off by a stream, or left behind when the spill step lowered the lake) and sits
+        // 2+ blocks above a stream beside it would pour into the stream from the side. It is left dry.
+        {
+            boolean[] seenL = new boolean[n];
+            int[] lq = new int[n];
+            int removed = 0;
+            for (int s0 = 0; s0 < n; s0++) {
+                if (!lakeCol[s0] || seenL[s0]) continue;
+                int lh = 0, lt = 0;
+                lq[lt++] = s0; seenL[s0] = true;
+                boolean own = false, spills = false, edge = false;
+                while (lh < lt) {
+                    int idx = lq[lh++];
+                    if (ownLakeCol[idx]) own = true;
+                    int r = idx / W, c = idx % W;
+                    if (r == 0 || c == 0 || r == H - 1 || c == W - 1) edge = true;   // decided the same way in both tiles
+                    int lvl = waterY[r][c];
+                    int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                    for (int j : nb) {
+                        if (j < 0) continue;
+                        if (lakeCol[j]) { if (!seenL[j]) { seenL[j] = true; lq[lt++] = j; } continue; }
+                        int wj = waterY[j / W][j % W];
+                        if (wj != NONE && wj <= lvl - 2) spills = true;
+                    }
+                }
+                if (own || edge || !spills) continue;
+                for (int k = 0; k < lt; k++) {
+                    int idx = lq[k];
+                    lakeCol[idx] = false;
+                    waterY[idx / W][idx % W] = NONE;
+                    removed++;
+                }
+            }
+            if (removed > 0) LOG.info("[Terra] tile x={} z={}: {} columns of cut-off lake water beside a lower stream left dry", j1, i1, removed);
+        }
+
+        // ---- stream mouths (v21): where a stream meets a lake, done after the spill step so it uses the lake's final level.
+        // Stream columns touching the lake (and, through each other, the rest of the stream's mouth) whose water is below
+        // the lake level are raised: to the lake's level within LAKE_NEAR of the lake mask, then one block lower per block
+        // (a stream leaving the lake steps down to its own level). Only where the water ends up at most a block above the
+        // column's ground and no bank or neighbouring stream water is more than a block below it (no new step, no wall).
+        // They keep their carved bed. Without this the stream dips below the lake right where it meets it; where the
+        // stream is cut much lower than the lake, the step stays at the lake's edge (the lake spills into the stream).
+        // Before, the raised mouth ended in a single 3-4 block drop into a deep pool, and it was raised before the spill
+        // step, so a lowered lake left its outlet standing above both the lake and the stream below.
+        {
+            // Target levels for the stream columns near each lake, decided for the whole mouth at once (across a stream
+            // several blocks wide, raising columns one at a time made each wait for its still-low neighbour).
+            int[] tgt = new int[n];
+            int[] cap = new int[n];
+            Arrays.fill(cap, Integer.MAX_VALUE);
+            boolean[] cand = new boolean[n];
+            int raised = 0, stepped = 0;
+            for (int round = 0; round < 24; round++) {
+                Arrays.fill(cand, false);
+                // highest level reachable from a lake through stream columns: the lake's level while within LAKE_NEAR of
+                // the lake mask on ground at most a block below it, otherwise one block lower per block
+                for (int pass = 0; pass < 64; pass++) {
+                    boolean changed = false;
+                    for (int r = 0; r < H; r++) {
+                        for (int c = 0; c < W; c++) {
+                            int idx = r * W + c;
+                            if (lakeCol[idx] || waterY[r][c] == NONE || ytop[idx] < 60) continue;
+                            int best = Integer.MIN_VALUE;
+                            int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                            for (int q : nb) {
+                                if (q < 0) continue;
+                                int src;
+                                if (lakeCol[q]) src = waterY[q / W][q % W];
+                                else if (cand[q]) src = tgt[q];
+                                else continue;
+                                int t = (lakeDist[idx] <= LAKE_NEAR && src - ytop[idx] <= 1) ? src : src - 1;
+                                if (t > best) best = t;
+                            }
+                            best = Math.min(best, cap[idx]);
+                            if (best == Integer.MIN_VALUE || best <= waterY[r][c] || best - ytop[idx] > 1) continue;
+                            if (!cand[idx] || best > tgt[idx]) { cand[idx] = true; tgt[idx] = best; changed = true; }
+                        }
+                    }
+                    if (!changed) break;
+                }
+                // each raised column must be held in: every 4-neighbour is lake water, or a raised column, stream water or
+                // dry ground at most a block below it. One that is not gets a lower cap and the targets are worked out again.
+                boolean blocked = false;
+                for (int idx = 0; idx < n; idx++) {
+                    if (!cand[idx]) continue;
+                    int r = idx / W, c = idx % W;
+                    int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                    for (int q : nb) {
+                        if (q < 0 || lakeCol[q]) continue;
+                        int qr = q / W, qc = q % W;
+                        int h = cand[q] ? tgt[q] : waterY[qr][qc] != NONE ? waterY[qr][qc] : surfaceY[qr][qc] != NONE ? surfaceY[qr][qc] : ytop[q];
+                        if (h < tgt[idx] - 1) { cap[idx] = tgt[idx] - 1; blocked = true; break; }
+                    }
+                }
+                if (!blocked) break;
+            }
+            for (int idx = 0; idx < n; idx++) {
+                if (!cand[idx]) continue;
+                int r = idx / W, c = idx % W;
+                boolean atLake = false;
+                for (int q : new int[] { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 })
+                    if (q >= 0 && lakeCol[q] && waterY[q / W][q % W] == tgt[idx]) atLake = true;
+                if (atLake) raised++; else stepped++;
+                waterY[r][c] = (short) tgt[idx];
+                if (surfaceY[r][c] == NONE || surfaceY[r][c] >= tgt[idx]) surfaceY[r][c] = (short) Math.min(ytop[idx], tgt[idx] - 1);
+                any = true;
+            }
+            if (raised + stepped > 0) LOG.info("[Terra] stream mouths tile x={} z={}: {} stream columns raised (next to the lake {}, further along {})", j1, i1, raised + stepped, raised, stepped);
         }
 
         // ---- lake bed: from the shore to the middle the bed should only go down, never come back up. A column
