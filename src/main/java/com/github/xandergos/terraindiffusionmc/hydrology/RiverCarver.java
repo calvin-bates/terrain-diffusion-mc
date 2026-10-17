@@ -109,18 +109,25 @@ public final class RiverCarver {
     private static final int LAKE_LINK = 8;
 
     /** Rasterises one flow segment (pixel k to its downstream pixel q) into the per-column channel score. */
-    private static void drawSegment(RiverService.Region reg, int k, int q, byte cls, int scale, int i1, int j1, int H, int W,
-                                    float[] score, float[] sA, byte[] cA, float[] cpx, float[] cpz, float[] pt) {
-        float sp = reg.surface[k], sq = reg.surface[q];
-        float hw = halfWidth(cls, scale);
-        float reach = hw + BANK;
+    private static void drawSegment(RiverService.Region reg, int k, int q, byte cls, float widen, int scale, int i1, int j1,
+                                    int H, int W, float[] score, float[] sA, byte[] cA, float[] wA, float[] cpx, float[] cpz,
+                                    float[] pt) {
         // Centre line smoothed with a 1-2-1 filter along the flow direction so the D8
         // staircase turns into gentle curves (all branches of a confluence still meet).
         smoothPoint(reg, k, scale, pt);
         float ax = pt[0], az = pt[1];
         smoothPoint(reg, q, scale, pt);
         float bx = pt[0], bz = pt[1];
+        drawCapsule(ax, az, bx, bz, reg.surface[k], reg.surface[q], cls, widen, scale, i1, j1, H, W,
+                score, sA, cA, wA, cpx, cpz);
+    }
 
+    /** Rasterises a channel centre line from (ax, az) to (bx, bz), in block coordinates, into the channel score. */
+    private static void drawCapsule(float ax, float az, float bx, float bz, float sp, float sq, byte cls, float widen,
+                                    int scale, int i1, int j1, int H, int W, float[] score, float[] sA, byte[] cA,
+                                    float[] wA, float[] cpx, float[] cpz) {
+        float hw = halfWidth(cls, scale) * widen;
+        float reach = hw + BANK;
         int cMin = Math.max(0, (int) Math.floor(Math.min(ax, bx) - reach - j1));
         int cMax = Math.min(W - 1, (int) Math.ceil(Math.max(ax, bx) + reach - j1));
         int rMin = Math.max(0, (int) Math.floor(Math.min(az, bz) - reach - i1));
@@ -143,9 +150,127 @@ public final class RiverCarver {
                     score[idx] = sc;
                     sA[idx] = sp + (sq - sp) * t;
                     cA[idx] = cls;
+                    wA[idx] = widen;
                     cpx[idx] = ax + t * dx;   // nearest point on the centre line: identifies the channel's cross-section
                     cpz[idx] = az + t * dz;
                 }
+            }
+        }
+    }
+
+    // ---- River mouths (v27) ----------------------------------------------------------------------------------------
+    // Estuaries: over the last ESTUARY pixels before the sea a river widens into a funnel and deepens; the widened
+    // channel is cut below sea level near the coast, where it fills with sea water. Deltas: a main river that crosses
+    // low, flat ground to the sea splits DELTA_START pixels from the coast into two extra distributaries fanning out to
+    // the shore. Both come from the region data only, so tiles agree.
+
+    /** Y of the sea's top water block (sea level 63). */
+    private static final int SEA_SURFACE_Y = 62;
+    /** Pixels upstream of the sea over which a river widens into an estuary (900 m). */
+    static final int ESTUARY = 30;
+    /** Widest estuary, as a multiple of the river's normal width, by class (stream, river, main). */
+    private static final float[] ESTUARY_WIDEN = {1f, 1.5f, 2.5f, 3.5f};
+    /** Extra depth (blocks) at the mouth of the widest estuary. */
+    private static final int ESTUARY_DEEPEN = 2;
+    /** A delta splits this many pixels (900 m) upstream of the sea. */
+    static final int DELTA_START = 30;
+    /** Ground on a delta (metres) stays below this; anything higher is a valley, which makes an estuary instead. */
+    private static final float DELTA_MAX_M = 10f;
+    private static final int DELTA_MAX_STEPS = 2 * DELTA_START + 10;
+
+    /** Steps along the flow from pixel k to the first sea pixel (elevation at or below 0), or -1 within {@code limit}. */
+    static int stepsToSea(RiverService.Region reg, int k, int limit) {
+        if (reg.elev == null) return -1;
+        int cur = k;
+        for (int s = 0; s <= limit; s++) {
+            if (reg.elev[cur] <= 0f) return s;
+            int d = reg.downstream[cur];
+            if (d < 0) return -1;
+            cur = d;
+        }
+        return -1;
+    }
+
+    /** True if the flow path from k to the sea stays on low ground (a delta plain rather than a valley). */
+    private static boolean lowPathToSea(RiverService.Region reg, int k) {
+        int cur = k;
+        for (int s = 0; s <= DELTA_START + 1; s++) {
+            if (reg.elev[cur] <= 0f) return true;
+            if (reg.elev[cur] > DELTA_MAX_M) return false;
+            int d = reg.downstream[cur];
+            if (d < 0) return false;
+            cur = d;
+        }
+        return false;
+    }
+
+    /** Width multiplier for a river segment starting at pixel k (1 away from the sea). */
+    private static float estuaryWiden(RiverService.Region reg, int k, byte cls) {
+        int s = stepsToSea(reg, k, ESTUARY);
+        if (s < 0) return 1f;
+        float e = 1f - (float) s / ESTUARY;
+        float max = ESTUARY_WIDEN[cls];
+        // A delta's main channel stays narrow: the water spreads over the distributaries instead.
+        if (cls >= RiverMap.RIVER && s <= DELTA_START && lowPathToSea(reg, k)) max = 1.3f;
+        return 1f + (max - 1f) * e * e;
+    }
+
+    /** Depth of a channel column, including the estuary's extra depth. */
+    private static int columnDepth(byte cls, float sc, float widen, int scale) {
+        int d = channelDepth(cls, sc, halfWidth(cls, scale) * widen);
+        float max = ESTUARY_WIDEN[cls];
+        if (widen > 1.01f && max > 1f) d += Math.round(ESTUARY_DEEPEN * Math.min(1f, (widen - 1f) / (max - 1f)));
+        return d;
+    }
+
+    /** True if pixel k is where a river's delta begins. */
+    private static boolean isDeltaHead(RiverService.Region reg, int k) {
+        byte c = reg.cls[k];
+        return (c == RiverMap.MAIN || c == RiverMap.RIVER) && reg.elev != null && reg.elev[k] > 0f
+                && stepsToSea(reg, k, DELTA_START) == DELTA_START && lowPathToSea(reg, k);
+    }
+
+    /**
+     * Draws a delta's two distributaries from pixel k: they leave at about +-30 degrees from the flow, wander a little
+     * and run until they reach the sea (or high ground, or a length limit), widening toward their mouths. A main
+     * river's distributaries are river-sized, a river's are streams.
+     */
+    private static void drawDelta(RiverService.Region reg, int k, int scale, int i1, int j1, int H, int W,
+                                  float[] score, float[] sA, byte[] cA, float[] wA, float[] cpx, float[] cpz) {
+        int kr = k / reg.width, kc = k % reg.width;
+        // Mean flow direction over the delta's first half.
+        int cur = k;
+        for (int s = 0; s < DELTA_START / 2; s++) {
+            int d = reg.downstream[cur];
+            if (d < 0) break;
+            cur = d;
+        }
+        float fx = cur % reg.width - kc, fz = cur / reg.width - kr;
+        float fl = (float) Math.sqrt(fx * fx + fz * fz);
+        if (fl < 1f) return;
+        fx /= fl; fz /= fl;
+        long h = (long) (reg.i0 + kr) * 73856093L ^ (long) (reg.j0 + kc) * 19349663L;
+        byte branch = reg.cls[k] == RiverMap.MAIN ? RiverMap.RIVER : RiverMap.STREAM;
+        for (int side = -1; side <= 1; side += 2) {
+            double ang = side * (0.5 + 0.2 * latticeHash((int) h, side));
+            float px = reg.j0 + kc + 0.5f, pz = reg.i0 + kr + 0.5f;   // native pixel coordinates
+            float sp = reg.surface[k];
+            double heading = Math.atan2(fz, fx) + ang;
+            for (int st = 0; st < DELTA_MAX_STEPS; st++) {
+                // Wander gently back and forth and bend slowly back toward the main flow.
+                heading += 0.25 * (latticeHash((int) h + st * 31, side) - 0.5) - 0.006 * side;
+                float nx = px + (float) Math.cos(heading), nz = pz + (float) Math.sin(heading);
+                int q = reg.index((int) Math.floor(nz), (int) Math.floor(nx));
+                if (q < 0) break;
+                float e = reg.elev[q];
+                if (e > DELTA_MAX_M) break;                                   // blocked by higher ground
+                float t = Math.min(1f, (float) st / DELTA_START);
+                float widen = 1f + 0.6f * t * t;
+                float sq = Math.max(0f, Math.min(sp, reg.surface[q]));
+                drawCapsule(px * scale, pz * scale, nx * scale, nz * scale, sp, sq, branch, widen, scale,
+                        i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
+                px = nx; pz = nz; sp = sq;
+                if (e <= 0f) break;                                           // reached the sea
             }
         }
     }
@@ -234,7 +359,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v26 (smooth lake-floor depth; no caves or ravines at inland water)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v27 (estuaries and deltas at river mouths)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -250,9 +375,11 @@ public final class RiverCarver {
         float[] sA = new float[n];
         float[] cpx = new float[n], cpz = new float[n];
         byte[] cA = new byte[n];
+        float[] wA = new float[n];
+        Arrays.fill(wA, 1f);
 
         // ---- rivers: rasterise flow segments (pixel centre -> downstream pixel centre)
-        float maxReach = halfWidth(RiverMap.MAIN, scale) + BANK;
+        float maxReach = halfWidth(RiverMap.MAIN, scale) * ESTUARY_WIDEN[RiverMap.MAIN] + BANK;
         int pad = (int) Math.ceil(maxReach / scale) + 1;
         int pi0 = Math.floorDiv(i1, scale) - pad, pi1 = Math.floorDiv(i1 + H - 1, scale) + pad;
         int pj0 = Math.floorDiv(j1, scale) - pad, pj1 = Math.floorDiv(j1 + W - 1, scale) + pad;
@@ -338,14 +465,14 @@ public final class RiverCarver {
                     if (cq < RiverMap.STREAM || cq > RiverMap.MAIN) continue;
                     int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
                     int dr = qr - kr, dc = qc - kc;
-                    drawSegment(reg, k, q0, cq, scale, i1, j1, H, W, score, sA, cA, cpx, cpz, pt);
+                    drawSegment(reg, k, q0, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz, pt);
                     int curR = kr, curC = kc;
                     for (int st = 0; st < LAKE_LINK; st++) {
                         int prR = curR - dr, prC = curC - dc;
                         if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
                         int prev = prR * reg.width + prC;
                         if (reg.cls[prev] != RiverMap.LAKE) break;
-                        drawSegment(reg, prev, curR * reg.width + curC, cq, scale, i1, j1, H, W, score, sA, cA, cpx, cpz, pt);
+                        drawSegment(reg, prev, curR * reg.width + curC, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz, pt);
                         curR = prR; curC = prC;
                     }
                     continue;
@@ -353,12 +480,32 @@ public final class RiverCarver {
                     continue;
                 }
                 int segK = k, q = q0;
+                float widen = estuaryWiden(reg, k, cls);
                 for (int seg = 0; seg <= LAKE_LINK; seg++) {
-                    drawSegment(reg, segK, q, cls, scale, i1, j1, H, W, score, sA, cA, cpx, cpz, pt);
+                    drawSegment(reg, segK, q, cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz, pt);
                     if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
                     segK = q;
                     q = reg.downstream[segK];
                     if (q < 0) break;
+                }
+            }
+        }
+
+        // ---- deltas: distributaries can reach this tile from a delta head up to DELTA_MAX_STEPS pixels away.
+        {
+            int dpad = pad + DELTA_MAX_STEPS + 2;
+            int di0 = Math.floorDiv(i1, scale) - dpad, di1 = Math.floorDiv(i1 + H - 1, scale) + dpad;
+            int dj0 = Math.floorDiv(j1, scale) - dpad, dj1 = Math.floorDiv(j1 + W - 1, scale) + dpad;
+            RiverService.Region dreg = null;
+            int dRi = Integer.MIN_VALUE, dRj = Integer.MIN_VALUE;
+            for (int pi = di0; pi <= di1; pi++) {
+                for (int pj = dj0; pj <= dj1; pj++) {
+                    int ri = ownerIndex(pi, prefRi, regionSize, trust);
+                    int rj = ownerIndex(pj, prefRj, regionSize, trust);
+                    if (dreg == null || ri != dRi || rj != dRj) { dreg = regions.get(ri, rj); dRi = ri; dRj = rj; }
+                    int k = dreg.index(pi, pj);
+                    if (k < 0 || dreg.cls[k] < RiverMap.RIVER || dreg.cls[k] > RiverMap.MAIN || !isDeltaHead(dreg, k)) continue;
+                    drawDelta(dreg, k, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
                 }
             }
         }
@@ -401,8 +548,10 @@ public final class RiverCarver {
                 // The water's top block is level with the lowest ground beside the channel, so the stream sits flush with its
                 // banks. (The hydrology surface is a coarse estimate; letting the water sag below the ground with it left a
                 // one-block bank along almost every stream.) ys is unused now but kept for reference.
-                int waterTop = low;
-                int bed = waterTop - channelDepth(cA[idx], sc, halfWidth(cA[idx], scale));
+                // Near the coast the lowest ground can be the sea floor; river water never sits below the sea's surface
+                // (Y 62), or a river mouth became a deep trench cut down to the sea floor.
+                int waterTop = Math.max(low, Math.min(top, SEA_SURFACE_Y));
+                int bed = waterTop - columnDepth(cA[idx], sc, wA[idx], scale);
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
                 chanWater[idx] = waterTop;
@@ -436,7 +585,7 @@ public final class RiverCarver {
                         }
                     }
                     if (count < 2 || top - minLvl > 3) continue;
-                    int bed = minLvl - channelDepth(cA[idx], sc, halfWidth(cA[idx], scale));
+                    int bed = minLvl - columnDepth(cA[idx], sc, wA[idx], scale);
                     surfaceY[r][c] = (short) Math.min(top, bed);
                     waterY[r][c] = (short) minLvl;
                     chanWater[idx] = minLvl;
@@ -468,7 +617,7 @@ public final class RiverCarver {
                     if (lim < chanWater[idx]) {
                         chanWater[idx] = lim;
                         waterY[r][c] = (short) lim;
-                        surfaceY[r][c] = (short) Math.min(ytop[idx], lim - channelDepth(cA[idx], score[idx], halfWidth(cA[idx], scale)));
+                        surfaceY[r][c] = (short) Math.min(ytop[idx], lim - columnDepth(cA[idx], score[idx], wA[idx], scale));
                         changed = true;
                     }
                 }
@@ -523,7 +672,7 @@ public final class RiverCarver {
                 int r = idx / W, c = idx % W;
                 chanWater[idx] = lowerTo[idx];
                 waterY[r][c] = (short) lowerTo[idx];
-                surfaceY[r][c] = (short) Math.min(ytop[idx], lowerTo[idx] - channelDepth(cA[idx], score[idx], halfWidth(cA[idx], scale)));
+                surfaceY[r][c] = (short) Math.min(ytop[idx], lowerTo[idx] - columnDepth(cA[idx], score[idx], wA[idx], scale));
             }
             if (dropCount > 0) {
                 // Distance (in blocks) from the remaining water, used as the dropped columns' bank score.
