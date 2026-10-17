@@ -39,7 +39,7 @@ Use the `-cuda` build only if you are on Linux, or have an NVIDIA GPU and prefer
 
 1. Download the mod jar from [Releases](https://github.com/xandergos/terrain-diffusion-mc/releases) for your Minecraft version and place it in your Minecraft `mods/` folder. Make sure the Minecraft version matches.
 2. Launch Minecraft, at least once online to download the models (~2.5GB).
-3. Create a world, and select the **Terrain Diffusion** world type. Click **Customize** to set the `World Scale` (see [Per-world settings](#per-world-settings) below).
+3. Create a world. **Terra** is already selected as the world type; when you press **Create New World** it asks for the `World Scale` with six buttons (see [Per-world settings](#per-world-settings) below).
 4. The mod will search for a land spawn point near the world origin automatically. If the area around (0, 0) is entirely ocean, it may take a moment to find land. Use `/terra-explore` (see below) to scout the world further.
 
 ## Exploring the World
@@ -82,9 +82,7 @@ spawn_search.max_size=128
 
 ### Per-world settings
 
-For Terrain Diffusion worlds, click **Customize** in world creation and set:
-
-- `World Scale` (integer `1..6`)
+For Terra worlds, pressing **Create New World** opens a screen with six buttons, one per `World Scale` (`1..6`); each shows how many real-world metres one block covers.
 
 This value is saved with the world save and affects:
 
@@ -92,6 +90,10 @@ This value is saved with the world save and affects:
 - world max height for newly created worlds (assumes tallest point is 10000 real-world meters)
 - 2 is recommended for a good balance of scale and playability. Use 1 for smaller, more compressed worlds.
 - Lower values put more stress on the GPU (Terrain Diffusion runs more often), while higher values put more stress on the CPU (larger world height). Most modern GPUs will be bottlenecked by the CPU around scale 2 or 3.
+
+### Axolotls
+
+Axolotls live in a few alpine lakes: lake water at least 2000 real-world metres up (the Y level this needs depends on the world scale: about Y 129 at scale 1, Y 196 at scale 2, Y 463 at scale 6), in rare "axolotl chunks" (like slime chunks, one in 20). `/terra-column` says whether you are standing in one.
 
 ## Common Issues
 

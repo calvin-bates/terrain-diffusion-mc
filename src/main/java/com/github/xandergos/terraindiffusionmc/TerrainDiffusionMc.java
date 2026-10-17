@@ -4,6 +4,7 @@ import com.github.xandergos.terraindiffusionmc.explorer.ExplorerServer;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
 import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
+import com.github.xandergos.terraindiffusionmc.world.AxolotlLakes;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionSurfaceLevelFunction;
@@ -37,6 +38,8 @@ public class TerrainDiffusionMc implements ModInitializer {
         Registry.register(BuiltInRegistries.BIOME_SOURCE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionBiomeSource.CODEC);
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionDensityFunction.CODEC);
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion_surface"), TerrainDiffusionSurfaceLevelFunction.CODEC);
+
+        AxolotlLakes.registerSpawns();
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
@@ -167,6 +170,10 @@ public class TerrainDiffusionMc implements ModInitializer {
                 String line = row.toString();
                 ctx.getSource().sendSuccess(() -> Component.literal(line), false);
             }
+            final boolean axolotlChunk = AxolotlLakes.isAxolotlChunk(p.getX() >> 4, p.getZ() >> 4, level.getSeed());
+            final int axolotlMinY = AxolotlLakes.minY();
+            ctx.getSource().sendSuccess(() -> Component.literal("Axolotls: this chunk is " + (axolotlChunk ? "" : "not ")
+                    + "an axolotl chunk; they spawn in lakes in those chunks from Y " + axolotlMinY + " up"), false);
         } catch (Exception e) {
             LOG.error("terra-column failed", e);
             ctx.getSource().sendFailure(Component.literal("terra-column failed: " + e));

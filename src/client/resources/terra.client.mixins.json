@@ -4,7 +4,8 @@
   "package": "com.github.xandergos.terraindiffusionmc.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "CreateWorldScreenWorldTabMixin"
+    "CreateWorldScreenInvoker",
+    "CreateWorldScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1
