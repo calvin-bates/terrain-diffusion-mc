@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -37,6 +38,15 @@ public final class SyntheticMapFactory {
     // Per-seed noise instances (channels 0..4)
     private final FastNoiseLite[] noises = new FastNoiseLite[N_CHANNELS];
 
+    /**
+     * Archipelago zones: where {@link #archipelagoMask} is high, the elevation conditioning is pulled toward a
+     * shallow sea broken up by island-sized highs ({@link #archipelagoIslands}), so the model draws island-strewn
+     * seas like the Aegean or Indonesia instead of open ocean or unbroken coast. Units are coarse pixels (7.7 km).
+     */
+    private final FastNoiseLite archipelagoMask;
+    private final FastNoiseLite archipelagoIslands;
+    private final float archipelagoStrength;
+
     private static float[][] cachedDataQuantiles;
     private static float cachedATempStd;
     private static float cachedBTempStd;
@@ -65,6 +75,38 @@ public final class SyntheticMapFactory {
             noises[ch] = fnl;
             this.noiseQuantiles[ch] = buildNoiseQuantiles(fnl, 64, 1e-4f);
         }
+
+        archipelagoMask = new FastNoiseLite((int) ((worldSeed + 11) & 0x7FFFFFFFL));
+        archipelagoMask.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        archipelagoMask.SetFrequency(BASE_FREQUENCY / 3f);          // ~460 km wavelength
+        archipelagoMask.SetFractalType(FastNoiseLite.FractalType.FBm);
+        archipelagoMask.SetFractalOctaves(2);
+        archipelagoIslands = new FastNoiseLite((int) ((worldSeed + 12) & 0x7FFFFFFFL));
+        archipelagoIslands.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        archipelagoIslands.SetFrequency(BASE_FREQUENCY * 3f);       // ~50 km wavelength: island groups
+        archipelagoIslands.SetFractalType(FastNoiseLite.FractalType.FBm);
+        archipelagoIslands.SetFractalOctaves(3);
+        archipelagoStrength = TerrainDiffusionConfig.archipelagoStrength();
+    }
+
+    /**
+     * Pulls lowland and ocean conditioning toward an island-strewn shallow sea inside archipelago zones.
+     * Highlands (above ~800 m) are left alone so continents keep their mountains.
+     */
+    private float archipelago(float elev, float x, float y) {
+        if (archipelagoStrength <= 0f) return elev;
+        float zone = smoothstep(0.25f, 0.5f, archipelagoMask.GetNoise(x, y));
+        if (zone <= 0f) return elev;
+        float lowland = 1f - smoothstep(150f, 800f, elev);
+        float k = Math.min(1f, 0.85f * archipelagoStrength) * zone * lowland;
+        if (k <= 0f) return elev;
+        float target = -350f + 1100f * archipelagoIslands.GetNoise(x, y);   // above ~0.32 is an island
+        return elev + (target - elev) * k;
+    }
+
+    private static float smoothstep(float e0, float e1, float v) {
+        float t = Math.max(0f, Math.min(1f, (v - e0) / (e1 - e0)));
+        return t * t * (3f - 2f * t);
     }
 
     private static synchronized void loadDataIfNeeded() {
@@ -154,7 +196,9 @@ public final class SyntheticMapFactory {
             for (int r = 0; r < H; r++) {
                 for (int c = 0; c < W; c++) {
                     float noiseVal = fnl.GetNoise(x1 + c, y1 + r);
-                    rawChannels[ch][k++] = interp(noiseVal, nq, dq);
+                    float v = interp(noiseVal, nq, dq);
+                    if (ch == 0) v = archipelago(v, x1 + c, y1 + r);
+                    rawChannels[ch][k++] = v;
                 }
             }
         }

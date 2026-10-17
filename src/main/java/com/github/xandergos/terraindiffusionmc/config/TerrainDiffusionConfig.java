@@ -107,6 +107,16 @@ public final class TerrainDiffusionConfig {
     public static int lakeMinArea() { return readInt("rivers.lake_min_area", 150); }
     public static float lakeMinDepth() { return readFloat("rivers.lake_min_depth", 2f); }
 
+    /** Tectonic sea-floor features and oceanic islands (ridges, trenches, island arcs, hotspot chains, atolls). */
+    public static boolean oceanFeatures() { return readBoolean("oceans.features", true); }
+    /**
+     * How strongly the continent conditioning is pushed toward archipelagos: shallow seas scattered with islands.
+     * 0 turns it off (the model's own coastlines only); 1 is the default; up to 2 for island-heavy worlds.
+     */
+    public static float archipelagoStrength() {
+        return Math.max(0f, Math.min(2f, readFloat("oceans.archipelago_strength", 1f)));
+    }
+
     private static void loadDefaults() {
         boolean loadedFromResource = false;
         try (InputStream in = TerrainDiffusionConfig.class.getResourceAsStream(RESOURCE_PATH)) {

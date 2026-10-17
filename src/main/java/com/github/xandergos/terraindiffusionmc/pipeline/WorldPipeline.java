@@ -1,5 +1,7 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+
 import com.github.xandergos.terraindiffusionmc.infinitetensor.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +71,7 @@ public final class WorldPipeline implements AutoCloseable {
     private final OnnxModel decoderModel;
     private final boolean ownModels;
     private volatile SyntheticMapFactory syntheticMapFactory;
+    private volatile OceanFeatures oceanFeatures;
     private volatile long seed;
 
     private final MemoryTileStore tileStore;
@@ -86,6 +89,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.decoderModel = models.getDecoderModel();
         this.ownModels = false;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
+        this.oceanFeatures = new OceanFeatures(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
@@ -101,6 +105,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath("decoder_model.onnx"), "decoder");
         this.ownModels = true;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
+        this.oceanFeatures = new OceanFeatures(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
@@ -113,6 +118,7 @@ public final class WorldPipeline implements AutoCloseable {
         if (s == this.seed) return;
         this.seed = s;
         this.syntheticMapFactory = new SyntheticMapFactory(s);
+        this.oceanFeatures = new OceanFeatures(s);
         tileStore.clearAllCaches();
     }
 
@@ -455,8 +461,52 @@ public final class WorldPipeline implements AutoCloseable {
     public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate) {
         float[] elevFlat = computeElev(i1, j1, i2, j2);
         int H = i2 - i1, W = j2 - j1;
+        if (TerrainDiffusionConfig.oceanFeatures()) {
+            applyOceanFeatures(elevFlat, i1, j1, i2, j2);
+        }
         float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
         return new float[][]{elevFlat, climate};
+    }
+
+    // =========================================================================
+    // Ocean features
+    // =========================================================================
+
+    /**
+     * Stamps tectonic sea-floor relief and oceanic islands into the elevation (see {@link OceanFeatures}). Runs
+     * before climate so island peaks get the lapse-rate cooling of any other high ground.
+     */
+    private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2) {
+        boolean anyOcean = false;
+        for (float v : elev) if (v < -30f) { anyOcean = true; break; }
+        if (!anyOcean) return;
+
+        int S = 32 * LATENT_COMPRESSION;   // native pixels per coarse pixel
+        // Volcano centres can lie a footprint away from the request (twice that through the plate warp).
+        int padPx = (int) Math.ceil(2 * OceanFeatures.MAX_VOLCANO_REACH);
+        int ci0 = Math.floorDiv(i1 - padPx, S) - 1, cj0 = Math.floorDiv(j1 - padPx, S) - 1;
+        int ci1 = -Math.floorDiv(-(i2 + padPx), S) + 1, cj1 = -Math.floorDiv(-(j2 + padPx), S) + 1;
+        FloatTensor slice = coarse.getSlice(new int[]{0, ci0, cj0}, new int[]{7, ci1, cj1});
+        int cH = ci1 - ci0, cW = cj1 - cj0, n = cH * cW;
+        float[] cElev = new float[n], cTemp = new float[n];
+        for (int px = 0; px < n; px++) {
+            float w = slice.data[6 * n + px];
+            float e = w > 1e-6f ? slice.data[px] / w : 0f;
+            cElev[px] = Math.signum(e) * e * e;                      // undo the signed square root
+            cTemp[px] = w > 1e-6f ? slice.data[2 * n + px] / w : 15f;
+        }
+        float[][] elev2 = to2D(cElev, cH, cW), temp2 = to2D(cTemp, cH, cW);
+        OceanFeatures.CoarseField field = new OceanFeatures.CoarseField() {
+            @Override public float elevation(double i, double j) { return sample(elev2, i, j); }
+            @Override public float temperature(double i, double j) { return sample(temp2, i, j); }
+
+            private float sample(float[][] a, double i, double j) {
+                // Coarse pixel k covers native rows [k*S, (k+1)*S), with its centre at (k + 0.5) * S.
+                float gy = (float) (i / S - 0.5 - ci0), gx = (float) (j / S - 0.5 - cj0);
+                return bilinearSample2D(a, cH, cW, gy, gx);
+            }
+        };
+        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, field);
     }
 
     // =========================================================================
