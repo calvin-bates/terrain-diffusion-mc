@@ -6,6 +6,7 @@
   "mixins": [
     "AxolotlMixin",
     "BiomeMixin",
+    "ChunkGeneratorMixin",
     "MinecraftServerMixin",
     "NoiseBasedChunkGeneratorMixin",
     "StructureMixin",
