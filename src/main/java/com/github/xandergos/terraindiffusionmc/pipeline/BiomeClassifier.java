@@ -46,6 +46,8 @@ public final class BiomeClassifier {
     /** Warm water shallower than this (metres) is reef water (warm ocean, with coral); deeper warm water is lukewarm. */
     static final float REEF_DEPTH_M = 80f;
     static final short FOREST_SPARSE = 108, TAIGA_SPARSE = 115, SNOWY_TAIGA_SPARSE = 116;
+    /** Shore biomes, assigned by {@link CoastShaper} after classification. */
+    static final short BEACH = 130, SNOWY_BEACH = 131, STONY_SHORE = 132, MANGROVE_SWAMP = 134;
 
     /**
      * Classify biomes for a grid of pixels.

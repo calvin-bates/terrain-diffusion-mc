@@ -353,12 +353,16 @@ public final class LocalTerrainProvider {
     private HeightmapData handle1x(int i1, int j1, int i2, int j2) {
         int H = i2 - i1, W = j2 - j1;
 
-        float[] elevPadded = pipeline.get(i1 - 1, j1 - 1, i2 + 1, j2 + 1, false)[0];
+        // Three pixels of margin: one for the slope, three for the shore pass (see CoastShaper).
+        float[] elevMargin = pipeline.get(i1 - 3, j1 - 3, i2 + 3, j2 + 3, false)[0];
+        float[][] elevMargin2D = to2D(elevMargin, H + 6, W + 6);
+        float[] elevPadded = cropFlat(elevMargin2D, 2, 2, H + 2, W + 2, H + 6, W + 6);
         float[][] out = pipeline.get(i1, j1, i2, j2, true);
         float[] elevFlat = out[0];
         float[] climate  = out[1];
 
         short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION);
+        CoastShaper.apply(elevMargin2D, 3, 3, H, W, 1, i1, j1, climate, elevFlat, biomeFlat);
         return buildHeightmapData(elevFlat, biomeFlat, H, W);
     }
 
@@ -376,9 +380,12 @@ public final class LocalTerrainProvider {
         int i2n = -Math.floorDiv(-i2, scale);
         int j2n = -Math.floorDiv(-j2, scale);
 
-        // 2-pixel native padding (1 for bilinear + 1 for slope)
-        int i1p = i1n - 2, j1p = j1n - 2;
-        int i2p = i2n + 2, j2p = j2n + 2;
+        // 5-pixel native padding. Bicubic resampling clamps at the array edge, which bends the outer ~1.5 native
+        // pixels; the shore pass looks up to 3 native pixels outside the tile, so it needs clean values out there
+        // for neighbouring tiles to agree. (The resize is translation-consistent, so the padding does not change
+        // the values inside.)
+        int i1p = i1n - 5, j1p = j1n - 5;
+        int i2p = i2n + 5, j2p = j2n + 5;
         int nH = i2p - i1p, nW = j2p - j1p;
 
         float[][] out = pipeline.get(i1p, j1p, i2p, j2p, true);
@@ -391,7 +398,7 @@ public final class LocalTerrainProvider {
         float[][] elevUp = LaplacianUtils.bicubicResize(elevNative2D, nH * scale, nW * scale);
 
         // Crop offsets in the upsampled array
-        int padUp   = 2 * scale;
+        int padUp   = 5 * scale;
         int offsetI = i1 - i1n * scale;
         int offsetJ = j1 - j1n * scale;
         int cropI1  = padUp + offsetI;
@@ -406,6 +413,7 @@ public final class LocalTerrainProvider {
         float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
 
         short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM);
+        CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat);
         return buildHeightmapData(elevOut, biomeFlat, H, W);
     }
 
