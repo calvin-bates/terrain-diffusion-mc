@@ -38,6 +38,13 @@ public final class BiomeClassifier {
     static final short WINDSWEPT_HILLS = 19, JUNGLE = 23, BADLANDS = 26, MEADOW = 29;
     static final short GROVE = 31, SNOWY_SLOPES = 32, FROZEN_PEAKS = 33, STONY_PEAKS = 35;
     static final short WARM_OCEAN = 41, OCEAN = 44, COLD_OCEAN = 46, FROZEN_OCEAN = 48;
+    static final short LUKEWARM_OCEAN = 42, DEEP_LUKEWARM_OCEAN = 43, DEEP_OCEAN = 45;
+    static final short DEEP_COLD_OCEAN = 47, DEEP_FROZEN_OCEAN = 49;
+
+    /** Water deeper than this (metres) gets the deep ocean variant: roughly past the continental slope's top. */
+    static final float DEEP_OCEAN_M = 600f;
+    /** Warm water shallower than this (metres) is reef water (warm ocean, with coral); deeper warm water is lukewarm. */
+    static final float REEF_DEPTH_M = 80f;
     static final short FOREST_SPARSE = 108, TAIGA_SPARSE = 115, SNOWY_TAIGA_SPARSE = 116;
 
     /**
@@ -169,10 +176,7 @@ public final class BiomeClassifier {
                 short biome = PLAINS;
 
                 if (isOcean) {
-                    if (frozen) biome = FROZEN_OCEAN;
-                    else if (cold) biome = COLD_OCEAN;
-                    else if (warm || hot) biome = WARM_OCEAN;
-                    else biome = OCEAN;
+                    biome = oceanBiome(-elevVal, temp);
                 } else if (mountains) {
                     if (slopeBare) {
                         biome = hasSnow ? FROZEN_PEAKS : STONY_PEAKS;
@@ -228,6 +232,28 @@ public final class BiomeClassifier {
             }
         }
         return out;
+    }
+
+    /**
+     * Ocean biome for water of the given depth (metres, positive) and surface temperature (deg C).
+     * Coral (warm ocean) only grows in shallow warm water; deeper warm water is lukewarm. Water past
+     * {@link #DEEP_OCEAN_M} gets the deep variant (vanilla has no deep warm ocean, so that is deep lukewarm).
+     */
+    public static short oceanBiome(float depthM, float temp) {
+        boolean deep = depthM > DEEP_OCEAN_M;
+        if (temp < -5f) return deep ? DEEP_FROZEN_OCEAN : FROZEN_OCEAN;
+        if (temp < 5f) return deep ? DEEP_COLD_OCEAN : COLD_OCEAN;
+        if (temp >= 20f) {
+            if (depthM < REEF_DEPTH_M) return WARM_OCEAN;
+            return deep ? DEEP_LUKEWARM_OCEAN : LUKEWARM_OCEAN;
+        }
+        if (temp >= 13f) return deep ? DEEP_LUKEWARM_OCEAN : LUKEWARM_OCEAN;
+        return deep ? DEEP_OCEAN : OCEAN;
+    }
+
+    /** True for any of the ocean biome ids this classifier produces. */
+    public static boolean isOceanBiome(short id) {
+        return id >= WARM_OCEAN && id <= DEEP_FROZEN_OCEAN;
     }
 
     private static float[] computeSlopeRatio(float[] elevPadded, int H, int W, float pixelSizeM) {
