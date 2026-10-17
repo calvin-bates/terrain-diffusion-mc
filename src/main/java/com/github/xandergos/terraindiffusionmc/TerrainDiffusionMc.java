@@ -5,6 +5,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
 import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
 import com.github.xandergos.terraindiffusionmc.world.AxolotlLakes;
+import com.github.xandergos.terraindiffusionmc.world.InlandFish;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionSurfaceLevelFunction;
@@ -40,6 +41,7 @@ public class TerrainDiffusionMc implements ModInitializer {
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion_surface"), TerrainDiffusionSurfaceLevelFunction.CODEC);
 
         AxolotlLakes.registerSpawns();
+        InlandFish.registerSpawns();
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();

@@ -8,7 +8,9 @@
     "BiomeMixin",
     "MinecraftServerMixin",
     "NoiseBasedChunkGeneratorMixin",
-    "StructureMixin"
+    "StructureMixin",
+    "TropicalFishSpawnMixin",
+    "WaterAnimalSpawnMixin"
   ],
   "injectors": {
     "defaultRequire": 1

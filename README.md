@@ -95,6 +95,10 @@ This value is saved with the world save and affects:
 
 Axolotls live in a few alpine lakes: lake water at least 3000 real-world metres up (the Y level this needs depends on the world scale: Y 163 at scale 1, Y 263 at scale 2, Y 663 at scale 6), in rare "axolotl chunks" (like slime chunks, one in 25). `/terra-column` says whether you are standing in one.
 
+### Fish
+
+Terra's lakes have fish at any height: salmon in cold and cool biomes, cod in larger lakes outside warm biomes, and tropical fish in warm biomes (jungle, savanna, swamp, desert). They need water at least three blocks deep in open water, so streams have none. Oceans and rivers keep vanilla's fish.
+
 ## Common Issues
 
 **A dynamic link library (DLL) initialization routine failed**
