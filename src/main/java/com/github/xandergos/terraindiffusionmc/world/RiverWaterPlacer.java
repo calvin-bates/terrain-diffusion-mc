@@ -93,7 +93,8 @@ public final class RiverWaterPlacer {
                 int ground = Integer.MIN_VALUE;
                 for (int y = top; y >= capY && y > MIN_Y; y--) {
                     pos.set(x, y, z);
-                    if (!chunk.getBlockState(pos).isAir()) { ground = y; break; }
+                    BlockState st = chunk.getBlockState(pos);
+                    if (!st.isAir() && !st.is(Blocks.SNOW)) { ground = y; break; }   // a snow layer is not ground
                 }
                 if (ground == Integer.MIN_VALUE) {
                     // Nothing solid down to the bed: a cave runs right under the channel.
@@ -159,6 +160,7 @@ public final class RiverWaterPlacer {
                     pos.set(x, y, z);
                     chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
                 }
+                if (ground < top) wetFloor(chunk, pos, x, z, ground, gravel);
                 // Lakes from two blocks of water, rivers from three (streams are shallower and stay bare).
                 plantFloor(chunk, pos, x, z, ground, top, frozen, isLake ? 2 : 3);
             }
@@ -212,6 +214,24 @@ public final class RiverWaterPlacer {
                 if (chunk.getBlockState(pos).is(Blocks.WATER)) markForUpdate(chunk, pos.immutable());
             }
         }
+    }
+
+    /**
+     * The surface rules ran before the water was placed, so the floor got the dry-land top block of its biome: snow on
+     * snowy slopes and peaks, grass elsewhere. Under water that becomes gravel and dirt.
+     */
+    private static void wetFloor(ChunkAccess chunk, BlockPos.MutableBlockPos pos, int x, int z, int ground, BlockState gravel) {
+        pos.set(x, ground, z);
+        BlockState floor = chunk.getBlockState(pos);
+        if (isSnow(floor)) {
+            chunk.setBlockState(pos, gravel, 0);
+        } else if (floor.is(Blocks.GRASS_BLOCK) || floor.is(Blocks.PODZOL) || floor.is(Blocks.MYCELIUM)) {
+            chunk.setBlockState(pos, Blocks.DIRT.defaultBlockState(), 0);
+        }
+    }
+
+    private static boolean isSnow(BlockState st) {
+        return st.is(Blocks.SNOW_BLOCK) || st.is(Blocks.POWDER_SNOW) || st.is(Blocks.SNOW);
     }
 
     /**
@@ -318,6 +338,7 @@ public final class RiverWaterPlacer {
             if (isFillable(st)) found = st;
         }
         if (found == null) return fallback;
+        if (isSnow(found)) return fallback;   // the gap faces water: stone, not a wall of snow
         boolean airAbove = chunk.getBlockState(p.set(x, y + 1, z)).isAir();
         if (!airAbove && (found.is(Blocks.GRASS_BLOCK) || found.is(Blocks.PODZOL) || found.is(Blocks.MYCELIUM))) {
             return Blocks.DIRT.defaultBlockState();
