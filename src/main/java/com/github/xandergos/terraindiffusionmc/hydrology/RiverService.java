@@ -25,10 +25,12 @@ public final class RiverService {
         public final byte[] cls;
         public final int[] downstream;
         public final float[] surface;
+        /** Terrain elevation in metres before filling, or null. */
+        public final float[] elev;
 
         Region(int i0, int j0, int height, int width, RiverMap.Result res) {
             this.i0 = i0; this.j0 = j0; this.height = height; this.width = width;
-            this.cls = res.cls; this.downstream = res.downstream; this.surface = res.surface;
+            this.cls = res.cls; this.downstream = res.downstream; this.surface = res.surface; this.elev = res.elev;
         }
 
         /** Index of native pixel (pi, pj), or -1 if it is outside this region's window. */

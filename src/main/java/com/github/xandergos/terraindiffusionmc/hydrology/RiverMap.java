@@ -42,7 +42,15 @@ public final class RiverMap {
         /** Water surface elevation in metres (depression-filled terrain). */
         public final float[] surface;
 
+        /** Terrain elevation in metres (before filling), or null. */
+        public final float[] elev;
+
         Result(byte[] cls, int[] downstream, float[] surface) {
+            this(cls, downstream, surface, null);
+        }
+
+        Result(byte[] cls, int[] downstream, float[] surface, float[] elev) {
+            this.elev = elev;
             this.cls = cls;
             this.downstream = downstream;
             this.surface = surface;
@@ -229,7 +237,7 @@ public final class RiverMap {
             if (!reached) continue;
             for (int k = 0; k < len; k++) if (out[path[k]] == NONE) out[path[k]] = STREAM;
         }
-        return new Result(out, net.downstream, net.filled);
+        return new Result(out, net.downstream, net.filled, elev);
     }
 
     /** Collects the connected depression cells (filled ones, on land) around s into members; returns how many. */

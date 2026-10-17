@@ -214,7 +214,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v22 (closed mountain basins drain to their lowest point instead of being filled flat)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v23 (extra lake depth measured from where the basin is actually deep, not from the hydrology mask edge)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -1078,13 +1078,15 @@ public final class RiverCarver {
                     smooth[idx] = acc / ws;
                 }
             }
-            // Lakes get deeper toward the middle: extra depth grows with the distance to the nearest non-lake pixel of the
-            // hydrology lake mask (about 1 block per 4.5 blocks, up to 5, with a slow +-25% wobble). The distance is taken
+            // Lakes get deeper toward the middle: extra depth grows with the distance to the nearest pixel that is not deep
+            // lake (outside the hydrology lake mask, or a lake pixel whose natural basin is under SHALLOW_BLOCKS deep), about
+            // 1 block per 4.5 blocks, up to 5, with a slow +-25% wobble. The distance is taken
             // from the region data, not this tile's shoreline, so a lake that crosses tile borders gets the same depth on
             // both sides.
             float[] extra = new float[n];
             {
-                final float EXTRA_PER_BLOCK = 0.22f, EXTRA_MAX = 5f;
+                final float EXTRA_PER_BLOCK = 0.22f, EXTRA_MAX = 5f, SHALLOW_BLOCKS = 0.6f;
+                final float blocksPerMetre = (metersToY.applyAsInt(10000) - metersToY.applyAsInt(0)) / 10000f;
                 final int maxD = (int) Math.ceil(EXTRA_MAX / EXTRA_PER_BLOCK);
                 final int rpx = maxD / scale + 2;
                 int gi0 = Math.floorDiv(i1, scale) - rpx, gi1 = Math.floorDiv(i1 + H - 1, scale) + rpx;
@@ -1099,7 +1101,12 @@ public final class RiverCarver {
                         int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
                         if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
                         int k = rg.index(pi, pj);
-                        lakePx[a * gw + b] = k >= 0 && rg.cls[k] == RiverMap.LAKE;
+                        // v23: only the part of the lake whose natural basin is at least SHALLOW_BLOCKS deep counts. On flat
+                        // ground the hydrology mask reaches well past the water, and measuring from the mask's edge put
+                        // almost the full extra depth right at the real shore: a 4-6 block drop from the beach.
+                        boolean deep = k >= 0 && rg.cls[k] == RiverMap.LAKE;
+                        if (deep && rg.elev != null) deep = (rg.surface[k] - rg.elev[k]) * blocksPerMetre >= SHALLOW_BLOCKS;
+                        lakePx[a * gw + b] = deep;
                     }
                 }
                 for (int q = 0; q < bt2; q++) {
