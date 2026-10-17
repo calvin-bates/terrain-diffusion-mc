@@ -5,9 +5,13 @@ import com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.TallSeagrassBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -155,6 +159,7 @@ public final class RiverWaterPlacer {
                     pos.set(x, y, z);
                     chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
                 }
+                if (isLake) plantLakeFloor(chunk, pos, x, z, ground, top, frozen);
             }
         }
 
@@ -206,6 +211,55 @@ public final class RiverWaterPlacer {
                 if (chunk.getBlockState(pos).is(Blocks.WATER)) markForUpdate(chunk, pos.immutable());
             }
         }
+    }
+
+    /**
+     * Seagrass on lake floors, in meadows: dense patches (about ten blocks across) with sparse plants between them.
+     * Only on floors at least two blocks under the water (the shallow edge stays bare), tall seagrass where there are
+     * three or more. Kelp is left to the sea.
+     */
+    private static void plantLakeFloor(ChunkAccess chunk, BlockPos.MutableBlockPos pos, int x, int z, int ground, int top,
+                                       boolean frozen) {
+        int waterTop = frozen ? top - 1 : top;   // a frozen lake has ice as its top block
+        int depth = waterTop - ground;           // water blocks above the floor
+        if (depth < 2) return;
+        pos.set(x, ground, z);
+        BlockState floor = chunk.getBlockState(pos);
+        if (!floor.isFaceSturdy(chunk, pos, Direction.UP) || floor.is(BlockTags.CANNOT_SUPPORT_SEAGRASS)) return;
+        long seed = LocalTerrainProvider.getSeed();
+        float meadow = patchNoise(x, z, seed);
+        float chance = meadow > 0.58f ? 0.65f : meadow > 0.45f ? 0.22f : 0.03f;
+        int h = hash(x, z, seed);
+        if ((h & 0xFFFF) / 65536f >= chance) return;
+        pos.set(x, ground + 1, z);
+        if (depth >= 3 && ((h >>> 16) & 0xFF) < 77) {   // about 30% tall where there is room
+            chunk.setBlockState(pos, Blocks.TALL_SEAGRASS.defaultBlockState().setValue(TallSeagrassBlock.HALF, DoubleBlockHalf.LOWER), 0);
+            pos.set(x, ground + 2, z);
+            chunk.setBlockState(pos, Blocks.TALL_SEAGRASS.defaultBlockState().setValue(TallSeagrassBlock.HALF, DoubleBlockHalf.UPPER), 0);
+        } else {
+            chunk.setBlockState(pos, Blocks.SEAGRASS.defaultBlockState(), 0);
+        }
+    }
+
+    private static int hash(int x, int z, long seed) {
+        long h = x * 0x9E3779B97F4A7C15L + z * 0xC2B2AE3D27D4EB4FL + seed;
+        h ^= h >>> 31; h *= 0xBF58476D1CE4E5B9L; h ^= h >>> 29;
+        return (int) h;
+    }
+
+    /** Smooth value noise in [0, 1] on a 9-block lattice: where the seagrass meadows are. */
+    private static float patchNoise(int x, int z, long seed) {
+        final int S = 9;
+        int x0 = Math.floorDiv(x, S), z0 = Math.floorDiv(z, S);
+        float fx = (x - x0 * S) / (float) S, fz = (z - z0 * S) / (float) S;
+        fx = fx * fx * (3f - 2f * fx); fz = fz * fz * (3f - 2f * fz);
+        float a = lattice(x0, z0, seed), b = lattice(x0 + 1, z0, seed), c = lattice(x0, z0 + 1, seed), d = lattice(x0 + 1, z0 + 1, seed);
+        float top = a + (b - a) * fx, bottom = c + (d - c) * fx;
+        return top + (bottom - top) * fz;
+    }
+
+    private static float lattice(int x, int z, long seed) {
+        return (hash(x, z, seed ^ 0x5EA6A55L) & 0xFFFF) / 65535f;
     }
 
     private static volatile java.lang.reflect.Method postProcessMethod;
