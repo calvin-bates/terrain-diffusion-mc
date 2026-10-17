@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.mixin;
 
+import com.github.xandergos.terraindiffusionmc.world.DryCaves;
 import com.github.xandergos.terraindiffusionmc.world.InlandWaterCarving;
 import com.github.xandergos.terraindiffusionmc.world.RiverWaterPlacer;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
@@ -12,6 +13,7 @@ import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.CarvingMask;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.RandomState;
@@ -22,6 +24,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Set;
@@ -65,6 +69,38 @@ public abstract class NoiseBasedChunkGeneratorMixin {
             return InlandWaterCarving.wrap(chunk, filter);
         } catch (RuntimeException e) {
             return filter;   // never let this break chunk generation
+        }
+    }
+
+    /** The chunk {@code applyCarvingMask} is working on, for {@link #terra$dryCaves}. */
+    private static final ThreadLocal<ChunkAccess> TERRA$CARVING_CHUNK = new ThreadLocal<>();
+
+    @Inject(method = "applyCarvingMask", at = @At("HEAD"), require = 0)
+    private void terra$rememberCarvingChunk(ChunkAccess chunk, CarvingMask mask, RandomState randomState,
+                                            MaterialRule materialRule, WorldGenerationContext context, NoiseChunk noiseChunk,
+                                            Function<BlockPos, Holder<Biome>> biomeGetter, CarvingMask.Filter filter,
+                                            CallbackInfo ci) {
+        TERRA$CARVING_CHUNK.set(chunk);
+    }
+
+    /**
+     * Terra has no aquifers, so vanilla fills everything carved below sea level with water, flooding every ravine and cave
+     * entrance on low land. Carve those dry instead. See {@link DryCaves}.
+     */
+    @Redirect(method = "applyCarvingMask",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/NoiseChunk;aquifer()Lnet/minecraft/world/level/levelgen/Aquifer;"),
+            require = 0)
+    private Aquifer terra$dryCaves(NoiseChunk noiseChunk) {
+        Aquifer aquifer = noiseChunk.aquifer();
+        ChunkAccess chunk = TERRA$CARVING_CHUNK.get();
+        TERRA$CARVING_CHUNK.remove();
+        if (chunk == null || !(((ChunkGenerator) (Object) this).getBiomeSource() instanceof TerrainDiffusionBiomeSource)) {
+            return aquifer;
+        }
+        try {
+            return DryCaves.wrap(chunk, aquifer, ((NoiseBasedChunkGenerator) (Object) this).getSeaLevel());
+        } catch (RuntimeException e) {
+            return aquifer;   // never let this break chunk generation
         }
     }
 }
