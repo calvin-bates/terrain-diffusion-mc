@@ -214,7 +214,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v23 (extra lake depth measured from where the basin is actually deep, not from the hydrology mask edge)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v24 (v23 + shallow lakes on flat ground fill their whole lake area)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -581,7 +581,9 @@ public final class RiverCarver {
                 // A lake wins over a river channel that runs into it, so no channel is left cut into the lake.
                 // ... except where the channel crosses ground at or above the lake level (the dry, flush margin of the lake
                 // mask): there it stays a stream, so it reaches the water instead of ending at the margin.
-                if (waterY[r][c] != NONE && (!ownLake || ytop[r * W + c] >= metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))))) continue;
+                // (v24: ground exactly at the lake level inside the lake's own pixels is lake too, see below, so a channel
+                // there gives way to it as well.)
+                if (waterY[r][c] != NONE && (!ownLake || ytop[r * W + c] > metersToY.applyAsInt((int) Math.floor(Math.max(0f, level))))) continue;
                 // metersToY already gives the real top block, so the water's top block is level with the basin's rim (it used
                 // to subtract another block, which left every lake one block below its shore).
                 int lakeTop = metersToY.applyAsInt((int) Math.floor(Math.max(0f, level)));
@@ -596,9 +598,15 @@ public final class RiverCarver {
                 if (lakeTop - top > (ownLake ? 120 : 2)) continue;
                 if (ownLake) { ownLakeCol[idx] = true; lakeLvl[idx] = lakeTop; }
                 // Ground at the water level stays dry, level with the water (a flush shore); only lower ground is lake.
-                if (top < lakeTop && (ownLake || lakeTop - top <= 2)) {
+                // ... except inside the lake's own pixels (v24): there the hydrology says it is under water, and a lake on
+                // flat ground often lies less than a block deep, so its level rounds to the ground's own height. Leaving
+                // that ground dry hid such lakes almost entirely (and left the river channels drawn through them as
+                // straight cuts). Its bed is dug a block down; the lake-bed pass below shapes it with the rest.
+                boolean flushInLake = ownLake && top == lakeTop;
+                if ((top < lakeTop && (ownLake || lakeTop - top <= 2)) || flushInLake) {
                     waterY[r][c] = (short) lakeTop;
-                    if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
+                    if (flushInLake) surfaceY[r][c] = (short) (lakeTop - 1);
+                    else if (surfaceY[r][c] == NONE) surfaceY[r][c] = (short) ytop[idx];
                     lakeCol[idx] = true;
                     any = true;
                 }
