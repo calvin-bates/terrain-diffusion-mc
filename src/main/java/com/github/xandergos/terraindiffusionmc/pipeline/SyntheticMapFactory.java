@@ -95,13 +95,22 @@ public final class SyntheticMapFactory {
      */
     private float archipelago(float elev, float x, float y) {
         if (archipelagoStrength <= 0f) return elev;
-        float zone = smoothstep(0.25f, 0.5f, archipelagoMask.GetNoise(x, y));
+        float zone = archipelagoZone(x, y);
         if (zone <= 0f) return elev;
         float lowland = 1f - smoothstep(150f, 800f, elev);
         float k = Math.min(1f, 0.85f * archipelagoStrength) * zone * lowland;
         if (k <= 0f) return elev;
         float target = -350f + 1100f * archipelagoIslands.GetNoise(x, y);   // above ~0.32 is an island
         return elev + (target - elev) * k;
+    }
+
+    /**
+     * How strongly (0..1) the conditioning at coarse-pixel position (x = column, y = row) is pulled toward an
+     * archipelago sea, before the lowland fade. 0 everywhere when archipelagos are switched off.
+     */
+    public float archipelagoZone(float x, float y) {
+        if (archipelagoStrength <= 0f) return 0f;
+        return smoothstep(0.25f, 0.5f, archipelagoMask.GetNoise(x, y));
     }
 
     private static float smoothstep(float e0, float e1, float v) {

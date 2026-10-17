@@ -3,6 +3,7 @@ package com.github.xandergos.terraindiffusionmc.explorer;
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
+import com.github.xandergos.terraindiffusionmc.pipeline.OceanFeatures;
 import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipelineModelConfig;
 import com.github.xandergos.terraindiffusionmc.world.WorldScaleManager;
 import com.google.gson.Gson;
@@ -71,6 +72,7 @@ public final class ExplorerServer {
         server.createContext("/api/coarse_stats", ExplorerServer::handleCoarseStats);
         server.createContext("/api/detail.png", ExplorerServer::handleDetailPng);
         server.createContext("/api/detail_raw", ExplorerServer::handleDetailRaw);
+        server.createContext("/api/features", ExplorerServer::handleFeatures);
         // Single-thread executor matches Python's threaded=False
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "terrain-explorer-http");
@@ -135,6 +137,42 @@ public final class ExplorerServer {
             sendJson(ex, 200, resp);
         } catch (Exception e) {
             sendError(ex, 500, e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/features?i0=&j0=&i1=&j1= (native pixels) → {features:[{type, i, j, x, z, value}]}: the ocean features
+     * centred in the window (volcanic and arc islands, atolls, guyots, seamounts, trenches, archipelago seas), with
+     * x/z in blocks at the world's scale.
+     */
+    private static void handleFeatures(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        try {
+            Map<String, String> q = parseQuery(ex.getRequestURI());
+            int i0 = getInt(q, "i0", -12800), j0 = getInt(q, "j0", -12800);
+            int i1 = getInt(q, "i1", 12800), j1 = getInt(q, "j1", 12800);
+            if (i1 <= i0 || j1 <= j0 || (long) (i1 - i0) * (j1 - j0) > 400_000L * 400_000L) {
+                sendError(ex, 400, "bad window");
+                return;
+            }
+            int scale = Math.max(1, WorldScaleManager.getCurrentScale());
+            List<Map<String, Object>> list = new ArrayList<>();
+            for (OceanFeatures.Landmark l : LocalTerrainProvider.getOceanLandmarks(i0, j0, i1, j1)) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("type", l.type());
+                m.put("i", l.i());
+                m.put("j", l.j());
+                m.put("x", Math.round(l.j() * scale));
+                m.put("z", Math.round(l.i() * scale));
+                m.put("value", Math.round(l.value() * 100f) / 100f);
+                list.add(m);
+            }
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("features", list);
+            sendJson(ex, 200, resp);
+        } catch (Exception e) {
+            LOG.error("features error", e);
+            sendError(ex, 500, String.valueOf(e.getMessage()));
         }
     }
 

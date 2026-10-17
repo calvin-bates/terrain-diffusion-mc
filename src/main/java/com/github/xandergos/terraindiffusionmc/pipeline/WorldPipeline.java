@@ -480,12 +480,16 @@ public final class WorldPipeline implements AutoCloseable {
         boolean anyOcean = false;
         for (float v : elev) if (v < -30f) { anyOcean = true; break; }
         if (!anyOcean) return;
-
-        int S = 32 * LATENT_COMPRESSION;   // native pixels per coarse pixel
         // Volcano centres can lie a footprint away from the request (twice that through the plate warp).
         int padPx = (int) Math.ceil(2 * OceanFeatures.MAX_VOLCANO_REACH);
-        int ci0 = Math.floorDiv(i1 - padPx, S) - 1, cj0 = Math.floorDiv(j1 - padPx, S) - 1;
-        int ci1 = -Math.floorDiv(-(i2 + padPx), S) + 1, cj1 = -Math.floorDiv(-(j2 + padPx), S) + 1;
+        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, coarseField(i1 - padPx, j1 - padPx, i2 + padPx, j2 + padPx));
+    }
+
+    /** Smoothed coarse elevation and temperature covering the native-pixel window, sampled bilinearly. */
+    private OceanFeatures.CoarseField coarseField(int i1, int j1, int i2, int j2) {
+        int S = 32 * LATENT_COMPRESSION;   // native pixels per coarse pixel
+        int ci0 = Math.floorDiv(i1, S) - 1, cj0 = Math.floorDiv(j1, S) - 1;
+        int ci1 = -Math.floorDiv(-i2, S) + 1, cj1 = -Math.floorDiv(-j2, S) + 1;
         FloatTensor slice = coarse.getSlice(new int[]{0, ci0, cj0}, new int[]{7, ci1, cj1});
         int cH = ci1 - ci0, cW = cj1 - cj0, n = cH * cW;
         float[] cElev = new float[n], cTemp = new float[n];
@@ -496,7 +500,7 @@ public final class WorldPipeline implements AutoCloseable {
             cTemp[px] = w > 1e-6f ? slice.data[2 * n + px] / w : 15f;
         }
         float[][] elev2 = to2D(cElev, cH, cW), temp2 = to2D(cTemp, cH, cW);
-        OceanFeatures.CoarseField field = new OceanFeatures.CoarseField() {
+        return new OceanFeatures.CoarseField() {
             @Override public float elevation(double i, double j) { return sample(elev2, i, j); }
             @Override public float temperature(double i, double j) { return sample(temp2, i, j); }
 
@@ -506,7 +510,39 @@ public final class WorldPipeline implements AutoCloseable {
                 return bilinearSample2D(a, cH, cW, gy, gx);
             }
         };
-        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, field);
+    }
+
+    /**
+     * Ocean features whose centres lie in the native-pixel window, for the terrain explorer and /terra-find:
+     * the volcanoes, atolls and trenches from {@link OceanFeatures#landmarks}, plus one marker per archipelago sea
+     * (the strongest point of each 24-coarse-pixel cell that lies well inside an archipelago zone).
+     */
+    public List<OceanFeatures.Landmark> oceanLandmarks(int i1, int j1, int i2, int j2) {
+        OceanFeatures.CoarseField field = coarseField(i1, j1, i2, j2);
+        List<OceanFeatures.Landmark> out = new ArrayList<>();
+        if (TerrainDiffusionConfig.oceanFeatures()) {
+            out.addAll(oceanFeatures.landmarks(i1, j1, i2, j2, field));
+        }
+        int S = 32 * LATENT_COMPRESSION, cell = 24;
+        SyntheticMapFactory syn = syntheticMapFactory;
+        for (int gy = Math.floorDiv(Math.floorDiv(i1, S), cell); gy <= Math.floorDiv(Math.floorDiv(i2, S), cell); gy++) {
+            for (int gx = Math.floorDiv(Math.floorDiv(j1, S), cell); gx <= Math.floorDiv(Math.floorDiv(j2, S), cell); gx++) {
+                float best = 0f, bx = 0f, by = 0f;
+                for (int a = 0; a < 6; a++) {
+                    for (int b = 0; b < 6; b++) {
+                        float x = gx * cell + (b + 0.5f) * cell / 6f, y = gy * cell + (a + 0.5f) * cell / 6f;
+                        float z = syn.archipelagoZone(x, y);
+                        if (z > best) { best = z; bx = x; by = y; }
+                    }
+                }
+                if (best < 0.9f) continue;
+                double i = by * S, j = bx * S;
+                if (i < i1 || i >= i2 || j < j1 || j >= j2) continue;
+                if (field.elevation(i, j) > 300f) continue;   // the zone only reshapes low ground and sea
+                out.add(new OceanFeatures.Landmark("archipelago", i, j, best));
+            }
+        }
+        return out;
     }
 
     // =========================================================================

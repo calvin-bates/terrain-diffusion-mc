@@ -66,8 +66,6 @@ public final class OceanFeatures {
     private static final float MAX_DEPTH = -10900f;
 
     private final long seed;
-    /** Plate motion direction under each hotspot, by hotspot hash (it costs a full plate lookup). */
-    private final java.util.concurrent.ConcurrentHashMap<Long, Double> plateDirs = new java.util.concurrent.ConcurrentHashMap<>();
     private final FastNoiseLite warpLargeX, warpLargeZ, warpSmallX, warpSmallZ;
     private final FastNoiseLite hills, trenchStrength, coastShape, gullies, motus;
 
@@ -208,6 +206,160 @@ public final class OceanFeatures {
     }
 
     // =========================================================================
+    // Feature finder
+    // =========================================================================
+
+    /**
+     * A place worth visiting, at native pixel (i, j). {@code value} is the summit height in metres for volcanoes
+     * (negative when submerged) and the expected floor depth for trenches.
+     */
+    public record Landmark(String type, double i, double j, float value) {}
+
+    /**
+     * Lists the ocean features whose centres fall in the native-pixel window [i0, i1) x [j0, j1): volcanic islands,
+     * atolls, guyots and seamounts (hotspot chains and scattered ones), island-arc volcanoes that break the surface,
+     * and the deepest stretches of trenches. Uses the same placement rules as the terrain, so a marker sits where the
+     * feature is generated (the model's own sea floor can shift a coastline a little).
+     */
+    public java.util.List<Landmark> landmarks(double i0, double j0, double i1, double j1, CoarseField coarse) {
+        java.util.List<Landmark> out = new java.util.ArrayList<>();
+        hotspotLandmarks(i0, j0, i1, j1, coarse, out);
+        seamountLandmarks(i0, j0, i1, j1, coarse, out);
+        subductionLandmarks(i0, j0, i1, j1, coarse, out);
+        return out;
+    }
+
+    private static boolean inside(double i, double j, double i0, double j0, double i1, double j1) {
+        return i >= i0 && i < i1 && j >= j0 && j < j1;
+    }
+
+    private void hotspotLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out) {
+        // A chain reaches at most ~13 x 38 km from its hotspot, so one extra cell on each side covers it.
+        int gx0 = (int) Math.floor(j0 / HOTSPOT_CELL) - 2, gx1 = (int) Math.floor(j1 / HOTSPOT_CELL) + 2;
+        int gz0 = (int) Math.floor(i0 / HOTSPOT_CELL) - 2, gz1 = (int) Math.floor(i1 / HOTSPOT_CELL) + 2;
+        for (int gz = gz0; gz <= gz1; gz++) {
+            for (int gx = gx0; gx <= gx1; gx++) {
+                Chain ch = chain(gx, gz);
+                if (ch == null) continue;
+                for (int k = 0; k < ch.count; k++) {
+                    if (!inside(ch.cz[k], ch.cx[k], i0, j0, i1, j1)) continue;
+                    float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
+                    if (floor > -VOLCANO_MIN_DEPTH) continue;
+                    boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
+                    out.add(new Landmark(volcanoStage(ch.peak[k], warm), ch.cz[k], ch.cx[k], (float) ch.peak[k]));
+                }
+            }
+        }
+    }
+
+    private void seamountLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out) {
+        int gx0 = (int) Math.floor(j0 / SEAMOUNT_CELL), gx1 = (int) Math.floor(j1 / SEAMOUNT_CELL);
+        int gz0 = (int) Math.floor(i0 / SEAMOUNT_CELL), gz1 = (int) Math.floor(i1 / SEAMOUNT_CELL);
+        for (int gz = gz0; gz <= gz1; gz++) {
+            for (int gx = gx0; gx <= gx1; gx++) {
+                long h = hash(0x5EAL, gx, gz);
+                if (unit(h) > SEAMOUNT_CHANCE) continue;
+                double sx = (gx + 0.1 + 0.8 * unit(mix(h))) * SEAMOUNT_CELL;
+                double sz = (gz + 0.1 + 0.8 * unit(mix(h + 1))) * SEAMOUNT_CELL;
+                if (!inside(sz, sx, i0, j0, i1, j1)) continue;
+                float floor = coarse.elevation(sz, sx);
+                if (floor > -SEAMOUNT_MIN_DEPTH) continue;
+                double peak = seamountPeak(floor, h);
+                out.add(new Landmark(isGuyot(peak, h) ? "guyot" : "seamount", sz, sx, (float) peak));
+            }
+        }
+    }
+
+    /** Island-arc volcanoes that break the surface, and one marker at the deepest part of each trench arc. */
+    private void subductionLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out) {
+        // Plate seeds in warped space around the window.
+        double pad = 2 * PLATE;
+        int gx0 = (int) Math.floor((j0 - pad) / PLATE), gx1 = (int) Math.floor((j1 + pad) / PLATE);
+        int gz0 = (int) Math.floor((i0 - pad) / PLATE), gz1 = (int) Math.floor((i1 + pad) / PLATE);
+        int nx = gx1 - gx0 + 1, nz = gz1 - gz0 + 1;
+        double[] seedX = new double[nx * nz], seedZ = new double[nx * nz];
+        long[] seedId = new long[nx * nz];
+        for (int a = 0; a < nz; a++) {
+            for (int b = 0; b < nx; b++) {
+                int gx = gx0 + b, gz = gz0 + a;
+                long h = hash(0x51A7EL, gx, gz);
+                seedX[a * nx + b] = (gx + 0.1 + 0.8 * unit(h)) * PLATE;
+                seedZ[a * nx + b] = (gz + 0.1 + 0.8 * unit(mix(h))) * PLATE;
+                seedId[a * nx + b] = hash(0x51A7EL ^ 0x1D, gx, gz);
+            }
+        }
+        double margin = 60 * KM;   // the warp moves things at most ~43 km
+        double[][] corners = {{j0 - margin, i0 - margin}, {j1 + margin, i0 - margin}, {j0 - margin, i1 + margin}, {j1 + margin, i1 + margin}};
+        for (int ia = 0; ia < nx * nz; ia++) {
+            for (int ib = ia + 1; ib < nx * nz; ib++) {
+                int ra = ia / nx, ca = ia % nx, rb = ib / nx, cb = ib % nx;
+                if (Math.abs(ra - rb) > 2 || Math.abs(ca - cb) > 2) continue;
+                long lo = Math.min(seedId[ia], seedId[ib]), hi = Math.max(seedId[ia], seedId[ib]);
+                long pair = mix(lo * 0x9E3779B97F4A7C15L ^ hi);
+                if (boundaryType(pair) != BOUNDARY_TRENCH) continue;
+                int il = seedId[ia] == lo ? ia : ib, ih = il == ia ? ib : ia;
+                double lx = seedX[il], lz = seedZ[il], hx = seedX[ih], hz = seedZ[ih];
+                double ex = hx - lx, ez = hz - lz, el = Math.sqrt(ex * ex + ez * ez);
+                ex /= el; ez /= el;
+                double tx = -ez, tz = ex, mx = (lx + hx) * 0.5, mz = (lz + hz) * 0.5;
+                boolean subHi = (pair & 1L) == 0;
+                double ox = subHi ? -ex : ex, oz = subHi ? -ez : ez;           // into the overriding plate
+                double amin = Double.MAX_VALUE, amax = -Double.MAX_VALUE;
+                for (double[] cp : corners) {
+                    double a = (cp[0] - mx) * tx + (cp[1] - mz) * tz;
+                    amin = Math.min(amin, a); amax = Math.max(amax, a);
+                }
+                if (amax - amin > 40 * PLATE) continue;
+                // Arc volcanoes.
+                for (long k = (long) Math.floor(amin / ARC_SPACING) - 1; k <= (long) Math.ceil(amax / ARC_SPACING) + 1; k++) {
+                    long h = hash(pair, k, 0xA2C);
+                    if (!arcExists(h)) continue;
+                    double ak = arcAlong(k, h);
+                    double w = edgeWeightAt(mx + tx * ak, mz + tz * ak, ia, ib, seedX, seedZ);
+                    double strength = trenchStrength(ak, pair) * w;
+                    if (strength <= 0.05) continue;
+                    double peak = arcPeak(strength, h);
+                    if (peak <= 0) continue;
+                    double across = arcAcross(h);
+                    double[] c = unwarp(mx + tx * ak + ox * across, mz + tz * ak + oz * across);
+                    if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
+                    if (coarse.elevation(c[1], c[0]) > -VOLCANO_MIN_DEPTH) continue;
+                    out.add(new Landmark("arc_island", c[1], c[0], (float) peak));
+                }
+                // Trench: the strongest point of each stretch where it runs deep.
+                double step = 15 * KM, prev = 0, prev2 = 0;
+                for (double a = amin - step; a <= amax + 2 * step; a += step) {
+                    double w = edgeWeightAt(mx + tx * a, mz + tz * a, ia, ib, seedX, seedZ);
+                    double st = trenchStrength(a, pair) * w;
+                    double am = a - step;                                      // is the previous step a peak?
+                    if (prev >= 0.55 && prev >= prev2 && prev > st) {
+                        double[] c = unwarp(mx + tx * am - ox * TRENCH_AXIS, mz + tz * am - oz * TRENCH_AXIS);
+                        if (inside(c[1], c[0], i0, j0, i1, j1)) {
+                            float floor = coarse.elevation(c[1], c[0]);
+                            if (floor <= -2500f) {
+                                out.add(new Landmark("trench", c[1], c[0], (float) Math.max(MAX_DEPTH, floor - TRENCH_DEPTH * prev)));
+                            }
+                        }
+                    }
+                    prev2 = prev;
+                    prev = st;
+                }
+            }
+        }
+    }
+
+    /** How much of the A-B plate edge exists at boundary point (bx, bz): 0 past a triple junction, 1 along it. */
+    private static double edgeWeightAt(double bx, double bz, int ia, int ib, double[] seedX, double[] seedZ) {
+        double da = Math.hypot(bx - seedX[ia], bz - seedZ[ia]);
+        double nearestOther = Double.MAX_VALUE;
+        for (int c = 0; c < seedX.length; c++) {
+            if (c == ia || c == ib) continue;
+            nearestOther = Math.min(nearestOther, Math.hypot(bx - seedX[c], bz - seedZ[c]));
+        }
+        return smoothstep(-JUNCTION_TAPER, JUNCTION_TAPER, nearestOther - da);
+    }
+
+    // =========================================================================
     // Plates
     // =========================================================================
 
@@ -324,15 +476,13 @@ public final class OceanFeatures {
         long kc = Math.round(along / ARC_SPACING);
         for (long k = kc - 1; k <= kc + 1; k++) {
             long h = hash(pair, k, 0xA2C);
-            if (unit(h) > 0.75) continue;
-            double ak = k * ARC_SPACING + (unit(mix(h)) - 0.5) * 14 * KM;
-            double across = ARC_DISTANCE + (unit(mix(h + 1)) - 0.5) * 16 * KM;
-            double radius = (7 + 7 * unit(mix(h + 2))) * KM;
+            if (!arcExists(h)) continue;
+            double ak = arcAlong(k, h), across = arcAcross(h), radius = arcRadius(h);
             double r = Math.hypot(along - ak, xo - across);
             if (r > radius * 1.3) continue;
             double strength = trenchStrength(ak, pair) * edgeWeight;
             if (strength <= 0.05) continue;
-            double peak = lerp(-2500, -800 + 2400 * unit(mix(h + 3)), strength);
+            double peak = arcPeak(strength, h);
             // Centre in world space, for the coarse depth check.
             double cqx = mx + tx * ak + ox * across, cqz = mz + tz * ak + oz * across;
             double[] c = unwarp(cqx, cqz);
@@ -352,40 +502,71 @@ public final class OceanFeatures {
         int cx = (int) Math.floor(x / HOTSPOT_CELL), cz = (int) Math.floor(z / HOTSPOT_CELL);
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
-                int gx = cx + dx, gz = cz + dz;
-                long h = hash(0x407L, gx, gz);
-                if (unit(h) > HOTSPOT_CHANCE) continue;
-                double hx = (gx + 0.15 + 0.7 * unit(mix(h))) * HOTSPOT_CELL;
-                double hz = (gz + 0.15 + 0.7 * unit(mix(h + 1))) * HOTSPOT_CELL;
-                // The chain trails the way the plate under the hotspot moves.
-                double plateDir = plateDirs.computeIfAbsent(h, key -> plateMotionAngle(hx, hz));
-                double vx = Math.cos(plateDir), vz = Math.sin(plateDir);
-                int count = 5 + (int) (unit(mix(h + 2)) * 8);
-                double spacing = (24 + 14 * unit(mix(h + 3))) * KM;
-                double headPeak = 900 + 1900 * unit(mix(h + 4));
-                double baseRadius = (11 + 9 * unit(mix(h + 5))) * KM;
-                double t = (x - hx) * vx + (z - hz) * vz;
-                double across = -(x - hx) * vz + (z - hz) * vx;
+                Chain ch = chain(cx + dx, cz + dz);
+                if (ch == null) continue;
+                double t = (x - ch.hx) * ch.vx + (z - ch.hz) * ch.vz;
+                double across = -(x - ch.hx) * ch.vz + (z - ch.hz) * ch.vx;
                 if (Math.abs(across) > MAX_VOLCANO_REACH + 6 * KM) continue;
-                if (t < -MAX_VOLCANO_REACH || t > count * spacing + MAX_VOLCANO_REACH) continue;
-                int kmin = Math.max(0, (int) Math.floor(t / spacing) - 2);
-                int kmax = Math.min(count - 1, kmin + 4);
+                if (t < -MAX_VOLCANO_REACH || t > ch.count * ch.spacing + MAX_VOLCANO_REACH) continue;
+                int kmin = Math.max(0, (int) Math.floor(t / ch.spacing) - 2);
+                int kmax = Math.min(ch.count - 1, kmin + 4);
                 for (int k = kmin; k <= kmax; k++) {
-                    long hk = hash(h, k, 0x407B);
-                    double along = k * spacing + (unit(hk) - 0.5) * 0.4 * spacing;
-                    double side = (unit(mix(hk)) - 0.5) * 12 * KM;
-                    double vcx = hx + vx * along - vz * side, vcz = hz + vz * along + vx * side;
-                    double radius = baseRadius * (1 - 0.03 * k) * (k == 0 ? 1.3 : 1.0);
-                    double r = Math.hypot(x - vcx, z - vcz);
-                    if (r > radius * 1.3) continue;
-                    float floor = coarse.elevation(vcz, vcx);
+                    double r = Math.hypot(x - ch.cx[k], z - ch.cz[k]);
+                    if (r > ch.radius[k] * 1.3) continue;
+                    float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
                     if (floor > -VOLCANO_MIN_DEPTH) continue;
-                    double peak = headPeak - k * (320 + 280 * unit(mix(hk + 1))) + (unit(mix(hk + 2)) - 0.5) * 400;
-                    boolean warm = coarse.temperature(vcz, vcx) >= REEF_TEMP;
-                    addVolcano(x, z, vcx, vcz, r, radius, peak, floor, warm, hk, ctx);
+                    boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
+                    addVolcano(x, z, ch.cx[k], ch.cz[k], r, ch.radius[k], ch.peak[k], floor, warm, ch.hk[k], ctx);
                 }
             }
         }
+    }
+
+    /** One hotspot and its chain of volcanoes; everything here depends only on the seed. */
+    static final class Chain {
+        double hx, hz, vx, vz, spacing;
+        int count;
+        double[] cx, cz, radius, peak;
+        long[] hk;
+    }
+
+    private static final Chain NO_CHAIN = new Chain();
+    private final java.util.concurrent.ConcurrentHashMap<Long, Chain> chains = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** The hotspot chain of hotspot cell (gx, gz), or null if the cell has none. Cached. */
+    Chain chain(int gx, int gz) {
+        long key = ((long) gx << 32) ^ (gz & 0xFFFFFFFFL);
+        Chain c = chains.computeIfAbsent(key, k -> buildChain(gx, gz));
+        return c == NO_CHAIN ? null : c;
+    }
+
+    private Chain buildChain(int gx, int gz) {
+        long h = hash(0x407L, gx, gz);
+        if (unit(h) > HOTSPOT_CHANCE) return NO_CHAIN;
+        Chain ch = new Chain();
+        ch.hx = (gx + 0.15 + 0.7 * unit(mix(h))) * HOTSPOT_CELL;
+        ch.hz = (gz + 0.15 + 0.7 * unit(mix(h + 1))) * HOTSPOT_CELL;
+        // The chain trails the way the plate under the hotspot moves.
+        double plateDir = plateMotionAngle(ch.hx, ch.hz);
+        ch.vx = Math.cos(plateDir);
+        ch.vz = Math.sin(plateDir);
+        ch.count = 5 + (int) (unit(mix(h + 2)) * 8);
+        ch.spacing = (24 + 14 * unit(mix(h + 3))) * KM;
+        double headPeak = 900 + 1900 * unit(mix(h + 4));
+        double baseRadius = (11 + 9 * unit(mix(h + 5))) * KM;
+        ch.cx = new double[ch.count]; ch.cz = new double[ch.count];
+        ch.radius = new double[ch.count]; ch.peak = new double[ch.count]; ch.hk = new long[ch.count];
+        for (int k = 0; k < ch.count; k++) {
+            long hk = hash(h, k, 0x407B);
+            double along = k * ch.spacing + (unit(hk) - 0.5) * 0.4 * ch.spacing;
+            double side = (unit(mix(hk)) - 0.5) * 12 * KM;
+            ch.cx[k] = ch.hx + ch.vx * along - ch.vz * side;
+            ch.cz[k] = ch.hz + ch.vz * along + ch.vx * side;
+            ch.radius[k] = baseRadius * (1 - 0.03 * k) * (k == 0 ? 1.3 : 1.0);
+            ch.peak[k] = headPeak - k * (320 + 280 * unit(mix(hk + 1))) + (unit(mix(hk + 2)) - 0.5) * 400;
+            ch.hk[k] = hk;
+        }
+        return ch;
     }
 
     private void seamounts(double x, double z, CoarseField coarse, Ctx ctx) {
@@ -401,9 +582,9 @@ public final class OceanFeatures {
                 double r = Math.hypot(x - sx, z - sz);
                 if (r > radius * 1.3) continue;
                 float floor = coarse.elevation(sz, sx);
-                if (floor > -2500f) continue;
-                double peak = Math.min(-300, floor + 800 + 2200 * unit(mix(h + 3)));
-                boolean guyot = unit(mix(h + 4)) < 0.25 && peak > -2200;
+                if (floor > -SEAMOUNT_MIN_DEPTH) continue;
+                double peak = seamountPeak(floor, h);
+                boolean guyot = isGuyot(peak, h);
                 if (guyot) {
                     // A guyot was planed flat at sea level, then sank: build it taller and cut the top off.
                     ctx.add += (peak + 600 - floor) * tableCone(r, radius, x, z, h);
@@ -418,22 +599,51 @@ public final class OceanFeatures {
     /** A hotspot volcano at a stage of its life set by how far it has sunk (its peak height). */
     private void addVolcano(double x, double z, double vcx, double vcz, double r, double radius,
                             double peak, double floor, boolean warm, long h, Ctx ctx) {
-        if (peak > 40) {
-            double landU = 0.3 + 0.2 * unit(mix(h + 8));
-            ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, x, z, h);
-        } else if (warm && peak > -1600) {
-            // Atoll: the volcano has sunk out of sight and its fringing reef kept growing up into a ring.
-            double sub = Math.min(peak, -350);
-            ctx.add += (sub - floor) * tableCone(r, radius, x, z, h);
-            double rim = radius * (0.22 + 0.13 * unit(mix(h + 9)));
-            pushOp(ctx, OP_ATOLL, rim, 0, radius, 0, h, vcx, vcz);
-        } else if (peak > -1800) {
-            double top = Math.min(peak, -250);
-            ctx.add += (top + 600 - floor) * tableCone(r, radius, x, z, h);
-            pushOp(ctx, OP_GUYOT, top, 0, radius, 0, h, vcx, vcz);
-        } else {
-            ctx.add += (peak - floor) * cone(r, radius, x, z, h, false);
+        switch (volcanoStage(peak, warm)) {
+            case "volcanic_island" -> {
+                double landU = 0.3 + 0.2 * unit(mix(h + 8));
+                ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, x, z, h);
+            }
+            case "atoll" -> {
+                // The volcano has sunk out of sight and its fringing reef kept growing up into a ring.
+                double sub = Math.min(peak, -350);
+                ctx.add += (sub - floor) * tableCone(r, radius, x, z, h);
+                double rim = radius * (0.22 + 0.13 * unit(mix(h + 9)));
+                pushOp(ctx, OP_ATOLL, rim, 0, radius, 0, h, vcx, vcz);
+            }
+            case "guyot" -> {
+                double top = Math.min(peak, -250);
+                ctx.add += (top + 600 - floor) * tableCone(r, radius, x, z, h);
+                pushOp(ctx, OP_GUYOT, top, 0, radius, 0, h, vcx, vcz);
+            }
+            default -> ctx.add += (peak - floor) * cone(r, radius, x, z, h, false);
         }
+    }
+
+    // ---- Shared placement rules (the terrain and the feature finder must agree) ----
+
+    private static final float SEAMOUNT_MIN_DEPTH = 2500f;
+
+    private static double seamountPeak(float floor, long h) {
+        return Math.min(-300, floor + 800 + 2200 * unit(mix(h + 3)));
+    }
+
+    private static boolean isGuyot(double peak, long h) {
+        return unit(mix(h + 4)) < 0.25 && peak > -2200;
+    }
+
+    private static boolean arcExists(long h) { return unit(h) <= 0.75; }
+    private static double arcAlong(long k, long h) { return k * ARC_SPACING + (unit(mix(h)) - 0.5) * 14 * KM; }
+    private static double arcAcross(long h) { return ARC_DISTANCE + (unit(mix(h + 1)) - 0.5) * 16 * KM; }
+    private static double arcRadius(long h) { return (7 + 7 * unit(mix(h + 2))) * KM; }
+    private static double arcPeak(double strength, long h) { return lerp(-2500, -800 + 2400 * unit(mix(h + 3)), strength); }
+
+    /** What a hotspot volcano has become by now, from its peak height and the water temperature. */
+    static String volcanoStage(double peak, boolean warm) {
+        if (peak > 40) return "volcanic_island";
+        if (warm && peak > -1600) return "atoll";
+        if (peak > -1800) return "guyot";
+        return "seamount";
     }
 
     /**

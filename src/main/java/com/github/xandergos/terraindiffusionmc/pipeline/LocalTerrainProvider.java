@@ -177,6 +177,35 @@ public final class LocalTerrainProvider {
         });
     }
 
+    /** Ocean features centred in a native-pixel window (see {@link WorldPipeline#oceanLandmarks}). Inference thread. */
+    public static java.util.List<OceanFeatures.Landmark> getOceanLandmarks(int i1, int j1, int i2, int j2) throws Exception {
+        return submitToInferenceThread(() -> getInstance().pipeline.oceanLandmarks(i1, j1, i2, j2));
+    }
+
+    /**
+     * The nearest ocean feature of a type to native pixel (pi, pj), searching squares of growing size up to
+     * {@code maxRadiusPx}; null if none. Blocks while the coarse map is computed, so never call it on the server
+     * thread.
+     */
+    public static OceanFeatures.Landmark findNearestLandmark(String type, double pi, double pj, int maxRadiusPx) throws Exception {
+        int radius = Math.min(maxRadiusPx, 10_000);   // 300 km
+        while (true) {
+            int i1 = (int) Math.floor(pi) - radius, j1 = (int) Math.floor(pj) - radius;
+            java.util.List<OceanFeatures.Landmark> found = getOceanLandmarks(i1, j1, i1 + 2 * radius, j1 + 2 * radius);
+            OceanFeatures.Landmark best = null;
+            double bestD = Double.MAX_VALUE;
+            for (OceanFeatures.Landmark l : found) {
+                if (!l.type().equals(type)) continue;
+                double d = Math.hypot(l.i() - pi, l.j() - pj);
+                if (d < bestD) { bestD = d; best = l; }
+            }
+            // Anything within the square's inner circle is certainly the nearest one.
+            if (best != null && bestD <= radius) return best;
+            if (radius >= maxRadiusPx) return best;
+            radius = Math.min(maxRadiusPx, radius * 2);
+        }
+    }
+
     /** Change to a random new seed; returns the new seed value. */
     public static long generateRandomSeedFromExplorer() throws Exception {
         long newSeed = new Random().nextLong();

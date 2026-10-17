@@ -498,6 +498,52 @@
   }
   .coord-tp:hover { border-color: var(--accent); }
   .coord-tp-copied { border-color: #22c55e !important; color: #22c55e; }
+
+  /* ── Ocean features ── */
+  .feat-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  .feat-dot {
+    position: absolute;
+    width: 10px; height: 10px;
+    margin: -5px 0 0 -5px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0, 0, 0, 0.75);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .feat-dot.trench { border-radius: 2px; transform: rotate(45deg); }
+  .feat-dot.archipelago {
+    width: 16px; height: 16px; margin: -8px 0 0 -8px;
+    background: transparent !important;
+    border: 2px dashed #4ade80;
+    box-shadow: none;
+  }
+  .feat-dot.selected { box-shadow: 0 0 0 3px #fff, 0 0 8px 3px rgba(255, 255, 255, 0.6); z-index: 3; }
+  .feat-dot:hover { transform: scale(1.4); }
+  .feat-dot.trench:hover { transform: rotate(45deg) scale(1.4); }
+  .feat-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .feat-chip {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; padding: 3px 6px;
+    color: var(--muted);
+    overflow: hidden;
+  }
+  .feat-chip.on { color: var(--text); border-color: var(--accent); }
+  .feat-chip .sw { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; opacity: 0.35; }
+  .feat-chip.on .sw { opacity: 1; }
+  .feat-chip .n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .feat-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .feat-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; padding: 3px 4px;
+    border-radius: 3px; cursor: pointer;
+  }
+  .feat-row:hover { background: var(--accent-dim); }
+  .feat-row .sw { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .feat-row .c { margin-left: auto; color: var(--muted); font-family: monospace; }
+  .feat-empty { font-size: 11px; color: var(--muted); }
+  .feat-name { font-size: 12px; font-weight: 600; }
+  .feat-desc { font-size: 11px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -523,6 +569,13 @@
     <div class="section">
       <div class="section-title">Coarse Channel</div>
       <div class="channel-grid" id="channel-buttons"></div>
+    </div>
+
+    <!-- Ocean features -->
+    <div class="section">
+      <div class="section-title">Ocean Features</div>
+      <div class="feat-toggles" id="feat-toggles"></div>
+      <div class="feat-list" id="feat-list"><span class="feat-empty">Loading…</span></div>
     </div>
 
     <!-- Filter -->
@@ -569,6 +622,7 @@
         <button class="pan-btn btn-left"  id="coarse-left">←</button>
         <div class="map-container" id="coarse-container">
           <img id="coarse-img" class="map-img" alt="coarse map">
+          <div class="feat-layer" id="coarse-features"></div>
           <div class="tile-marker" id="tile-marker"></div>
           <div class="spinner" id="coarse-spinner"></div>
           <div class="map-placeholder" id="coarse-placeholder">Loading…</div>
@@ -600,6 +654,7 @@
         <button class="pan-btn btn-left"  id="detail-left">←</button>
         <div class="map-container" id="detail-container">
           <img id="detail-img" class="map-img" alt="detail map" style="display:none">
+          <div class="feat-layer" id="detail-features"></div>
           <div class="spinner" id="detail-spinner"></div>
           <div class="map-placeholder" id="detail-placeholder">Click coarse map to generate</div>
         </div>
@@ -854,6 +909,7 @@
   function loadDetail() {
     if (state.detailCI === null) return;
     state.detailRaw = null;
+    detailFeatures.innerHTML = '';
     detailImg.style.display = 'block';
     detailImg.classList.add('loading');
     detailSpinner.classList.add('active');
@@ -887,6 +943,7 @@
     coarseInfo.textContent = `ci=[${oi-w}…${oi+w}], cj=[${oj-w}…${oj+w}]`;
     updateTileMarker();
     loadCoarseData();
+    loadFeatures();
   };
   coarseImg.onerror = () => {
     coarseImg.classList.remove('loading');
@@ -897,6 +954,7 @@
     detailImg.classList.remove('loading');
     detailSpinner.classList.remove('active');
     loadDetailRaw();
+    loadDetailFeatures();
   };
   detailImg.onerror = () => {
     detailImg.classList.remove('loading');
@@ -956,6 +1014,7 @@
     state.detailCJ = Math.floor(cj0 + (e.clientX - rect.left) / rect.width  * (cj1 - cj0));
     state.detailPanI = 0;
     state.detailPanJ = 0;
+    if (state.selectedFeature) { state.selectedFeature = null; renderFeatures(); }
     updateTileMarker();
     loadDetail();
     statusBar.textContent = `Selected tile ci=${state.detailCI}, cj=${state.detailCJ}`;
@@ -1053,6 +1112,9 @@
     detailPlaceholder.style.display = '';
     detailInfo.textContent = 'click coarse map to load';
     tileMarker.style.display = 'none';
+    state.selectedFeature = null;
+    state.detailFeatures = [];
+    detailFeatures.innerHTML = '';
   }
 
   // ── Filter toggle ──
@@ -1101,6 +1163,186 @@
   document.getElementById('detail-down').addEventListener('click',  () => { if (state.detailCI !== null) { state.detailPanI += DETAIL_PAN_STEP; loadDetail(); } });
   document.getElementById('detail-left').addEventListener('click',  () => { if (state.detailCI !== null) { state.detailPanJ -= DETAIL_PAN_STEP; loadDetail(); } });
   document.getElementById('detail-right').addEventListener('click', () => { if (state.detailCI !== null) { state.detailPanJ += DETAIL_PAN_STEP; loadDetail(); } });
+
+  // ── Ocean features ──
+  // Markers for the ocean features the generator places (the same rules as the terrain): click one to load the
+  // detail map around it and get a /tp command.
+  const FEATURE_TYPES = {
+    volcanic_island: { name: 'Volcanic island', color: '#f97316', on: true },
+    arc_island:      { name: 'Arc island',      color: '#facc15', on: true },
+    atoll:           { name: 'Atoll',           color: '#2dd4bf', on: true },
+    guyot:           { name: 'Guyot',           color: '#a78bfa', on: true },
+    seamount:        { name: 'Seamount',        color: '#94a3b8', on: false },
+    trench:          { name: 'Trench',          color: '#f43f5e', on: true },
+    archipelago:     { name: 'Archipelago sea', color: '#4ade80', on: true },
+  };
+  const coarseFeatures = document.getElementById('coarse-features');
+  const detailFeatures = document.getElementById('detail-features');
+  const featToggles = document.getElementById('feat-toggles');
+  const featList = document.getElementById('feat-list');
+  state.features = [];
+  state.detailFeatures = [];
+  state.selectedFeature = null;
+  let featureRequest = 0, detailFeatureRequest = 0;
+
+  function describeFeature(f) {
+    const v = Math.round(f.value);
+    switch (f.type) {
+      case 'volcanic_island': case 'arc_island': return `peak ${v} m above the sea`;
+      case 'atoll': return 'reef ring at sea level';
+      case 'guyot': return `flat summit ${-v} m down`;
+      case 'seamount': return `summit ${-v} m down`;
+      case 'trench': return `floor about ${-v} m down`;
+      case 'archipelago': return 'island-strewn shallow sea (its islands come from the model)';
+      default: return '';
+    }
+  }
+
+  function coarseWindowPx() {
+    const { coarseOffsetI: oi, coarseOffsetJ: oj, coarseWindow: w } = state;
+    return { i0: (oi - w) * 256, j0: (oj - w) * 256, i1: (oi + w) * 256, j1: (oj + w) * 256 };
+  }
+
+  function detailWindowPx() {
+    const { detailCI: ci, detailCJ: cj, detailPanI: pi, detailPanJ: pj } = state;
+    const ci0 = ci * 256 + pi - DETAIL_SIZE / 2, cj0 = cj * 256 + pj - DETAIL_SIZE / 2;
+    return { i0: ci0, j0: cj0, i1: ci0 + DETAIL_SIZE, j1: cj0 + DETAIL_SIZE };
+  }
+
+  async function fetchFeatures(win) {
+    const url = `/api/features?i0=${Math.floor(win.i0)}&j0=${Math.floor(win.j0)}&i1=${Math.ceil(win.i1)}&j1=${Math.ceil(win.j1)}&_s=${state.seed}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json()).features || [];
+  }
+
+  async function loadFeatures() {
+    const req = ++featureRequest;
+    try {
+      const list = await fetchFeatures(coarseWindowPx());
+      if (req !== featureRequest) return;
+      state.features = list;
+    } catch (e) {
+      if (req !== featureRequest) return;
+      state.features = [];
+      featList.innerHTML = '<span class="feat-empty">Could not load features</span>';
+    }
+    renderFeatures();
+  }
+
+  async function loadDetailFeatures() {
+    if (state.detailCI === null) return;
+    const req = ++detailFeatureRequest;
+    try {
+      const list = await fetchFeatures(detailWindowPx());
+      if (req !== detailFeatureRequest) return;
+      state.detailFeatures = list;
+    } catch (_) {
+      state.detailFeatures = [];
+    }
+    renderDetailFeatures();
+  }
+
+  function sameFeature(a, b) {
+    return a && b && a.type === b.type && Math.abs(a.i - b.i) < 1 && Math.abs(a.j - b.j) < 1;
+  }
+
+  function featureDot(f, win, layer) {
+    const t = FEATURE_TYPES[f.type];
+    const dot = document.createElement('div');
+    dot.className = 'feat-dot ' + f.type + (sameFeature(f, state.selectedFeature) ? ' selected' : '');
+    dot.style.background = t.color;
+    dot.style.left = ((f.j - win.j0) / (win.j1 - win.j0) * 100) + '%';
+    dot.style.top = ((f.i - win.i0) / (win.i1 - win.i0) * 100) + '%';
+    dot.addEventListener('mouseenter', (e) => showTooltip(e,
+      `<div class="ht-row"><span class="ht-val">${t.name}</span></div>` +
+      `<div class="ht-row"><span class="ht-label">x, z</span><span class="ht-val">${f.x}, ${f.z}</span></div>` +
+      `<div class="ht-coord">${describeFeature(f)}</div>`));
+    dot.addEventListener('mouseleave', hideTooltip);
+    dot.addEventListener('click', (e) => { e.stopPropagation(); goToFeature(f); });
+    layer.appendChild(dot);
+  }
+
+  function renderFeatures() {
+    // Toggles with counts in view.
+    const counts = {};
+    state.features.forEach(f => { counts[f.type] = (counts[f.type] || 0) + 1; });
+    featToggles.innerHTML = '';
+    Object.entries(FEATURE_TYPES).forEach(([type, t]) => {
+      const b = document.createElement('button');
+      b.className = 'feat-chip' + (t.on ? ' on' : '');
+      b.innerHTML = `<span class="sw" style="background:${t.color}"></span>${t.name}<span class="n">${counts[type] || 0}</span>`;
+      b.addEventListener('click', () => { t.on = !t.on; renderFeatures(); renderDetailFeatures(); });
+      featToggles.appendChild(b);
+    });
+
+    // Markers on the coarse map.
+    const win = coarseWindowPx();
+    coarseFeatures.innerHTML = '';
+    const shown = state.features.filter(f => FEATURE_TYPES[f.type] && FEATURE_TYPES[f.type].on);
+    shown.forEach(f => featureDot(f, win, coarseFeatures));
+
+    // List, nearest to the middle of the view first.
+    const ci = (win.i0 + win.i1) / 2, cj = (win.j0 + win.j1) / 2;
+    const sorted = shown.slice().sort((a, b) => Math.hypot(a.i - ci, a.j - cj) - Math.hypot(b.i - ci, b.j - cj));
+    featList.innerHTML = '';
+    if (!sorted.length) {
+      featList.innerHTML = '<span class="feat-empty">None in view. Zoom out or pan.</span>';
+      return;
+    }
+    sorted.slice(0, 80).forEach(f => {
+      const t = FEATURE_TYPES[f.type];
+      const row = document.createElement('div');
+      row.className = 'feat-row';
+      row.title = describeFeature(f);
+      row.innerHTML = `<span class="sw" style="background:${t.color}"></span>${t.name}<span class="c">${f.x}, ${f.z}</span>`;
+      row.addEventListener('click', () => goToFeature(f));
+      featList.appendChild(row);
+    });
+  }
+
+  function renderDetailFeatures() {
+    detailFeatures.innerHTML = '';
+    if (state.detailCI === null || detailImg.style.display === 'none') return;
+    const win = detailWindowPx();
+    state.detailFeatures
+      .filter(f => FEATURE_TYPES[f.type] && FEATURE_TYPES[f.type].on)
+      .forEach(f => featureDot(f, win, detailFeatures));
+  }
+
+  function goToFeature(f) {
+    state.selectedFeature = f;
+    state.detailCI = Math.floor(f.i / 256);
+    state.detailCJ = Math.floor(f.j / 256);
+    state.detailPanI = Math.round(f.i - state.detailCI * 256);
+    state.detailPanJ = Math.round(f.j - state.detailCJ * 256);
+    detailFeatures.innerHTML = '';
+    updateTileMarker();
+    loadDetail();
+    renderFeatures();
+    showFeatureCoords(f);
+    statusBar.textContent = `${FEATURE_TYPES[f.type].name} at ${f.x}, ${f.z}`;
+  }
+
+  function showFeatureCoords(f) {
+    const tp = `/tp ${f.x} ~ ${f.z}`;
+    coordRows.innerHTML = `
+      <div class="feat-name">${FEATURE_TYPES[f.type].name}</div>
+      <div class="feat-desc">${describeFeature(f)}</div>
+      <div class="coord-xyz">
+        <div class="coord-xy-row"><span class="coord-xy-lbl">x (j)</span><span class="coord-xy-val">${f.x}</span></div>
+        <div class="coord-xy-row"><span class="coord-xy-lbl">z (i)</span><span class="coord-xy-val">${f.z}</span></div>
+      </div>
+      <div class="coord-tp" id="coord-tp-btn" title="Click to copy">${tp}</div>`;
+    document.getElementById('coord-tp-btn').addEventListener('click', () => {
+      navigator.clipboard.writeText(tp).then(() => {
+        const btn = document.getElementById('coord-tp-btn');
+        btn.classList.add('coord-tp-copied');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.classList.remove('coord-tp-copied'); btn.textContent = tp; }, 1200);
+      });
+    });
+  }
 
   // ── Init ──
   async function init() {

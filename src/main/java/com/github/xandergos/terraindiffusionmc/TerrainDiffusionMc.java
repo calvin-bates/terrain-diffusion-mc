@@ -5,6 +5,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.ModelAssetManager;
 import com.github.xandergos.terraindiffusionmc.pipeline.PipelineModels;
 import com.github.xandergos.terraindiffusionmc.world.AxolotlLakes;
+import com.github.xandergos.terraindiffusionmc.world.FeatureFinder;
 import com.github.xandergos.terraindiffusionmc.world.InlandFish;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction;
@@ -61,6 +62,7 @@ public class TerrainDiffusionMc implements ModInitializer {
                 {
                     dispatcher.register(literal("terra-explore").executes(TerrainDiffusionMc::executeExplore));
                     dispatcher.register(literal("terra-column").executes(TerrainDiffusionMc::executeColumn));
+                    FeatureFinder.register(dispatcher);
                 }
         );
     }
