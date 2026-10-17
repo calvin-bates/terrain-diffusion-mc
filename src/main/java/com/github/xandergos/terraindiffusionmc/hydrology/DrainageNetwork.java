@@ -50,6 +50,16 @@ public final class DrainageNetwork {
      */
     public static DrainageNetwork compute(float[] elev, float[] runoff, int height, int width,
                                           float seaLevel, boolean edgesAreOutlets) {
+        return compute(elev, runoff, height, width, seaLevel, edgesAreOutlets, null);
+    }
+
+    /**
+     * As {@link #compute(float[], float[], int, int, float, boolean)}, with extra outlets: cells where {@code sinks} is
+     * true drain nowhere (the bottom of a closed basin), so the land around them drains into them instead of being
+     * filled up to the basin's rim.
+     */
+    public static DrainageNetwork compute(float[] elev, float[] runoff, int height, int width,
+                                          float seaLevel, boolean edgesAreOutlets, boolean[] sinks) {
         final int n = height * width;
         float[] filled = new float[n];
         int[] downstream = new int[n];
@@ -66,7 +76,8 @@ public final class DrainageNetwork {
             int r = i / width, c = i % width;
             boolean ocean = elev[i] <= seaLevel;
             boolean edge = edgesAreOutlets && (r == 0 || c == 0 || r == height - 1 || c == width - 1);
-            if (ocean || edge) {
+            boolean sink = sinks != null && sinks[i];
+            if (ocean || edge || sink) {
                 closed[i] = true;
                 filled[i] = elev[i];
                 size = push(heap, size, key(elev[i], i));

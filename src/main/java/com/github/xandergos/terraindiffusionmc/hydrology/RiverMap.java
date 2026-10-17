@@ -24,6 +24,14 @@ public final class RiverMap {
         public float lakeMinDepth = 2f;
         /** No water above this terrain height (metres) or below this temperature (deg C). */
         public float maxElevM = 4000f, minTempC = -15f;
+        /**
+         * A closed basin too big to be a lake, at least this deep (metres) and on ground higher than {@link #basinMinElev}
+         * (hills and mountains), drains to its lowest point instead of being filled to its rim, and gets a small lake
+         * of about {@link #basinLakeArea} pixels there. Filled flat, its streams were routed across the imaginary flat
+         * water surface: along and up the real slopes, carved deep into the hillsides.
+         */
+        public float basinMinDepth = 15f, basinMinElev = 700f;
+        public int basinLakeArea = 40;
     }
 
     /** Per-cell results for the whole window. */
@@ -85,16 +93,56 @@ public final class RiverMap {
         }
 
         DrainageNetwork net = DrainageNetwork.compute(routing, runoff, H, W, 0f, true);
-        float[] q = net.limitedDischarge(runoff, p.flowSteps);
-        byte[] out = new byte[n];
-
-        // --- lakes: connected groups of depression cells that are big and deep enough
         boolean[] lake = new boolean[n];
         boolean[] seen = new boolean[n];
         int[] stack = new int[n];
         int[] members = new int[n];
+
+        // --- big closed basins in the hills and mountains drain to their lowest point (see Params#basinMinDepth).
+        // A basin can hold smaller basins, so this repeats a few times on the re-computed network.
+        boolean[] sinks = null;
+        for (int pass = 0; pass < 4; pass++) {
+            boolean added = false;
+            java.util.Arrays.fill(seen, false);
+            for (int s = 0; s < n; s++) {
+                if (seen[s] || !net.inDepression[s] || elev[s] <= 0f) continue;
+                int count = collectDepression(net, elev, s, H, W, seen, stack, members);
+                if (count <= p.lakeMaxArea) continue;
+                float maxDepth = 0f, meanElev = 0f;
+                int pit = members[0];
+                for (int k = 0; k < count; k++) {
+                    int i = members[k];
+                    maxDepth = Math.max(maxDepth, net.filled[i] - routing[i]);
+                    meanElev += elev[i];
+                    if (routing[i] < routing[pit]) pit = i;
+                }
+                meanElev /= count;
+                if (maxDepth < p.basinMinDepth || meanElev < p.basinMinElev) continue;
+                if (sinks == null) sinks = new boolean[n];
+                if (!sinks[pit]) { sinks[pit] = true; added = true; }
+            }
+            if (!added) break;
+            net = DrainageNetwork.compute(routing, runoff, H, W, 0f, true, sinks);
+        }
+        float[] q = net.limitedDischarge(runoff, p.flowSteps);
+        byte[] out = new byte[n];
+
+        // --- a small lake at the bottom of each drained basin, where its streams end: the lowest pixels around the sink,
+        // about basinLakeArea of them, under one flat level that the ground rises above all the way round
+        if (sinks != null) {
+            for (int s = 0; s < n; s++) {
+                if (!sinks[s]) continue;
+                int count = basinLake(routing, elev, s, p.basinLakeArea, H, W, lake, members);
+                float level = 0f;
+                for (int k = 0; k < count; k++) level = Math.max(level, routing[members[k]]);
+                for (int k = 0; k < count; k++) { lake[members[k]] = true; net.filled[members[k]] = level; }
+            }
+        }
+
+        // --- lakes: connected groups of depression cells that are big and deep enough
+        java.util.Arrays.fill(seen, false);
         for (int s = 0; s < n; s++) {
-            if (seen[s] || !net.inDepression[s] || elev[s] <= 0f) continue;
+            if (seen[s] || !net.inDepression[s] || elev[s] <= 0f || lake[s]) continue;   // (not over a basin lake)
             int sp = 0, count = 0;
             float maxDepth = 0f;
             stack[sp++] = s; seen[s] = true;
@@ -103,10 +151,10 @@ public final class RiverMap {
                 members[count++] = i;
                 maxDepth = Math.max(maxDepth, net.filled[i] - routing[i]);
                 int r = i / W, c = i % W;
-                if (r > 0)     { int j = i - W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
-                if (r < H - 1) { int j = i + W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
-                if (c > 0)     { int j = i - 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
-                if (c < W - 1) { int j = i + 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+                if (r > 0)     { int j = i - W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f && !lake[j]) { seen[j] = true; stack[sp++] = j; } }
+                if (r < H - 1) { int j = i + W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f && !lake[j]) { seen[j] = true; stack[sp++] = j; } }
+                if (c > 0)     { int j = i - 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f && !lake[j]) { seen[j] = true; stack[sp++] = j; } }
+                if (c < W - 1) { int j = i + 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f && !lake[j]) { seen[j] = true; stack[sp++] = j; } }
             }
             float meanElev = 0f;
             for (int k = 0; k < count; k++) meanElev += elev[members[k]];
@@ -182,5 +230,54 @@ public final class RiverMap {
             for (int k = 0; k < len; k++) if (out[path[k]] == NONE) out[path[k]] = STREAM;
         }
         return new Result(out, net.downstream, net.filled);
+    }
+
+    /** Collects the connected depression cells (filled ones, on land) around s into members; returns how many. */
+    private static int collectDepression(DrainageNetwork net, float[] elev, int s, int H, int W,
+                                         boolean[] seen, int[] stack, int[] members) {
+        int sp = 0, count = 0;
+        stack[sp++] = s; seen[s] = true;
+        while (sp > 0) {
+            int i = stack[--sp];
+            members[count++] = i;
+            int r = i / W, c = i % W;
+            if (r > 0)     { int j = i - W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+            if (r < H - 1) { int j = i + W; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+            if (c > 0)     { int j = i - 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+            if (c < W - 1) { int j = i + 1; if (!seen[j] && net.inDepression[j] && elev[j] > 0f) { seen[j] = true; stack[sp++] = j; } }
+        }
+        return count;
+    }
+
+    /**
+     * The lowest {@code area} or so pixels connected to the sink (taken lowest first), plus any neighbour still below the
+     * highest of them, so the ground around the lake is at or above its level everywhere. Pixels already in a lake are
+     * left out. Returns how many were put into members.
+     */
+    private static int basinLake(float[] routing, float[] elev, int sink, int area, int H, int W, boolean[] lake, int[] members) {
+        java.util.PriorityQueue<long[]> heap = new java.util.PriorityQueue<>((x, y) -> Float.compare(Float.intBitsToFloat((int) x[0]), Float.intBitsToFloat((int) y[0])));
+        java.util.HashSet<Integer> queued = new java.util.HashSet<>();
+        int count = 0;
+        float level = Float.NEGATIVE_INFINITY;
+        heap.add(new long[]{Float.floatToIntBits(routing[sink]), sink});
+        queued.add(sink);
+        while (!heap.isEmpty()) {
+            long[] top = heap.peek();
+            float e = Float.intBitsToFloat((int) top[0]);
+            if (count >= area && e >= level) break;   // enough pixels, and nothing left below the level
+            heap.poll();
+            int i = (int) top[1];
+            members[count++] = i;
+            level = Math.max(level, e);
+            int r = i / W, c = i % W;
+            int[] nb = { r > 0 ? i - W : -1, r < H - 1 ? i + W : -1, c > 0 ? i - 1 : -1, c < W - 1 ? i + 1 : -1 };
+            for (int j : nb) {
+                if (j < 0 || queued.contains(j) || lake[j] || elev[j] <= 0f) continue;
+                queued.add(j);
+                heap.add(new long[]{Float.floatToIntBits(routing[j]), j});
+            }
+            if (count >= area * 4) break;   // a flat floor: stop growing
+        }
+        return count;
     }
 }
