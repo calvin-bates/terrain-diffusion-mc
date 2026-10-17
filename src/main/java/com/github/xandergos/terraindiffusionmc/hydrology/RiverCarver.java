@@ -167,6 +167,24 @@ public final class RiverCarver {
     }
 
 
+    /** Catmull-Rom interpolation of a row-major grid at fractional (row, column), clamped at the grid's edges. */
+    private static float catmullRom(float[] g, int gh, int gw, float fr, float fc) {
+        int r0 = (int) Math.floor(fr), c0 = (int) Math.floor(fc);
+        float tr = fr - r0, tc = fc - c0;
+        float[] col = new float[4];
+        for (int i = 0; i < 4; i++) {
+            int rr = Math.max(0, Math.min(gh - 1, r0 - 1 + i));
+            float[] v = new float[4];
+            for (int j = 0; j < 4; j++) v[j] = g[rr * gw + Math.max(0, Math.min(gw - 1, c0 - 1 + j))];
+            col[i] = cr(v[0], v[1], v[2], v[3], tc);
+        }
+        return cr(col[0], col[1], col[2], col[3], tr);
+    }
+
+    private static float cr(float p0, float p1, float p2, float p3, float t) {
+        return 0.5f * (2f * p1 + (-p0 + p2) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t * t + (-p0 + 3f * p1 - 3f * p2 + p3) * t * t * t);
+    }
+
     /** Smooth deterministic value noise in [0,1], lattice spacing 7 blocks, from world block coordinates. */
     private static float valueNoise(int x, int z) { return valueNoise(x, z, 7); }
 
@@ -216,7 +234,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v25 (one water level across a river channel; its high side becomes bank)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v26 (smooth lake-floor depth; no caves or ravines at inland water)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -1185,7 +1203,7 @@ public final class RiverCarver {
                 final float EXTRA_PER_BLOCK = 0.22f, EXTRA_MAX = 5f, SHALLOW_BLOCKS = 0.6f;
                 final float blocksPerMetre = (metersToY.applyAsInt(10000) - metersToY.applyAsInt(0)) / 10000f;
                 final int maxD = (int) Math.ceil(EXTRA_MAX / EXTRA_PER_BLOCK);
-                final int rpx = maxD / scale + 2;
+                final int rpx = maxD / scale + 4;
                 int gi0 = Math.floorDiv(i1, scale) - rpx, gi1 = Math.floorDiv(i1 + H - 1, scale) + rpx;
                 int gj0 = Math.floorDiv(j1, scale) - rpx, gj1 = Math.floorDiv(j1 + W - 1, scale) + rpx;
                 int gh = gi1 - gi0 + 1, gw = gj1 - gj0 + 1;
@@ -1206,21 +1224,34 @@ public final class RiverCarver {
                         lakePx[a * gw + b] = deep;
                     }
                 }
+                // v26: the distance is worked out once per pixel (from its centre) and blended smoothly between pixel
+                // centres (Catmull-Rom). Measured column by column to the nearest pixel square, the depth contours took on
+                // the squares' straight edges and corners: lines all over the floors of flat lowland lakes.
+                final int R = maxD / scale + 1;
+                float[] pd = new float[gh * gw];
+                for (int a = 0; a < gh; a++) {
+                    for (int b = 0; b < gw; b++) {
+                        if (!lakePx[a * gw + b]) continue;   // not deep lake: 0
+                        float px = (gj0 + b + 0.5f) * scale, pz = (gi0 + a + 0.5f) * scale;
+                        float best = maxD;
+                        for (int a2 = Math.max(0, a - R); a2 <= Math.min(gh - 1, a + R); a2++) {
+                            for (int b2 = Math.max(0, b - R); b2 <= Math.min(gw - 1, b + R); b2++) {
+                                if (lakePx[a2 * gw + b2]) continue;
+                                int ai = gi0 + a2, bj = gj0 + b2;
+                                float dx = Math.max(0f, Math.max(bj * scale - px, px - (bj + 1) * scale));
+                                float dz = Math.max(0f, Math.max(ai * scale - pz, pz - (ai + 1) * scale));
+                                float d = (float) Math.sqrt(dx * dx + dz * dz);
+                                if (d < best) best = d;
+                            }
+                        }
+                        pd[a * gw + b] = best;
+                    }
+                }
                 for (int q = 0; q < bt2; q++) {
                     int idx = bq2[q];
                     int r = idx / W, c = idx % W;
-                    float px = j1 + c + 0.5f, pz = i1 + r + 0.5f;
-                    int pi = Math.floorDiv(i1 + r, scale), pj = Math.floorDiv(j1 + c, scale);
-                    float best = maxD;
-                    for (int a = pi - rpx; a <= pi + rpx; a++) {
-                        for (int b = pj - rpx; b <= pj + rpx; b++) {
-                            if (lakePx[(a - gi0) * gw + (b - gj0)]) continue;
-                            float dx = Math.max(0f, Math.max(b * scale - px, px - (b + 1) * scale));
-                            float dz = Math.max(0f, Math.max(a * scale - pz, pz - (a + 1) * scale));
-                            float d = (float) Math.sqrt(dx * dx + dz * dz);
-                            if (d < best) best = d;
-                        }
-                    }
+                    float fz = (i1 + r + 0.5f) / scale - 0.5f - gi0, fx = (j1 + c + 0.5f) / scale - 0.5f - gj0;
+                    float best = Math.max(0f, Math.min(maxD, catmullRom(pd, gh, gw, fz, fx)));
                     float wobble = 0.75f + 0.5f * valueNoise(j1 + c, i1 + r, 19);
                     extra[idx] = Math.min(EXTRA_MAX, best * EXTRA_PER_BLOCK) * wobble;
                 }
@@ -1230,7 +1261,12 @@ public final class RiverCarver {
                 int idx = bq2[q];
                 int r = idx / W, c = idx % W;
                 int level = waterY[r][c];
-                int natural = Math.max(1, Math.round(level - smooth[idx] + extra[idx]));
+                // v26: a gentle floor wobble (about +-0.9 block, two smooth noises on 13- and 5-block lattices) away from the
+                // shore. Low-lying terrain is nearly flat, and its one-block steps run in long straight lines; a floor that
+                // just follows it showed those lines through the water.
+                float floorFade = Math.min(1f, Math.max(0f, (bd[idx] - 2) / 4f));
+                float wob = ((valueNoise(j1 + c, i1 + r, 13) - 0.5f) * 1.3f + (valueNoise(j1 + c, i1 + r, 5) - 0.5f) * 0.5f) * floorFade;
+                int natural = Math.max(1, Math.round(level - smooth[idx] + extra[idx] + wob));
                 // Variety right at the shore: the first 3 blocks get a slowly changing +-1 block of extra or less depth
                 // (smooth noise, 11-block lattice), so the drop from shore to lake floor is not the same everywhere.
                 int off = 0;
