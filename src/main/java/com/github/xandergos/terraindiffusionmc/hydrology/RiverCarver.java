@@ -203,7 +203,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v17 (v16 + streams raised to the lake level where they meet)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v18 (v17 + lakes do not spread down open valleys)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -600,6 +600,10 @@ public final class RiverCarver {
                     // (A stream column on ground at the lake level is still raised: otherwise the stream dips a block
                     // below the lake right where it meets it.)
                     if (ytop[j] < 60 || ytop[j] > srcLvl[idx] || (!river && ytop[j] == srcLvl[idx])) continue;
+                    // Outside the lake's own pixels the water only spreads over shallow ground (within 3 blocks of the level).
+                    // Where the basin's rim is broken, spreading "however far below" ran the lake out down the next valley,
+                    // held up by walls, whenever the lake crossed a tile border (the spill-level fix skips those lakes).
+                    if (!ownLakeCol[j] && !river && srcLvl[idx] - ytop[j] > 3) continue;
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
@@ -968,6 +972,49 @@ public final class RiverCarver {
                 bedY = Math.min(bedY, Math.min(ytop[idx] + 3, level - 1));
                 int cur = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
                 if (bedY != cur) { surfaceY[r][c] = (short) bedY; any = true; }
+            }
+        }
+
+        // ---- natural dams: where a lake's water stands 2+ blocks above the dry ground beside it (a rim broken by the
+        // terrain's small-scale noise), the water placer used to wall it in with a vertical dirt face. Raise that ground
+        // into a dam instead: level with the water at the shore, then sloping down one block per block. Done column by
+        // column, so a lake that crosses a tile border gets the same shore on both sides.
+        {
+            final int DAM_REACH = 10;
+            int[] dd = new int[n];
+            int[] dlvl = new int[n];
+            Arrays.fill(dd, -1);
+            int[] dq = new int[n];
+            int dh = 0, dt = 0;
+            for (int idx = 0; idx < n; idx++) {
+                if (!lakeCol[idx]) continue;
+                int r = idx / W, c = idx % W;
+                int lvl = waterY[r][c];
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || waterY[j / W][j % W] != NONE || ytop[j] < 60) continue;
+                    int tj = surfaceY[j / W][j % W] != NONE ? surfaceY[j / W][j % W] : ytop[j];
+                    if (lvl - tj < 2) continue;
+                    if (dd[j] < 0 || lvl > dlvl[j]) {
+                        if (dd[j] < 0) dq[dt++] = j;
+                        dd[j] = 1; dlvl[j] = lvl;
+                    }
+                }
+            }
+            while (dh < dt) {
+                int idx = dq[dh++];
+                int r = idx / W, c = idx % W;
+                int target = dlvl[idx] - (dd[idx] - 1);
+                int top = surfaceY[r][c] != NONE ? surfaceY[r][c] : ytop[idx];
+                if (target <= top) continue;   // the ground already meets the slope: the dam ends here
+                surfaceY[r][c] = (short) target;
+                any = true;
+                if (dd[idx] >= DAM_REACH) continue;
+                int[] nb = { r > 0 ? idx - W : -1, r < H - 1 ? idx + W : -1, c > 0 ? idx - 1 : -1, c < W - 1 ? idx + 1 : -1 };
+                for (int j : nb) {
+                    if (j < 0 || dd[j] >= 0 || waterY[j / W][j % W] != NONE || ytop[j] < 60) continue;
+                    dd[j] = dd[idx] + 1; dlvl[j] = dlvl[idx]; dq[dt++] = j;
+                }
             }
         }
 
