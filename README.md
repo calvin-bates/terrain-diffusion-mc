@@ -93,7 +93,7 @@ This value is saved with the world save and affects:
 
 ### Axolotls
 
-Axolotls live in a few alpine lakes: lake water at least 2000 real-world metres up (the Y level this needs depends on the world scale: about Y 129 at scale 1, Y 196 at scale 2, Y 463 at scale 6), in rare "axolotl chunks" (like slime chunks, one in 20). `/terra-column` says whether you are standing in one.
+Axolotls live in a few alpine lakes: lake water at least 3000 real-world metres up (the Y level this needs depends on the world scale: Y 163 at scale 1, Y 263 at scale 2, Y 663 at scale 6), in rare "axolotl chunks" (like slime chunks, one in 25). `/terra-column` says whether you are standing in one.
 
 ## Common Issues
 
