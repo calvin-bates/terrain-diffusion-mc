@@ -105,6 +105,56 @@ public final class RiverCarver {
         return (pixel >= lo && pixel < hi) ? preferred : Math.floorDiv(pixel, regionSize);
     }
 
+    /**
+     * The hydrology lake mask over pixel rows gi0.. and columns gj0.. (gh x gw), with every part narrower than 3 pixels
+     * removed (an opening with a 3x3 cross). A depression can reach up a valley as a one- or two-pixel-wide finger; in
+     * blocks that finger runs over sloping ground, so its water stood above the land on the downhill side.
+     */
+    private static boolean[] openedLakeMask(int gi0, int gj0, int gh, int gw, int prefRi, int prefRj, int regionSize,
+                                            int trust, Regions regions) {
+        int eh = gh + 4, ew = gw + 4;
+        boolean[] raw = new boolean[eh * ew];
+        RiverService.Region rg = null;
+        int cri = Integer.MIN_VALUE, crj = Integer.MIN_VALUE;
+        for (int a = 0; a < eh; a++) {
+            for (int b = 0; b < ew; b++) {
+                int pi = gi0 - 2 + a, pj = gj0 - 2 + b;
+                int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
+                if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
+                int k = rg.index(pi, pj);
+                raw[a * ew + b] = k >= 0 && rg.cls[k] == RiverMap.LAKE;
+            }
+        }
+        boolean[] core = new boolean[eh * ew];
+        for (int a = 1; a < eh - 1; a++)
+            for (int b = 1; b < ew - 1; b++) {
+                int i = a * ew + b;
+                core[i] = raw[i] && raw[i - 1] && raw[i + 1] && raw[i - ew] && raw[i + ew];
+            }
+        boolean[] out = new boolean[gh * gw];
+        for (int a = 0; a < gh; a++)
+            for (int b = 0; b < gw; b++) {
+                int i = (a + 2) * ew + (b + 2);
+                out[a * gw + b] = raw[i] && (core[i] || core[i - 1] || core[i + 1] || core[i - ew] || core[i + ew]);
+            }
+        return out;
+    }
+
+    private static boolean regLake(RiverService.Region reg, int r, int c) {
+        return r >= 0 && c >= 0 && r < reg.height && c < reg.width && reg.cls[r * reg.width + c] == RiverMap.LAKE;
+    }
+
+    private static boolean regCore(RiverService.Region reg, int r, int c) {
+        return regLake(reg, r, c) && regLake(reg, r - 1, c) && regLake(reg, r + 1, c) && regLake(reg, r, c - 1) && regLake(reg, r, c + 1);
+    }
+
+    /** True for a lake pixel that survives the opening (see openedLakeMask), false for one in a thin arm. */
+    private static boolean regOpenLake(RiverService.Region reg, int k) {
+        int r = k / reg.width, c = k % reg.width;
+        return regLake(reg, r, c) && (regCore(reg, r, c) || regCore(reg, r - 1, c) || regCore(reg, r + 1, c)
+                || regCore(reg, r, c - 1) || regCore(reg, r, c + 1));
+    }
+
     /** How many lake pixels a stream's channel is carried into (inlets) or out of (outlets) a lake. */
     private static final int LAKE_LINK = 8;
 
@@ -203,7 +253,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v19 (v18 + streams below a lake keep their own level)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v20 (v19 + no thin lake arms)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -260,13 +310,16 @@ public final class RiverCarver {
                     int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
                     int dr = qr - kr, dc = qc - kc;
                     drawSegment(reg, k, q0, cq, scale, i1, j1, H, W, score, sA, cA, pt);
+                    // Through a thin arm of the lake mask (which gets no lake water) the channel follows the arm all the way
+                    // back to the lake proper, then LAKE_LINK pixels more.
                     int curR = kr, curC = kc;
-                    for (int st = 0; st < LAKE_LINK; st++) {
+                    for (int st = 0, inLake = 0; st < 64 && inLake < LAKE_LINK; st++) {
                         int prR = curR - dr, prC = curC - dc;
                         if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
                         int prev = prR * reg.width + prC;
                         if (reg.cls[prev] != RiverMap.LAKE) break;
                         drawSegment(reg, prev, curR * reg.width + curC, cq, scale, i1, j1, H, W, score, sA, cA, pt);
+                        if (regOpenLake(reg, prev)) inLake++;
                         curR = prR; curC = prC;
                     }
                     continue;
@@ -274,9 +327,10 @@ public final class RiverCarver {
                     continue;
                 }
                 int segK = k, q = q0;
-                for (int seg = 0; seg <= LAKE_LINK; seg++) {
+                for (int seg = 0, inLake = 0; seg < 64 && inLake <= LAKE_LINK; seg++) {
                     drawSegment(reg, segK, q, cls, scale, i1, j1, H, W, score, sA, cA, pt);
                     if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
+                    if (regOpenLake(reg, q)) inLake++;   // a thin arm (no lake water) does not count
                     segK = q;
                     q = reg.downstream[segK];
                     if (q < 0) break;
@@ -477,6 +531,9 @@ public final class RiverCarver {
 
         // ---- lakes: flat water over low ground inside (or right next to) lake pixels. The shore follows
         // the real ground contour, not the 30 m pixel squares of the lake mask.
+        final int lg0 = Math.floorDiv(i1, scale) - 1, lh0 = Math.floorDiv(j1, scale) - 1;
+        final int lgh = Math.floorDiv(i1 + H - 1, scale) + 1 - lg0 + 1, lgw = Math.floorDiv(j1 + W - 1, scale) + 1 - lh0 + 1;
+        final boolean[] lakeOpen = openedLakeMask(lg0, lh0, lgh, lgw, prefRi, prefRj, regionSize, trust, regions);
         boolean[] ownLakeCol = new boolean[n];
         int[] lakeLvl = new int[n];
         int[] rimLvl = new int[n];
@@ -500,7 +557,7 @@ public final class RiverCarver {
                 for (int dr = -1; dr <= 1; dr++) {
                     for (int dc = -1; dc <= 1; dc++) {
                         int k = reg.index(pi + dr, pj + dc);
-                        if (k >= 0 && reg.cls[k] == RiverMap.LAKE) {
+                        if (k >= 0 && reg.cls[k] == RiverMap.LAKE && lakeOpen[(pi + dr - lg0) * lgw + (pj + dc - lh0)]) {
                             lakeNeighbours++;
                             if (dr == 0 && dc == 0) ownLake = true;
                             float s = reg.surface[k];
@@ -607,7 +664,9 @@ public final class RiverCarver {
                     // Outside the lake's own pixels the water only spreads over shallow ground (within 3 blocks of the level).
                     // Where the basin's rim is broken, spreading "however far below" ran the lake out down the next valley,
                     // held up by walls, whenever the lake crossed a tile border (the spill-level fix skips those lakes).
-                    if (!ownLakeCol[j] && !river && srcLvl[idx] - ytop[j] > 3) continue;
+                    // Close to the lake's pixels (about one pixel) deep ground still floods: the block basin is often a little
+                    // wider than the 30 m lake mask, and leaving that ring dry made the spill-level step drain the whole lake.
+                    if (!ownLakeCol[j] && !river && srcLvl[idx] - ytop[j] > 3 && d + 1 > scale + 2) continue;
                     dist[j] = d + 1; srcLvl[j] = srcLvl[idx];
                     waterY[jr][jc] = (short) srcLvl[idx];
                     if (surfaceY[jr][jc] == NONE) surfaceY[jr][jc] = (short) ytop[j];
@@ -920,18 +979,7 @@ public final class RiverCarver {
                 int gi0 = Math.floorDiv(i1, scale) - rpx, gi1 = Math.floorDiv(i1 + H - 1, scale) + rpx;
                 int gj0 = Math.floorDiv(j1, scale) - rpx, gj1 = Math.floorDiv(j1 + W - 1, scale) + rpx;
                 int gh = gi1 - gi0 + 1, gw = gj1 - gj0 + 1;
-                boolean[] lakePx = new boolean[gh * gw];
-                RiverService.Region rg = null;
-                int cri = Integer.MIN_VALUE, crj = Integer.MIN_VALUE;
-                for (int a = 0; a < gh; a++) {
-                    for (int b = 0; b < gw; b++) {
-                        int pi = gi0 + a, pj = gj0 + b;
-                        int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
-                        if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
-                        int k = rg.index(pi, pj);
-                        lakePx[a * gw + b] = k >= 0 && rg.cls[k] == RiverMap.LAKE;
-                    }
-                }
+                boolean[] lakePx = openedLakeMask(gi0, gj0, gh, gw, prefRi, prefRj, regionSize, trust, regions);
                 for (int q = 0; q < bt2; q++) {
                     int idx = bq2[q];
                     int r = idx / W, c = idx % W;
