@@ -511,6 +511,7 @@
     pointer-events: auto;
     cursor: pointer;
   }
+  .feat-dot::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; }   /* bigger click target */
   .feat-dot.trench { border-radius: 2px; transform: rotate(45deg); }
   .feat-dot.archipelago {
     width: 16px; height: 16px; margin: -8px 0 0 -8px;
@@ -1006,7 +1007,23 @@
   coarseImg.addEventListener('mouseleave', hideTooltip);
 
   // ── Coarse click → load detail ──
+  // A click within a few pixels of a visible feature marker opens that feature (markers are small).
+  function featureNear(e, list, win, img) {
+    const rect = img.getBoundingClientRect();
+    let best = null, bestD = 14;
+    list.forEach(f => {
+      if (!FEATURE_TYPES[f.type] || !FEATURE_TYPES[f.type].on) return;
+      const x = rect.left + (f.j - win.j0) / (win.j1 - win.j0) * rect.width;
+      const y = rect.top + (f.i - win.i0) / (win.i1 - win.i0) * rect.height;
+      const d = Math.hypot(e.clientX - x, e.clientY - y);
+      if (d < bestD) { bestD = d; best = f; }
+    });
+    return best;
+  }
+
   coarseImg.addEventListener('click', (e) => {
+    const near = featureNear(e, state.features, coarseWindowPx(), coarseImg);
+    if (near) { goToFeature(near); return; }
     const { coarseOffsetI: oi, coarseOffsetJ: oj, coarseWindow: w } = state;
     const ci0 = oi - w, ci1 = oi + w, cj0 = oj - w, cj1 = oj + w;
     const rect = coarseImg.getBoundingClientRect();
