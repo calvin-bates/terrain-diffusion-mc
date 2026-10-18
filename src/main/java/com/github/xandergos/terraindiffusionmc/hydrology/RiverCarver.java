@@ -232,8 +232,22 @@ public final class RiverCarver {
         return c >= RiverMap.STREAM && c <= RiverMap.MAIN && stepsToSea(reg, k, ESTUARY) >= 0;
     }
 
+    /**
+     * Region pixel where the delta that begins at head pixel k reaches the sea (the main channel's mouth), or -1.
+     */
+    public static int deltaMouth(RiverService.Region reg, int k) {
+        int cur = k;
+        for (int s = 0; s <= DELTA_START + 1; s++) {
+            if (reg.elev[cur] <= 0f) return cur;
+            int d = reg.downstream[cur];
+            if (d < 0) return -1;
+            cur = d;
+        }
+        return -1;
+    }
+
     /** True if pixel k is where a river's delta begins. */
-    private static boolean isDeltaHead(RiverService.Region reg, int k) {
+    public static boolean isDeltaHead(RiverService.Region reg, int k) {
         byte c = reg.cls[k];
         return (c == RiverMap.MAIN || c == RiverMap.RIVER) && reg.elev != null && reg.elev[k] > 0f
                 && stepsToSea(reg, k, DELTA_START) == DELTA_START && lowPathToSea(reg, k);

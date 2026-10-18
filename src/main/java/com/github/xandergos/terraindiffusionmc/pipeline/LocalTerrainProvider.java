@@ -206,6 +206,58 @@ public final class LocalTerrainProvider {
         }
     }
 
+    /** A river delta: where it splits (head) and where its main channel meets the sea (mouth), in native pixels. */
+    public record Delta(int headI, int headJ, int mouthI, int mouthJ, byte riverClass) {}
+
+    /** Result of a delta search: the nearest delta (or null), how many were seen, and how far the search reached. */
+    public record DeltaSearch(Delta nearest, int count, int searchedRadiusPx) {}
+
+    /**
+     * The nearest river delta to native pixel (pi, pj), searching the hydrology regions ring by ring out to
+     * {@code maxRings} regions from the one containing the point. Deltas come from the river regions, so finding them
+     * means computing those regions (seconds each), which is why the search is short-range. Each region is computed on
+     * the inference thread on its own, so chunk generation keeps going in between; never call this on the server
+     * thread. {@code progress} gets the radius (native pixels) searched so far after each ring.
+     */
+    public static DeltaSearch findNearestDelta(double pi, double pj, int maxRings, java.util.function.IntConsumer progress)
+            throws Exception {
+        int size = rivers().regionSize();
+        int ci = Math.floorDiv((int) Math.floor(pi), size), cj = Math.floorDiv((int) Math.floor(pj), size);
+        Delta best = null;
+        double bestD = Double.MAX_VALUE;
+        int count = 0, reached = 0;
+        for (int ring = 0; ring <= maxRings; ring++) {
+            for (int ri = ci - ring; ri <= ci + ring; ri++) {
+                for (int rj = cj - ring; rj <= cj + ring; rj++) {
+                    if (Math.max(Math.abs(ri - ci), Math.abs(rj - cj)) != ring) continue;
+                    final int fri = ri, frj = rj;
+                    RiverService.Region reg = submitToInferenceThread(() -> rivers().region(fri, frj,
+                            (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true)));
+                    if (reg.elev == null) continue;
+                    // Only the region's own square, not its margin, so no delta is counted twice.
+                    for (int i = ri * size; i < (ri + 1) * size; i++) {
+                        for (int j = rj * size; j < (rj + 1) * size; j++) {
+                            int k = reg.index(i, j);
+                            if (k < 0 || !RiverCarver.isDeltaHead(reg, k)) continue;
+                            int m = RiverCarver.deltaMouth(reg, k);
+                            if (m < 0) continue;
+                            count++;
+                            int mi = reg.i0 + m / reg.width, mj = reg.j0 + m % reg.width;
+                            double d = Math.hypot(mi - pi, mj - pj);
+                            if (d < bestD) { bestD = d; best = new Delta(i, j, mi, mj, reg.cls[k]); }
+                        }
+                    }
+                }
+            }
+            reached = ring * size + size / 2;
+            progress.accept(reached);
+            // Everything within `reached` of the point has been searched (roughly; the point can sit anywhere in its
+            // region, so this errs on the side of searching one more ring).
+            if (best != null && bestD <= ring * size) break;
+        }
+        return new DeltaSearch(best, count, reached);
+    }
+
     /** Change to a random new seed; returns the new seed value. */
     public static long generateRandomSeedFromExplorer() throws Exception {
         long newSeed = new Random().nextLong();
