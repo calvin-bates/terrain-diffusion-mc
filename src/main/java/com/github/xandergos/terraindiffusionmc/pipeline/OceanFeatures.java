@@ -195,17 +195,20 @@ public final class OceanFeatures {
                 }
             }
         }
-        if (ridgeUp > Double.NEGATIVE_INFINITY) total += ridgeUp * deepFade;
-        total += trenchDown;
+        double tectonic = trenchDown;
+        if (ridgeUp > Double.NEGATIVE_INFINITY) tectonic += ridgeUp * deepFade;
         if (deepFade > 0) {
-            total += hills.GetNoise((float) (x / KM / 8), (float) (z / KM / 8)) * 90 * deepFade;
+            tectonic += hills.GetNoise((float) (x / KM / 8), (float) (z / KM / 8)) * 90 * deepFade;
         }
 
         // ---- Volcanoes ----
         hotspots(x, z, coarse, ctx);
         seamounts(x, z, coarse, ctx);
 
-        total += ctx.add * landFade;
+        // Sea-floor relief (abyssal hills, ridges) fades out up a volcano's flanks: it belongs to the deep floor,
+        // and on an island it left hundreds of closed hollows that filled as lakes.
+        double built = raw + ctx.add * landFade;
+        total = built + tectonic * smoothstep(-200, -1500, built);
         for (int o = 0; o < ctx.nOps; o++) {
             total = applyOp(total, o, x, z, ctx);
         }
@@ -498,7 +501,8 @@ public final class OceanFeatures {
             // r is measured in warped space; close enough for the shape.
             if (peak > 0) {
                 double landU = 0.25 + 0.2 * unit(mix(h + 4));
-                ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, x, z, h);
+                double ang = Math.atan2(xo - across, along - ak);
+                ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, ang, x, z, h);
             } else {
                 ctx.add += (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false);
             }
@@ -609,7 +613,8 @@ public final class OceanFeatures {
         switch (volcanoStage(peak, warm)) {
             case "volcanic_island" -> {
                 double landU = 0.3 + 0.2 * unit(mix(h + 8));
-                ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, x, z, h);
+                double ang = Math.atan2(z - vcz, x - vcx);
+                ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, ang, x, z, h);
             }
             case "atoll" -> {
                 // The volcano has sunk out of sight and its fringing reef kept growing up into a ring.
@@ -670,18 +675,25 @@ public final class OceanFeatures {
      * is the profile value at sea level, so the coast lands near {@code landU}. Gullies cut the land part and the
      * summit has a small caldera.
      */
-    private double islandCone(double r, double radius, double sea, double landU, double x, double z, long h) {
+    private double islandCone(double r, double radius, double sea, double landU, double ang,
+                              double x, double z, long h) {
         double u = roughRadius(r, radius, x, z, h) / radius;
         if (u >= 1) return 0;
         double s;
         if (u < landU) {
             double t = u / landU;
             s = 1 - (1 - sea) * Math.pow(t, 1.6);
-            float kx = (float) (x / KM), kz = (float) (z / KM);
-            double g = Math.abs(gullies.GetNoise(kx, kz)) * smoothstep(0.15, 0.6, t);
-            s = sea + (s - sea) * (1 - 0.35 * g);
-            s += (1 - sea) * 0.06 * motus.GetNoise(kx * 0.7f + 57, kz * 0.7f);   // bays and headlands
-            s -= (1 - sea) * 0.12 * Math.exp(-sq(t / 0.08));
+            // Gullies run straight down the flanks: the cut depends on the direction around the summit (sampled on
+            // a circle, so there is no seam), barely on the distance. Each cut deepens toward the coast, so every
+            // gully drains to the sea and the flanks hold no closed hollows; sharp ridges stand between them.
+            double coastKm = landU * radius / KM;
+            double rc = coastKm / (2 * Math.PI);
+            float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang), rad = (float) (r / KM * 0.05) + (h & 0xFF);
+            float broad = gullies.GetNoise((float) rc * ca, (float) rc * sa, rad);
+            float fine = gullies.GetNoise((float) (4 * rc) * ca + 91, (float) (4 * rc) * sa, 3 * rad);
+            double g = (0.45 * Math.abs(broad) + 0.55 * Math.abs(fine)) * smoothstep(0.1, 0.5, t);
+            s = sea + (s - sea) * (1 - 0.45 * g);
+            s -= (1 - sea) * 0.12 * Math.exp(-sq(t / 0.08));   // summit caldera (holds a crater lake)
         } else {
             s = sea * Math.pow((1 - u) / (1 - landU), 1.3);
         }
