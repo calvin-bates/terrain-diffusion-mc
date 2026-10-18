@@ -1192,6 +1192,7 @@
     seamount:        { name: 'Seamount',        color: '#94a3b8', on: false },
     trench:          { name: 'Trench',          color: '#f43f5e', on: true },
     archipelago:     { name: 'Archipelago sea', color: '#4ade80', on: true },
+    vent_field:      { name: 'Vent field',      color: '#eab308', on: true },
   };
   const coarseFeatures = document.getElementById('coarse-features');
   const detailFeatures = document.getElementById('detail-features');
@@ -1211,6 +1212,7 @@
       case 'seamount': return `summit ${-v} m down`;
       case 'trench': return `floor about ${-v} m down`;
       case 'archipelago': return 'island-strewn shallow sea (its islands come from the model)';
+      case 'vent_field': return `sulfur chimneys on the ridge axis, about ${-v} m down`;
       default: return '';
     }
   }

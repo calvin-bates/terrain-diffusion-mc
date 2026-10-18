@@ -523,6 +523,11 @@ public final class WorldPipeline implements AutoCloseable {
      * the volcanoes, atolls and trenches from {@link OceanFeatures#landmarks}, plus one marker per archipelago sea
      * (the strongest point of each 24-coarse-pixel cell that lies well inside an archipelago zone).
      */
+    /** The ocean features of the current seed, or null when they are switched off. Safe from any thread. */
+    public OceanFeatures oceanFeatures() {
+        return TerrainDiffusionConfig.oceanFeatures() ? oceanFeatures : null;
+    }
+
     public List<OceanFeatures.Landmark> oceanLandmarks(int i1, int j1, int i2, int j2) {
         OceanFeatures.CoarseField field = coarseField(i1, j1, i2, j2);
         List<OceanFeatures.Landmark> out = new ArrayList<>();

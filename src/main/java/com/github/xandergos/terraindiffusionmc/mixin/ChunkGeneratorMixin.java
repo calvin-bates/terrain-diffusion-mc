@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.mixin;
 
+import com.github.xandergos.terraindiffusionmc.world.HydrothermalVents;
 import com.github.xandergos.terraindiffusionmc.world.OceanFlora;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import net.minecraft.world.level.StructureManager;
@@ -11,7 +12,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** After features are placed in a Terra chunk, clear kelp and seagrass from deep sea water. See {@link OceanFlora}. */
+/**
+ * After features are placed in a Terra chunk, clear kelp and seagrass from deep sea water ({@link OceanFlora}) and
+ * build hydrothermal vents ({@link HydrothermalVents}).
+ */
 @Mixin(ChunkGenerator.class)
 public abstract class ChunkGeneratorMixin {
 
@@ -22,6 +26,11 @@ public abstract class ChunkGeneratorMixin {
         if (!(self.getBiomeSource() instanceof TerrainDiffusionBiomeSource)) return;
         try {
             OceanFlora.trimDeepPlants(chunk, self.getSeaLevel());
+        } catch (RuntimeException e) {
+            // never let this break chunk generation
+        }
+        try {
+            HydrothermalVents.place(level, chunk, self.getSeaLevel());
         } catch (RuntimeException e) {
             // never let this break chunk generation
         }

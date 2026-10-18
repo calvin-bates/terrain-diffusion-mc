@@ -127,6 +127,15 @@ public final class LocalTerrainProvider {
         return INSTANCE;
     }
 
+    /**
+     * The current seed's ocean features for seed-only queries (hydrothermal vents), or null if the provider is not
+     * up yet or the features are off. Never blocks, so chunk decoration can call it.
+     */
+    public static OceanFeatures oceanFeatures() {
+        LocalTerrainProvider p = INSTANCE;
+        return p == null ? null : p.pipeline.oceanFeatures();
+    }
+
     public static void clearCache() {
         CACHE.clear();
         PENDING.clear();

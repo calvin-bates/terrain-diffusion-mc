@@ -19,6 +19,9 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  *       In warm water the sunken ones become <b>atolls</b> (reef rim, motus, passes, lagoon); in cold water, or once
  *       too deep, flat-topped <b>guyots</b> and then plain seamounts.</li>
  *   <li><b>Seamounts and guyots</b> scattered over the abyssal plains, plus low abyssal hills.</li>
+ *   <li><b>Hydrothermal vents</b>: vent fields along ridge axes and around active volcanoes, as a seed-only query
+ *       ({@link #vents}) that chunk decoration turns into sulfur chimneys and geysers
+ *       ({@code world.HydrothermalVents}). No height change.</li>
  * </ul>
  * Tectonic relief only appears in deep water (it fades out between 1500 and 3000 m), and volcanoes are only placed
  * where the coarse map is deep ocean, so continents and shelves are never touched.
@@ -236,6 +239,7 @@ public final class OceanFeatures {
         hotspotLandmarks(i0, j0, i1, j1, coarse, out);
         seamountLandmarks(i0, j0, i1, j1, coarse, out);
         subductionLandmarks(i0, j0, i1, j1, coarse, out);
+        ventLandmarks(i0, j0, i1, j1, coarse, out);
         return out;
     }
 
@@ -358,6 +362,66 @@ public final class OceanFeatures {
         }
     }
 
+    /** One marker per hydrothermal vent field on a mid-ocean ridge (see {@link #vents}). */
+    private void ventLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out) {
+        double pad = 2 * PLATE;
+        int gx0 = (int) Math.floor((j0 - pad) / PLATE), gx1 = (int) Math.floor((j1 + pad) / PLATE);
+        int gz0 = (int) Math.floor((i0 - pad) / PLATE), gz1 = (int) Math.floor((i1 + pad) / PLATE);
+        int nx = gx1 - gx0 + 1, nz = gz1 - gz0 + 1;
+        double[] seedX = new double[nx * nz], seedZ = new double[nx * nz];
+        long[] seedId = new long[nx * nz];
+        for (int a = 0; a < nz; a++) {
+            for (int b = 0; b < nx; b++) {
+                int gx = gx0 + b, gz = gz0 + a;
+                long h = hash(0x51A7EL, gx, gz);
+                seedX[a * nx + b] = (gx + 0.1 + 0.8 * unit(h)) * PLATE;
+                seedZ[a * nx + b] = (gz + 0.1 + 0.8 * unit(mix(h))) * PLATE;
+                seedId[a * nx + b] = hash(0x51A7EL ^ 0x1D, gx, gz);
+            }
+        }
+        double margin = 60 * KM;
+        double[][] corners = {{j0 - margin, i0 - margin}, {j1 + margin, i0 - margin}, {j0 - margin, i1 + margin}, {j1 + margin, i1 + margin}};
+        for (int ia = 0; ia < nx * nz; ia++) {
+            for (int ib = ia + 1; ib < nx * nz; ib++) {
+                int ra = ia / nx, ca = ia % nx, rb = ib / nx, cb = ib % nx;
+                if (Math.abs(ra - rb) > 2 || Math.abs(ca - cb) > 2) continue;
+                long lo = Math.min(seedId[ia], seedId[ib]), hi = Math.max(seedId[ia], seedId[ib]);
+                long pair = mix(lo * 0x9E3779B97F4A7C15L ^ hi);
+                if (boundaryType(pair) != BOUNDARY_RIDGE) continue;
+                int il = seedId[ia] == lo ? ia : ib, ih = il == ia ? ib : ia;
+                double lx = seedX[il], lz = seedZ[il], hx = seedX[ih], hz = seedZ[ih];
+                double ex = hx - lx, ez = hz - lz, el = Math.sqrt(ex * ex + ez * ez);
+                ex /= el; ez /= el;
+                double tx = -ez, tz = ex, mx = (lx + hx) * 0.5, mz = (lz + hz) * 0.5;
+                double amin = Double.MAX_VALUE, amax = -Double.MAX_VALUE;
+                for (double[] cp : corners) {
+                    double a = (cp[0] - mx) * tx + (cp[1] - mz) * tz;
+                    amin = Math.min(amin, a); amax = Math.max(amax, a);
+                }
+                if (amax - amin > 40 * PLATE) continue;
+                double phase = unit(mix(pair ^ 0xF00DL)) * SEGMENT;
+                for (long k = (long) Math.floor((amin + phase) / SEGMENT) - 1; k <= (long) Math.ceil((amax + phase) / SEGMENT) + 1; k++) {
+                    long h = hash(pair, k, 0x7E47L);
+                    int n = ventFieldCount(h);
+                    double off = segmentOffset(pair, k);
+                    for (int f = 0; f < n; f++) {
+                        long hf = mix(h + 11L * f + 1);
+                        double along = k * SEGMENT + ventFieldAt(hf) - phase;
+                        double bx = mx + tx * along, bz = mz + tz * along;
+                        if (edgeWeightAt(bx, bz, ia, ib, seedX, seedZ) < 0.5) continue;
+                        double[] c = unwarp(bx + ex * off, bz + ez * off);
+                        if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
+                        // Mark it only where the chimneys really go (near triple junctions the ridge fades).
+                        if (vents(c[0], c[1])[0] < 0.5) continue;
+                        float floor = coarse.elevation(c[1], c[0]);
+                        if (floor > -VENT_MIN_DEPTH) continue;
+                        out.add(new Landmark("vent_field", c[1], c[0], (float) (floor + RIDGE_HEIGHT - RIFT_DEPTH)));
+                    }
+                }
+            }
+        }
+    }
+
     /** How much of the A-B plate edge exists at boundary point (bx, bz): 0 past a triple junction, 1 along it. */
     private static double edgeWeightAt(double bx, double bz, int ia, int ib, double[] seedX, double[] seedZ) {
         double da = Math.hypot(bx - seedX[ia], bz - seedZ[ia]);
@@ -455,6 +519,116 @@ public final class OceanFeatures {
             h -= FZ_DEPTH * Math.exp(-sq(toFault / FZ_WIDTH)) * Math.exp(-Math.abs(ds) / FZ_REACH);
         }
         return h;
+    }
+
+    // ---- Hydrothermal vents (from the seed alone, so chunk decoration can ask without the coarse map) ----
+
+    /** Coarse depth (metres) a ridge must lie under for its vent fields to be marked. */
+    private static final float VENT_MIN_DEPTH = 2000f;
+    /** Half-width of a vent field across the ridge axis. */
+    private static final double VENT_HALF_WIDTH = 0.25 * KM;
+
+    private static int ventFieldCount(long h) {
+        double u = unit(h);
+        return u < 0.3 ? 0 : (u < 0.8 ? 1 : 2);
+    }
+
+    /** Distance of a vent field from the start of its ridge segment, kept away from the transform faults. */
+    private static double ventFieldAt(long hf) {
+        return (0.15 + 0.7 * unit(hf)) * SEGMENT;
+    }
+
+    private static double ventFieldLength(long hf) {
+        return (0.4 + 0.4 * unit(mix(hf))) * KM;
+    }
+
+    /** Vent field strength (0..1) at a point (ds across, along) of a ridge boundary, in warped space. */
+    private double ventField(double ds, double along, long pair) {
+        double phase = unit(mix(pair ^ 0xF00DL)) * SEGMENT;
+        double a = along + phase;
+        double kf = Math.floor(a / SEGMENT);
+        long k = (long) kf;
+        double into = a - kf * SEGMENT;
+        double xr = ds - segmentOffset(pair, k);
+        if (Math.abs(xr) > 3 * VENT_HALF_WIDTH) return 0;
+        long h = hash(pair, k, 0x7E47L);
+        int n = ventFieldCount(h);
+        double best = 0;
+        for (int f = 0; f < n; f++) {
+            long hf = mix(h + 11L * f + 1);
+            double v = Math.exp(-sq((into - ventFieldAt(hf)) / ventFieldLength(hf))) * Math.exp(-sq(xr / VENT_HALF_WIDTH));
+            best = Math.max(best, v);
+        }
+        return best;
+    }
+
+    /**
+     * Hydrothermal activity at native pixel (x east, z south), from the seed alone: {@code [0]} vent fields on
+     * mid-ocean ridge axes (black smokers), {@code [1]} closeness to an active volcano (the two youngest islands of a
+     * hotspot chain or an island-arc volcano that breaks the surface), 1 over the island and fading out across its shallow shelf. Both are
+     * 0..1. The caller checks the water: ridges only exist under deep sea, and the coarse-map checks the terrain uses
+     * are skipped here, so a volcano near a continent can also count.
+     */
+    public double[] vents(double x, double z) {
+        Ctx ctx = new Ctx();
+        double ridge = 0, volcanic = 0;
+        double qx = x + warpX(x, z), qz = z + warpZ(x, z);
+        voronoi(qx, qz, PLATE, 0x51A7EL, ctx);
+        long[] ids = {ctx.id1, ctx.id2, ctx.id3};
+        double[] sx = {ctx.s1x, ctx.s2x, ctx.s3x}, sz = {ctx.s1z, ctx.s2z, ctx.s3z};
+        double[] dd = {ctx.d1, ctx.d2, ctx.d3};
+        for (int e = 0; e < 3; e++) {
+            int iX = e == 2 ? 1 : 0, iY = e == 0 ? 1 : 2, iZ = 3 - iX - iY;
+            if (dd[iZ] - Math.max(dd[iX], dd[iY]) < -PLATE) continue;
+            long lo = Math.min(ids[iX], ids[iY]), hi = Math.max(ids[iX], ids[iY]);
+            long pair = mix(lo * 0x9E3779B97F4A7C15L ^ hi);
+            int type = boundaryType(pair);
+            if (type == BOUNDARY_PASSIVE) continue;
+            boolean xIsLo = ids[iX] == lo;
+            double lx = xIsLo ? sx[iX] : sx[iY], lz = xIsLo ? sz[iX] : sz[iY];
+            double hx = xIsLo ? sx[iY] : sx[iX], hz = xIsLo ? sz[iY] : sz[iX];
+            double nx = hx - lx, nz = hz - lz, nl = Math.sqrt(nx * nx + nz * nz);
+            nx /= nl; nz /= nl;
+            double tx = -nz, tz = nx;
+            double mx = (lx + hx) * 0.5, mz = (lz + hz) * 0.5;
+            double ds = (qx - mx) * nx + (qz - mz) * nz;
+            double along = (qx - mx) * tx + (qz - mz) * tz;
+            double bx = qx - ds * nx, bz = qz - ds * nz;
+            double beyond = Math.hypot(bx - sx[iZ], bz - sz[iZ]) - Math.hypot(bx - sx[iX], bz - sz[iX]);
+            if (type == BOUNDARY_RIDGE) {
+                double w = smoothstep(-JUNCTION_TAPER, 0, beyond);
+                if (w > 0) ridge = Math.max(ridge, w * ventField(ds, along, pair));
+            } else {
+                double w = smoothstep(-JUNCTION_TAPER, JUNCTION_TAPER, beyond);
+                boolean subHi = (pair & 1L) == 0;
+                double xo = subHi ? -ds : ds;                  // positive into the overriding plate
+                if (w <= 0 || Math.abs(xo - ARC_DISTANCE) > 30 * KM) continue;
+                long kc = Math.round(along / ARC_SPACING);
+                for (long k = kc - 1; k <= kc + 1; k++) {
+                    long h = hash(pair, k, 0xA2C);
+                    if (!arcExists(h)) continue;
+                    double ak = arcAlong(k, h), across = arcAcross(h), radius = arcRadius(h);
+                    double strength = trenchStrength(ak, pair) * w;
+                    if (strength <= 0.05 || arcPeak(strength, h) <= 0) continue;
+                    double r = Math.hypot(along - ak, xo - across);
+                    volcanic = Math.max(volcanic, 1 - smoothstep(0.45, 0.9, r / radius));
+                }
+            }
+        }
+        int cx = (int) Math.floor(x / HOTSPOT_CELL), cz = (int) Math.floor(z / HOTSPOT_CELL);
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                Chain ch = chain(cx + dx, cz + dz);
+                if (ch == null) continue;
+                // Only the young end of the chain is still active: the head and the island behind it.
+                for (int k = 0; k < Math.min(2, ch.count); k++) {
+                    if (ch.peak[k] <= 40) continue;
+                    double r = Math.hypot(x - ch.cx[k], z - ch.cz[k]);
+                    volcanic = Math.max(volcanic, 1 - smoothstep(0.45, 0.9, r / ch.radius[k]));
+                }
+            }
+        }
+        return new double[]{ridge, volcanic};
     }
 
     private double segmentOffset(long pair, long k) {

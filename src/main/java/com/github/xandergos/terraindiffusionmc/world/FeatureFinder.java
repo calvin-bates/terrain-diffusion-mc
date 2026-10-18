@@ -42,6 +42,7 @@ public final class FeatureFinder {
         KINDS.put("seamount", new String[]{"seamount", "seamount"});
         KINDS.put("trench", new String[]{"trench", "trench"});
         KINDS.put("archipelago", new String[]{"archipelago", "archipelago sea"});
+        KINDS.put("vent_field", new String[]{"vent_field", "hydrothermal vent field"});
         KINDS.put("delta", new String[]{"delta", "river delta"});
     }
 
@@ -178,6 +179,7 @@ public final class FeatureFinder {
             case "atoll" -> "reef at sea level";
             case "guyot", "seamount" -> "summit " + v + " m";
             case "trench" -> "floor about " + v + " m";
+            case "vent_field" -> "on the ridge axis about " + (-v) + " m down";
             default -> "";
         };
     }
