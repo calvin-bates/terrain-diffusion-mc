@@ -72,6 +72,7 @@ public final class WorldPipeline implements AutoCloseable {
     private final boolean ownModels;
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile OceanFeatures oceanFeatures;
+    private volatile ArchipelagoShaper archipelagoShaper;
     private volatile long seed;
 
     private final MemoryTileStore tileStore;
@@ -90,6 +91,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.ownModels = false;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
         this.oceanFeatures = new OceanFeatures(this.seed);
+        this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
@@ -106,6 +108,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.ownModels = true;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
         this.oceanFeatures = new OceanFeatures(this.seed);
+        this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
         this.latents = buildLatentStage();
@@ -119,6 +122,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.seed = s;
         this.syntheticMapFactory = new SyntheticMapFactory(s);
         this.oceanFeatures = new OceanFeatures(s);
+        this.archipelagoShaper = new ArchipelagoShaper(s);
         tileStore.clearAllCaches();
     }
 
@@ -461,6 +465,8 @@ public final class WorldPipeline implements AutoCloseable {
     public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate) {
         float[] elevFlat = computeElev(i1, j1, i2, j2);
         int H = i2 - i1, W = j2 - j1;
+        // Islands at native resolution inside archipelago zones (off when oceans.archipelago_strength is 0).
+        archipelagoShaper.apply(elevFlat, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION);
         if (TerrainDiffusionConfig.oceanFeatures()) {
             applyOceanFeatures(elevFlat, i1, j1, i2, j2);
         }
