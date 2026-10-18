@@ -9,6 +9,7 @@
     "ChunkGeneratorMixin",
     "MinecraftServerMixin",
     "NoiseBasedChunkGeneratorMixin",
+    "OceanMonumentMixin",
     "StructureMixin",
     "TropicalFishSpawnMixin",
     "WaterAnimalSpawnMixin"
