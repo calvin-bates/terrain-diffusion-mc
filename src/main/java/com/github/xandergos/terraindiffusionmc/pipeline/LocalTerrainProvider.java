@@ -325,6 +325,81 @@ public final class LocalTerrainProvider {
         }
     }
 
+    /** Native pixels around a river mouth within which the coast keeps no cliff (fading out to RIVER_MOUTH_FADE_PX). */
+    private static final float RIVER_MOUTH_CLEAR_PX = 1.5f, RIVER_MOUTH_FADE_PX = 3.5f;
+
+    /**
+     * Where cliffs must not form because a river meets the sea there: 1 on and within about 45 m of a stream or river's
+     * last 900 m to the sea, fading to 0 by about 100 m, per tile column; null if rivers are off, the tile is all sea
+     * or all land well above the shore, or the hydrology is unavailable. Uses the same river regions as the carver,
+     * which are computed from the terrain before coast shaping, so there is no feedback.
+     */
+    private float[] riverMouthMask(float[] elev, int i1, int j1, int H, int W, int scale) {
+        if (!TerrainDiffusionConfig.riversEnabled()) return null;
+        boolean land = false, sea = false;
+        for (float e : elev) {
+            if (e > 0f) land = true; else sea = true;
+            if (land && sea) break;
+        }
+        if (!land) return null;
+        try {
+            int pad = (int) Math.ceil(RIVER_MOUTH_FADE_PX) + 1;
+            int pi0 = Math.floorDiv(i1, scale) - pad, pj0 = Math.floorDiv(j1, scale) - pad;
+            int pi1 = Math.floorDiv(i1 + H - 1, scale) + pad, pj1 = Math.floorDiv(j1 + W - 1, scale) + pad;
+            int nh = pi1 - pi0 + 1, nw = pj1 - pj0 + 1;
+            boolean[] mouth = new boolean[nh * nw];
+            boolean any = false;
+            RiverService svc = rivers();
+            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            for (int r = 0; r < nh; r++) {
+                for (int c = 0; c < nw; c++) {
+                    RiverService.Region reg = svc.regionOfPixel(pi0 + r, pj0 + c, source);
+                    int k = reg.index(pi0 + r, pj0 + c);
+                    if (k >= 0 && RiverCarver.isNearMouth(reg, k)) { mouth[r * nw + c] = true; any = true; }
+                }
+            }
+            if (!any) return null;
+            // Fade with distance from the nearest mouth pixel, at native resolution.
+            float[] fade = new float[nh * nw];
+            int R = (int) Math.ceil(RIVER_MOUTH_FADE_PX);
+            for (int r = 0; r < nh; r++) {
+                for (int c = 0; c < nw; c++) {
+                    float best = Float.MAX_VALUE;
+                    for (int dr = -R; dr <= R; dr++) {
+                        int rr = r + dr;
+                        if (rr < 0 || rr >= nh) continue;
+                        for (int dc = -R; dc <= R; dc++) {
+                            int cc = c + dc;
+                            if (cc < 0 || cc >= nw || !mouth[rr * nw + cc]) continue;
+                            best = Math.min(best, dr * dr + dc * dc);
+                        }
+                    }
+                    float d = best == Float.MAX_VALUE ? Float.MAX_VALUE : (float) Math.sqrt(best);
+                    float t = Math.max(0f, Math.min(1f, (d - RIVER_MOUTH_CLEAR_PX) / (RIVER_MOUTH_FADE_PX - RIVER_MOUTH_CLEAR_PX)));
+                    fade[r * nw + c] = 1f - t * t * (3f - 2f * t);
+                }
+            }
+            // Bilinear onto the tile's blocks (pixel centres at (p + 0.5) * scale).
+            float[] out = new float[H * W];
+            for (int r = 0; r < H; r++) {
+                float fr = (i1 + r + 0.5f) / scale - 0.5f - pi0;
+                int r0 = Math.max(0, Math.min(nh - 2, (int) Math.floor(fr)));
+                float tr = Math.max(0f, Math.min(1f, fr - r0));
+                for (int c = 0; c < W; c++) {
+                    float fc = (j1 + c + 0.5f) / scale - 0.5f - pj0;
+                    int c0 = Math.max(0, Math.min(nw - 2, (int) Math.floor(fc)));
+                    float tc = Math.max(0f, Math.min(1f, fc - c0));
+                    out[r * W + c] = (fade[r0 * nw + c0] * (1 - tc) + fade[r0 * nw + c0 + 1] * tc) * (1 - tr)
+                            + (fade[(r0 + 1) * nw + c0] * (1 - tc) + fade[(r0 + 1) * nw + c0 + 1] * tc) * tr;
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: river mouths unavailable for the coast at ({}, {}): {}", j1, i1, e.toString());
+            return null;
+        }
+    }
+
     private HeightmapData genHeightmap(CacheKey key, int i1, int j1, int i2, int j2) {
         int scale = WorldScaleManager.getCurrentScale();
         FutureTask<HeightmapData> task = new FutureTask<>(() -> {
@@ -391,7 +466,8 @@ public final class LocalTerrainProvider {
         float[] climate  = out[1];
 
         short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION);
-        CoastShaper.apply(elevMargin2D, 3, 3, H, W, 1, i1, j1, climate, elevFlat, biomeFlat);
+        CoastShaper.apply(elevMargin2D, 3, 3, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
+                riverMouthMask(elevFlat, i1, j1, H, W, 1));
         return buildHeightmapData(elevFlat, biomeFlat, H, W);
     }
 
@@ -442,7 +518,8 @@ public final class LocalTerrainProvider {
         float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
 
         short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM);
-        CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat);
+        CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
+                riverMouthMask(elevOut, i1, j1, H, W, scale));
         return buildHeightmapData(elevOut, biomeFlat, H, W);
     }
 

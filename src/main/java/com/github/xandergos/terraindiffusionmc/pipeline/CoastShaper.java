@@ -15,8 +15,8 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  *   <li><b>Sea cliffs</b> on about half of the coasts that rise from the sea: the waves have cut the slope back,
  *       so the shore band is steepened. Each column takes the height of the ground a little further uphill, so
  *       the land keeps its own shape and meets the sea in a face whose height follows the terrain (no flat tops,
- *       no raised rims) and fades in and out along the shore. Valley floors are left alone, so rivers still reach
- *       the sea through coves and gorges.</li>
+ *       no raised rims) and fades in and out along the shore. Valley floors are left alone, and cliffs fade out
+ *       around river mouths (from the hydrology), so rivers reach the sea at sea level.</li>
  *   <li><b>Stony shores</b> on scattered stretches of otherwise gentle coast.</li>
  * </ul>
  */
@@ -59,9 +59,12 @@ public final class CoastShaper {
      * @param climate  (4, H, W): temperature, temperature seasonality, precipitation, precipitation CV; may be null
      * @param elevOut  final elevation (metres) of the tile, (H, W); cliffs raise it in place
      * @param biomes   biome ids of the tile, (H, W); shore biomes are written in place
+     * @param riverMouth 0..1 per tile column, (H, W): 1 on and right beside a river's last stretch to the sea, where
+     *                 no cliff is built (the river reaches the sea at sea level instead of cutting a gorge through a
+     *                 raised shore and falling into the sea); may be null
      */
     public static void apply(float[][] smooth, int cropI, int cropJ, int H, int W, int scale, int i1, int j1,
-                             float[] climate, float[] elevOut, short[] biomes) {
+                             float[] climate, float[] elevOut, short[] biomes, float[] riverMouth) {
         int upH = smooth.length, upW = smooth[0].length;
         int R = 2 * scale;                       // look-around radius in blocks (60 m)
         int B = scale;                           // radius for comparing a column with its along-shore neighbours
@@ -99,6 +102,7 @@ public final class CoastShaper {
                 // shore band); gentle shores keep their slope and get beaches or stony shores instead.
                 float rise = (high - Math.max(e, 0f)) / (R * metresPerBlock);
                 float mask = smoothstep(-0.05f, 0.25f, CLIFF_MASK.GetNoise(wx, wz)) * smoothstep(0.12f, 0.35f, rise);
+                if (riverMouth != null) mask *= 1f - riverMouth[k];
                 if (mask > 0f && high > e + CLIFF_MIN_RAISE_M) {
                     // Uphill direction from the smoothed ground, over one native pixel either side.
                     int g = Math.max(1, scale);

@@ -223,6 +223,15 @@ public final class RiverCarver {
         return d;
     }
 
+    /**
+     * True if region pixel k is a stream or river within {@link #ESTUARY} pixels of the sea along its flow: the stretch
+     * where it meets the coast. The coast shaper keeps cliffs away from these so rivers reach the sea at sea level.
+     */
+    public static boolean isNearMouth(RiverService.Region reg, int k) {
+        byte c = reg.cls[k];
+        return c >= RiverMap.STREAM && c <= RiverMap.MAIN && stepsToSea(reg, k, ESTUARY) >= 0;
+    }
+
     /** True if pixel k is where a river's delta begins. */
     private static boolean isDeltaHead(RiverService.Region reg, int k) {
         byte c = reg.cls[k];
@@ -359,7 +368,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v27 (estuaries and deltas at river mouths)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v28 (river mouths stay off the sea floor)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -522,6 +531,10 @@ public final class RiverCarver {
         int[] chanWater = new int[n];
         Arrays.fill(chanWater, NOWATER);
         boolean[] steepSkip = new boolean[n];   // channel columns skipped for being too steep (gaps to bridge later)
+        // Lowest bed allowed per column: near the sea a channel is no deeper than the sea floor beside it (a river mouth
+        // shoals onto a bar rather than ending in a pit deeper than the sea). Integer.MIN_VALUE = no limit.
+        int[] bedFloor = new int[n];
+        Arrays.fill(bedFloor, Integer.MIN_VALUE);
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int idx = r * W + c;
@@ -529,29 +542,33 @@ public final class RiverCarver {
                 if (sc == Float.POSITIVE_INFINITY || sc > 0f) continue;
                 if (contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
                 int top = ytop[idx];
-                if (top < 60) continue;   // never put river water over the sea floor
+                // Never carve the sea floor: a channel continued out into the sea as a dark trench across the shallows.
+                if (top < SEA_SURFACE_Y) continue;
                 // Too steep for a stream to hold water: it would only show as scattered ribbons.
                 if (steepAt(ytop, H, W, r, c)) { steepSkip[idx] = true; continue; }
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
                 // Water never sits higher than the lowest ground beside the channel, otherwise it
                 // would need an embankment (a ridge along the stream) to stay in place.
                 int rad = Math.min(8, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
-                int low = top;
+                int low = top, seaLow = Integer.MAX_VALUE;
                 for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
                     for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
                         // The ground of a lake's basin is not a bank: counting it cut a stream down to the lake floor where
                         // it meets the lake, several blocks below the lake's water.
                         if (lakeDist[rr * W + cc] == 0) continue;
-                        if (ytop[rr * W + cc] < low) low = ytop[rr * W + cc];
+                        int yt = ytop[rr * W + cc];
+                        if (yt < low) low = yt;
+                        if (yt < SEA_SURFACE_Y && yt < seaLow) seaLow = yt;
                     }
                 }
+                if (seaLow != Integer.MAX_VALUE) bedFloor[idx] = seaLow - 1;
                 // The water's top block is level with the lowest ground beside the channel, so the stream sits flush with its
                 // banks. (The hydrology surface is a coarse estimate; letting the water sag below the ground with it left a
                 // one-block bank along almost every stream.) ys is unused now but kept for reference.
                 // Near the coast the lowest ground can be the sea floor; river water never sits below the sea's surface
                 // (Y 62), or a river mouth became a deep trench cut down to the sea floor.
                 int waterTop = Math.max(low, Math.min(top, SEA_SURFACE_Y));
-                int bed = waterTop - columnDepth(cA[idx], sc, wA[idx], scale);
+                int bed = Math.max(bedFloor[idx], waterTop - columnDepth(cA[idx], sc, wA[idx], scale));
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
                 chanWater[idx] = waterTop;
@@ -571,7 +588,7 @@ public final class RiverCarver {
                     float sc = score[idx];
                     if (sc == Float.POSITIVE_INFINITY || sc > 0f) continue;
                     int top = ytop[idx];
-                    if (top < 60) continue;
+                    if (top < SEA_SURFACE_Y) continue;
                     int minLvl = Integer.MAX_VALUE, count = 0;
                     for (int dr = -1; dr <= 1; dr++) {
                         for (int dc = -1; dc <= 1; dc++) {
@@ -585,7 +602,7 @@ public final class RiverCarver {
                         }
                     }
                     if (count < 2 || top - minLvl > 3) continue;
-                    int bed = minLvl - columnDepth(cA[idx], sc, wA[idx], scale);
+                    int bed = Math.max(bedFloor[idx], minLvl - columnDepth(cA[idx], sc, wA[idx], scale));
                     surfaceY[r][c] = (short) Math.min(top, bed);
                     waterY[r][c] = (short) minLvl;
                     chanWater[idx] = minLvl;
@@ -617,7 +634,7 @@ public final class RiverCarver {
                     if (lim < chanWater[idx]) {
                         chanWater[idx] = lim;
                         waterY[r][c] = (short) lim;
-                        surfaceY[r][c] = (short) Math.min(ytop[idx], lim - columnDepth(cA[idx], score[idx], wA[idx], scale));
+                        surfaceY[r][c] = (short) Math.min(ytop[idx], Math.max(bedFloor[idx], lim - columnDepth(cA[idx], score[idx], wA[idx], scale)));
                         changed = true;
                     }
                 }
@@ -672,7 +689,7 @@ public final class RiverCarver {
                 int r = idx / W, c = idx % W;
                 chanWater[idx] = lowerTo[idx];
                 waterY[r][c] = (short) lowerTo[idx];
-                surfaceY[r][c] = (short) Math.min(ytop[idx], lowerTo[idx] - columnDepth(cA[idx], score[idx], wA[idx], scale));
+                surfaceY[r][c] = (short) Math.min(ytop[idx], Math.max(bedFloor[idx], lowerTo[idx] - columnDepth(cA[idx], score[idx], wA[idx], scale)));
             }
             if (dropCount > 0) {
                 // Distance (in blocks) from the remaining water, used as the dropped columns' bank score.
