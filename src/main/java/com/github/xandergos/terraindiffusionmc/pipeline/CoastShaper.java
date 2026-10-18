@@ -12,9 +12,11 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  *   <li><b>Beaches</b> on low, gentle shores, a noise-varied 20–60 m wide. Snowy beaches (gravel) where it is
  *       freezing.</li>
  *   <li><b>Mangroves</b> instead of beaches on hot, wet, low coasts.</li>
- *   <li><b>Sea cliffs</b> where the land within 60 m of the sea rises well above it, on about half of such coasts:
- *       the shore band is raised toward the nearby high ground so the land meets the sea in a wall, topped with
- *       stony shore. Valley floors are left alone, so rivers still reach the sea through gorges and coves.</li>
+ *   <li><b>Sea cliffs</b> on about half of the coasts that rise from the sea: the waves have cut the slope back,
+ *       so the shore band is steepened. Each column takes the height of the ground a little further uphill, so
+ *       the land keeps its own shape and meets the sea in a face whose height follows the terrain (no flat tops,
+ *       no raised rims) and fades in and out along the shore. Valley floors are left alone, so rivers still reach
+ *       the sea through coves and gorges.</li>
  *   <li><b>Stony shores</b> on scattered stretches of otherwise gentle coast.</li>
  * </ul>
  */
@@ -26,8 +28,12 @@ public final class CoastShaper {
 
     /** Highest elevation (metres) a beach can reach. */
     private static final float BEACH_MAX_M = 6f;
-    /** Minimum height (metres) of the ground near the shore for a cliff. */
-    private static final float CLIFF_MIN_M = 15f;
+    /** How far (fraction of the 60 m shore band) the slope is cut back at the strongest cliffs. */
+    private static final float CLIFF_CUT = 0.6f;
+    /** A column raised by more than this (metres) is cliff, not beach. */
+    private static final float CLIFF_MIN_RAISE_M = 2f;
+    /** A cliff column right at the water raised by more than this (metres) gets a bare stony top. */
+    private static final float STONY_RAISE_M = 8f;
 
     private CoastShaper() {
     }
@@ -89,27 +95,43 @@ public final class CoastShaper {
                 float precip = climate != null ? climate[2 * HW + k] : 600f;
 
                 // ---- Sea cliffs ----
-                if (high > CLIFF_MIN_M) {
-                    float mask = smoothstep(-0.05f, 0.25f, CLIFF_MASK.GetNoise(wx, wz));
-                    float near = smoothstep(R, R * 0.5f, d);
-                    if (mask > 0f && near > 0f) {
-                        // A valley floor sits well below the ground at the same distance from the sea beside it;
-                        // leave those low so rivers keep their mouths (they become coves and gorges).
-                        float band = Math.max(e, 0f);
-                        for (int dy = -B; dy <= B; dy++) {
-                            for (int dx = -B; dx <= B; dx++) {
-                                if (dx * dx + dy * dy > B * B) continue;
-                                float dq = dist[(r + B + dy) * dW + (c + B + dx)];
-                                if (dq == 0f || dq == Float.MAX_VALUE || Math.abs(dq - d) > 1.5f) continue;
-                                band = Math.max(band, smooth[si + dy][sj + dx]);
+                // Cliffs only where the land already rises steeply from the sea (about 1 in 5 or more over the
+                // shore band); gentle shores keep their slope and get beaches or stony shores instead.
+                float rise = (high - Math.max(e, 0f)) / (R * metresPerBlock);
+                float mask = smoothstep(-0.05f, 0.25f, CLIFF_MASK.GetNoise(wx, wz)) * smoothstep(0.12f, 0.35f, rise);
+                if (mask > 0f && high > e + CLIFF_MIN_RAISE_M) {
+                    // Uphill direction from the smoothed ground, over one native pixel either side.
+                    int g = Math.max(1, scale);
+                    float gx = (smooth[si][Math.min(upW - 1, sj + g)] - smooth[si][Math.max(0, sj - g)]) / (2f * g);
+                    float gz = (smooth[Math.min(upH - 1, si + g)][sj] - smooth[Math.max(0, si - g)][sj]) / (2f * g);
+                    float glen = (float) Math.sqrt(gx * gx + gz * gz);
+                    if (glen > 1e-3f) {
+                        // Cut the slope back: the column at distance d from the sea takes the height found at
+                        // d + shift(d) uphill, with shift falling from `cut` at the water to 0 at the band's inner
+                        // edge. The mapping is monotone, so a rising slope stays rising: no rim and no plateau.
+                        float cut = CLIFF_CUT * R * mask;
+                        float shift = cut * Math.max(0f, 1f - d / R);
+                        float up = bilinear(smooth, upH, upW, si + gz / glen * shift, sj + gx / glen * shift);
+                        float raise = Math.max(0f, up - e);
+                        if (raise > 0f) {
+                            // A valley floor sits well below the ground at the same distance from the sea beside it;
+                            // leave those low so rivers keep their mouths (they become coves and gorges).
+                            float band = Math.max(e, 0f);
+                            for (int dy = -B; dy <= B; dy++) {
+                                for (int dx = -B; dx <= B; dx++) {
+                                    if (dx * dx + dy * dy > B * B) continue;
+                                    float dq = dist[(r + B + dy) * dW + (c + B + dx)];
+                                    if (dq == 0f || dq == Float.MAX_VALUE || Math.abs(dq - d) > 1.5f) continue;
+                                    band = Math.max(band, smooth[si + dy][sj + dx]);
+                                }
                             }
-                        }
-                        float valley = (band - Math.max(e, 0f)) / high;
-                        float w = mask * near * (1f - smoothstep(0.2f, 0.45f, valley));
-                        if (w > 0.02f) {
-                            elevOut[k] = Math.max(elevOut[k], elevOut[k] + (high - elevOut[k]) * w);
-                            if (w > 0.5f && d <= 0.4f * R + 1) biomes[k] = BiomeClassifier.STONY_SHORE;
-                            if (w > 0.3f) continue;
+                            float valley = (band - Math.max(e, 0f)) / Math.max(1f, high);
+                            raise *= 1f - smoothstep(0.2f, 0.45f, valley);
+                            elevOut[k] += raise;
+                            if (raise > CLIFF_MIN_RAISE_M) {
+                                if (raise > STONY_RAISE_M && d <= 0.4f * R + 1) biomes[k] = BiomeClassifier.STONY_SHORE;
+                                continue;   // no beach or mangrove on a cliff
+                            }
                         }
                     }
                 }
@@ -135,6 +157,15 @@ public final class CoastShaper {
                 }
             }
         }
+    }
+
+    /** Bilinear sample of a [h][w] grid at fractional (row, column), clamped at the edges. */
+    private static float bilinear(float[][] a, int h, int w, float r, float c) {
+        r = Math.max(0f, Math.min(h - 1f, r));
+        c = Math.max(0f, Math.min(w - 1f, c));
+        int r0 = (int) r, c0 = (int) c, r1 = Math.min(h - 1, r0 + 1), c1 = Math.min(w - 1, c0 + 1);
+        float fr = r - r0, fc = c - c0;
+        return (a[r0][c0] * (1 - fc) + a[r0][c1] * fc) * (1 - fr) + (a[r1][c0] * (1 - fc) + a[r1][c1] * fc) * fr;
     }
 
     /** Blocks to the nearest sea column within radius R, or {@link Float#MAX_VALUE}. */
