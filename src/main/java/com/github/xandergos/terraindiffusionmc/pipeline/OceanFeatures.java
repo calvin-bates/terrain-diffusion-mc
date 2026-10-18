@@ -61,6 +61,13 @@ public final class OceanFeatures {
     private static final float VOLCANO_MIN_DEPTH = 1800f;
     /** Coarse sea temperature (deg C) above which reefs build atolls. */
     private static final float REEF_TEMP = 22f;
+    /**
+     * Footprint scale for volcanoes that stay under water (guyots, seamounts, submerged arc volcanoes). Real ones
+     * are 10–40 km across, but the deep sea is squashed ~10x vertically in game, which left them as 1–2 degree
+     * swells nobody could see. At this scale they are 2–7 km across and read as steep, flat-topped or conical
+     * mountains on the sea floor. Islands and atolls keep their real size.
+     */
+    private static final double SUBMERGED_SHRINK = 0.2;
     /** Largest distance (native pixels) from a volcano centre to the edge of its footprint. */
     public static final double MAX_VOLCANO_REACH = 42 * KM;
     private static final float MAX_DEPTH = -10900f;
@@ -493,7 +500,7 @@ public final class OceanFeatures {
                 double landU = 0.25 + 0.2 * unit(mix(h + 4));
                 ctx.add += (peak - floor) * islandCone(r, radius, -floor / (peak - floor), landU, x, z, h);
             } else {
-                ctx.add += (peak - floor) * cone(r, radius, x, z, h, false);
+                ctx.add += (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false);
             }
         }
     }
@@ -578,7 +585,7 @@ public final class OceanFeatures {
                 if (unit(h) > SEAMOUNT_CHANCE) continue;
                 double sx = (gx + 0.1 + 0.8 * unit(mix(h))) * SEAMOUNT_CELL;
                 double sz = (gz + 0.1 + 0.8 * unit(mix(h + 1))) * SEAMOUNT_CELL;
-                double radius = (4 + 7 * unit(mix(h + 2))) * KM;
+                double radius = (4 + 7 * unit(mix(h + 2))) * KM * SUBMERGED_SHRINK * 1.5;
                 double r = Math.hypot(x - sx, z - sz);
                 if (r > radius * 1.3) continue;
                 float floor = coarse.elevation(sz, sx);
@@ -613,10 +620,11 @@ public final class OceanFeatures {
             }
             case "guyot" -> {
                 double top = Math.min(peak, -250);
-                ctx.add += (top + 600 - floor) * tableCone(r, radius, x, z, h);
-                pushOp(ctx, OP_GUYOT, top, 0, radius, 0, h, vcx, vcz);
+                double rs = radius * SUBMERGED_SHRINK;
+                ctx.add += (top + 600 - floor) * tableCone(r, rs, x, z, h);
+                pushOp(ctx, OP_GUYOT, top, 0, rs, 0, h, vcx, vcz);
             }
-            default -> ctx.add += (peak - floor) * cone(r, radius, x, z, h, false);
+            default -> ctx.add += (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false);
         }
     }
 
