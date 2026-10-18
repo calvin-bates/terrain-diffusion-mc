@@ -118,14 +118,31 @@ public final class ArchipelagoShaper {
         return t * t * (3f - 2f * t);
     }
 
-    /** Island field in about [-1, 1] at native pixel (i, j): positive drowns more, negative less. */
+    /**
+     * Island field in about [-1, 1] at native pixel (i, j): positive drowns more, negative less.
+     *
+     * <p>The islands are stretched along a direction that turns slowly across the world. Rotating the world
+     * coordinates by that varying angle would shear the field (far from the origin the rotated coordinates sweep
+     * past many noise cells in a short distance, which drew long thin streaks), so instead the field is a blend of
+     * four copies at fixed orientations 45 degrees apart. At any point only the two orientations nearest the local
+     * direction contribute, with weights that sum (in variance) to one.
+     */
     float field(double i, double j) {
         float xk = (float) (j / KM), zk = (float) (i / KM);
+        float x = xk + 1.5f * warpX.GetNoise(xk, zk), z = zk + 1.5f * warpZ.GetNoise(xk, zk);
         double ang = direction.GetNoise(xk, zk) * Math.PI;
-        float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
-        float u = (ca * xk + sa * zk) / STRETCH, v = -sa * xk + ca * zk;
-        u += 1.5f * warpX.GetNoise(xk, zk);
-        v += 1.5f * warpZ.GetNoise(xk, zk);
-        return Math.max(-1f, Math.min(1f, 1.8f * islands.GetNoise(u, v)));
+        double sum = 0, wsq = 0;
+        for (int k = 0; k < 4; k++) {
+            double theta = k * Math.PI / 4;
+            double w = Math.cos(2 * (ang - theta));
+            if (w <= 0) continue;
+            w *= w;                                      // adjacent orientations: cos^2 + sin^2 = 1
+            float ca = (float) Math.cos(theta), sa = (float) Math.sin(theta);
+            float u = (ca * x + sa * z) / STRETCH, v = -sa * x + ca * z;
+            sum += w * islands.GetNoise(u + 113 * k, v - 71 * k);
+            wsq += w * w;
+        }
+        float n = (float) (sum / Math.sqrt(Math.max(wsq, 1e-6)));
+        return Math.max(-1f, Math.min(1f, 1.8f * n));
     }
 }
