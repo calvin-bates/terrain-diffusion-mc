@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.mixin;
 
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.world.InlandWater;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import net.minecraft.core.BlockPos;
@@ -35,8 +36,9 @@ import java.util.function.Predicate;
 /**
  * Structures pick their spot from the terrain before the mod's lakes and streams are filled in, so an igloo or a
  * village could start on what becomes open water. Any structure whose start lands on (or right beside) inland water
- * is skipped, and land structures whose pieces spread over lakes, streams or the sea are skipped too. Sea and ocean
- * structures are unaffected.
+ * is skipped, and land structures whose pieces spread over lakes, streams or the sea are skipped too. Shipwrecks,
+ * ocean ruins and ocean monuments are not checked for water, but are thinned out (see {@code oceans.structure_frequency}),
+ * since Terra's oceans are much larger than vanilla's.
  */
 @Mixin(Structure.class)
 public abstract class StructureMixin {
@@ -83,12 +85,46 @@ public abstract class StructureMixin {
         return t == StructureType.JIGSAW && s.step() == GenerationStep.Decoration.SURFACE_STRUCTURES;
     }
 
+    /** Shipwrecks, ocean ruins and ocean monuments. */
+    private static boolean terra$isOceanStructure(Structure s) {
+        StructureType<?> t = s.type();
+        return t == StructureType.SHIPWRECK || t == StructureType.OCEAN_RUIN || t == StructureType.OCEAN_MONUMENT;
+    }
+
+    /**
+     * Terra's oceans cover far more of the world than vanilla's, and vanilla spaces these for small seas, so they
+     * turn up everywhere. Each candidate is kept with probability {@code oceans.structure_frequency}, decided by a
+     * hash of the world seed, chunk and structure type, so it is the same every time it is asked.
+     */
+    private static boolean terra$keepOceanStructure(Structure s, Structure.GenerationContext context) {
+        float keep = TerrainDiffusionConfig.oceanStructureFrequency();
+        if (keep >= 1f) return true;
+        if (keep <= 0f) return false;
+        ChunkPos c = context.chunkPos();
+        long h = context.seed() ^ 0x5DEECE66DL;
+        h ^= (long) c.x() * 0x9E3779B97F4A7C15L;
+        h ^= (long) c.z() * 0xC2B2AE3D27D4EB4FL;
+        StructureType<?> t = s.type();
+        long salt = t == StructureType.SHIPWRECK ? 1 : t == StructureType.OCEAN_RUIN ? 2 : 3;
+        h ^= salt * 0x165667B19E3779F9L;
+        h = (h ^ (h >>> 33)) * 0xFF51AFD7ED558CCDL;
+        h = (h ^ (h >>> 33)) * 0xC4CEB9FE1A85EC53L;
+        h ^= h >>> 33;
+        return (h >>> 40) / (double) (1L << 24) < keep;
+    }
+
     @Inject(method = "findValidGenerationPoint", at = @At("RETURN"), cancellable = true, require = 0)
     private void terra$noStructuresOnInlandWater(Structure.GenerationContext context,
                                                  CallbackInfoReturnable<Optional<Structure.GenerationStub>> cir) {
         Optional<Structure.GenerationStub> stub = cir.getReturnValue();
         if (stub == null || stub.isEmpty()) return;
         if (!(context.biomeSource() instanceof TerrainDiffusionBiomeSource)) return;
+        Structure self = (Structure) (Object) this;
+        if (terra$isOceanStructure(self)) {
+            // Thinned here rather than after generation, so /locate, maps and the actual world all agree.
+            if (!terra$keepOceanStructure(self, context)) cir.setReturnValue(Optional.empty());
+            return;
+        }
         try {
             BlockPos pos = stub.get().position();
             if (InlandWater.isWaterNear(pos.getX(), pos.getZ(), 4)) cir.setReturnValue(Optional.empty());

@@ -733,38 +733,82 @@ public final class OceanFeatures {
             if (r < ctx.opR[o] && v > top) v = top + (v - top) * 0.03;
             return v;
         }
-        // Atoll. Its ring is oval and wobbly: stretch along a random axis, then roughen.
+        // Atoll. Its ring is oval and wobbly: stretch along a random axis, then roughen at two scales, so the reef
+        // edge wanders in lobes and bays instead of following a clean curve.
         double dx = x - ctx.opX[o], dz = z - ctx.opZ[o];
         double axis = unit(mix(h + 12)) * Math.PI;
         double stretch = 1 + 0.5 * unit(mix(h + 13));
         double ca = Math.cos(axis), sa = Math.sin(axis);
         double ux = (dx * ca + dz * sa) / stretch, uz = -dx * sa + dz * ca;
         float kx = (float) (x / KM), kz = (float) (z / KM);
-        double re = Math.hypot(ux, uz) * (1 + 0.12 * coastShape.GetNoise(kx * 0.6f + 31, kz * 0.6f));
+        double re = Math.hypot(ux, uz) * (1 + 0.12 * coastShape.GetNoise(kx * 0.6f + 31, kz * 0.6f))
+                + 0.25 * KM * coastShape.GetNoise(kx * 3.3f + 57, kz * 3.3f - 13);
         double rim = ctx.opA[o];
-        double rimWidth = (0.45 + 0.25 * unit(mix(h + 11))) * KM;
-        double inner = rim - rimWidth;
-        double reef;
-        if (re <= inner) {
-            // Lagoon: shallow near the rim, deepest in the middle, dotted with patch reefs.
-            reef = -12 - 38 * smoothstep(0, inner, inner - re);
-            float patch = motus.GetNoise(kx * 2.3f, kz * 2.3f);
-            if (patch > 0.55f) reef = Math.max(reef, -3);
-        } else if (re <= rim) {
-            float m = motus.GetNoise(kx + (h & 0xFF), kz);
-            reef = m > 0.2f ? 1.5 + 6 * (m - 0.2) : -1.5;    // motus (islets) on a submerged reef flat
-            double ang = Math.atan2(uz, ux);
-            for (int p = 0; p < 2; p++) {                     // passes through the reef into the lagoon
-                double pa = unit(mix(h + 20 + p)) * 2 * Math.PI;
-                double da = Math.abs(Math.atan2(Math.sin(ang - pa), Math.cos(ang - pa))) * re;
-                if (da < 0.25 * KM) reef = -18;
-            }
-        } else {
+        double t = rim - re;                                  // distance in from the reef edge (pixels)
+        if (t < 0) {
             // Fore-reef wall (~40 degrees) down to 600 m, then a talus apron that flattens out onto the
             // volcano's own flank instead of running on as a cone.
-            double out = (re - rim) / KM;
-            reef = out < 0.66 ? -1.5 - out * 900 : -600 - 1500 * (1 - Math.exp(-(out - 0.66) / 2.5));
+            double out = -t / KM;
+            double reef = out < 0.66 ? -1.5 - out * 900 : -600 - 1500 * (1 - Math.exp(-(out - 0.66) / 2.5));
+            return smoothMax(v, reef, 60);
         }
+
+        // Where on the ring: coordinates that run along the rim (1 unit = 1 km, seamless all the way round), and
+        // how exposed this side is. The trade winds blow from the east, so the eastern (windward) reef is broad,
+        // shallow and lined with islets; the western (leeward) one is narrow, deeper and broken by passes.
+        double ang = Math.atan2(uz, ux);
+        double rimKm = rim / KM;
+        float ax = (float) (Math.cos(ang) * rimKm), az = (float) (Math.sin(ang) * rimKm);
+        float salt = (float) (h & 0xFF) * 7.3f;
+        double windDir = (unit(mix(h + 14)) - 0.5) * 0.8;
+        double windward = 0.5 + 0.5 * Math.cos(Math.atan2(dz, dx) - windDir);
+        float broad = motus.GetNoise(ax * 0.35f + 77, az * 0.35f, salt);                    // ~4 km changes
+        double flatW = (0.45 + 0.25 * unit(mix(h + 11))) * KM * (0.5 + 0.8 * windward) * (1 + 0.4 * broad);
+        flatW = Math.min(flatW, 0.6 * rim);
+        double a = t / flatW;                                 // 0 at the reef edge, 1 at the lagoon
+
+        // Reef flat: awash on the windward side, a few metres down in places on the leeward side.
+        float deep = motus.GetNoise(ax * 0.5f - 40, az * 0.5f, salt + 19);
+        double flat = -1.2 - 5 * sq(1 - windward) * smoothstep(-0.3, 0.4, deep);
+        double base;
+        if (a <= 1) {
+            base = flat;
+        } else {
+            // Lagoon: a sandy slope off the reef flat, then a floor deepest in the middle, dotted with patch
+            // reefs and the odd sand cay.
+            double d = t - flatW, inner = Math.max(1, rim - flatW);
+            double target = -10 - 40 * smoothstep(0, inner, d);
+            base = flat + (target - flat) * smoothstep(0, 0.35 * KM, d);
+            float patch = motus.GetNoise(kx * 2.3f, kz * 2.3f);
+            if (patch > 0.55f) base = Math.max(base, -3 + 4.5 * smoothstep(0.78, 0.92, patch));
+        }
+
+        // Passes: deep channels through the reef into the lagoon, mostly on the leeward side.
+        double pass = 0;
+        int nPass = 1 + (int) (unit(mix(h + 23)) * 3);
+        for (int p = 0; p < nPass; p++) {
+            double pa = windDir + Math.PI + (unit(mix(h + 20 + p)) - 0.5) * 2.6 - axis;   // in the stretched frame
+            double da = Math.abs(Math.atan2(Math.sin(ang - pa), Math.cos(ang - pa))) * re;
+            double pw = (0.12 + 0.2 * unit(mix(h + 30 + p))) * KM;
+            pass = Math.max(pass, Math.exp(-sq(da / pw)));
+        }
+        if (a < 1.4) base += (Math.min(base, -16) - base) * pass * (1 - smoothstep(1.0, 1.4, a));
+
+        // Motus (islets): sand and rubble heaped up on the reef flat, long along the reef and narrow across it,
+        // nearly continuous on the windward side and scattered on the leeward side. They sit back from the reef
+        // edge, are highest on their seaward side (the storm ridge) and trail sand spits into the lagoon.
+        float spit = motus.GetNoise(kx * 1.7f + 13, kz * 1.7f - 29);
+        float m = motus.GetNoise(ax * 0.55f, az * 0.55f, (float) (t / KM * 1.6) + salt);
+        double field = m + 0.5 * windward - 0.3 + 0.2 * broad
+                - 0.8 * (1 - smoothstep(0.08, 0.3, a))                          // bare reef crest at the edge
+                - 1.2 * smoothstep(0.95, 1.4, a + 0.3 * spit)                   // shore on the lagoon side
+                - 2.0 * pass;
+        if (field > 0) {
+            double top = 1 + 6 * Math.min(1, field / 0.45) * (0.55 + 0.45 * smoothstep(1.2, 0.2, a));
+            double land = base + (top - base) * smoothstep(0, 0.12, field);
+            base = Math.max(base, land);
+        }
+        double reef = base;
         return smoothMax(v, reef, 60);
     }
 

@@ -117,6 +117,14 @@ public final class TerrainDiffusionConfig {
         return Math.max(0f, Math.min(2f, readFloat("oceans.archipelago_strength", 1f)));
     }
 
+    /**
+     * Fraction of shipwrecks, ocean ruins and ocean monuments kept in Terra worlds (0..1). Terra's oceans are far
+     * bigger than vanilla's, so vanilla spacing fills them with wrecks; the default keeps about a third.
+     */
+    public static float oceanStructureFrequency() {
+        return Math.max(0f, Math.min(1f, readFloat("oceans.structure_frequency", 0.35f)));
+    }
+
     private static void loadDefaults() {
         boolean loadedFromResource = false;
         try (InputStream in = TerrainDiffusionConfig.class.getResourceAsStream(RESOURCE_PATH)) {
