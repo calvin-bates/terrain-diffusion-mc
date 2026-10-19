@@ -472,10 +472,15 @@ public final class WorldPipeline implements AutoCloseable {
      * ocean features are off.
      */
     public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate, byte[] tagsOut) {
-        float[] elevFlat = computeElev(i1, j1, i2, j2);
         int H = i2 - i1, W = j2 - j1;
+        // A margin of the model's elevation around the request, so the archipelago pass can measure the ground's
+        // slope at the request's edges the same way as inside it (computeElev is translation-consistent).
+        int m = ArchipelagoShaper.SLOPE_MARGIN, pW = W + 2 * m;
+        float[] padded = computeElev(i1 - m, j1 - m, i2 + m, j2 + m);
+        float[] elevFlat = new float[H * W];
+        for (int r = 0; r < H; r++) System.arraycopy(padded, (r + m) * pW + m, elevFlat, r * W, W);
         // Islands at native resolution inside archipelago zones (off when oceans.archipelago_strength is 0).
-        archipelagoShaper.apply(elevFlat, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION);
+        archipelagoShaper.apply(elevFlat, padded, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION);
         if (tagsOut != null) java.util.Arrays.fill(tagsOut, OceanFeatures.TAG_NONE);
         if (TerrainDiffusionConfig.oceanFeatures()) {
             applyOceanFeatures(elevFlat, i1, j1, i2, j2, tagsOut);

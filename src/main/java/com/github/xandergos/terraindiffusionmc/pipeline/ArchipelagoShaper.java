@@ -35,6 +35,15 @@ public final class ArchipelagoShaper {
      * hills keep the model's own detail.
      */
     private static final float DETAIL_M = 30f, DETAIL_FADE_M = 110f;
+    /**
+     * The detail scales with the slope of the model's ground (metres per 30 m pixel, measured over 180 m): none on
+     * flat ground below {@link #SLOPE_SMOOTH}, full on hilly ground above {@link #SLOPE_ROUGH}. Flat, shallow coasts
+     * stay smooth and sandy, as real ones are; on them the detail used to poke its peaks through the shallow floor as
+     * rows of same-sized sand islets (Calvin, Oct 19, X 113488 Z -40171). Rugged coasts get the coves and points.
+     */
+    private static final float SLOPE_SMOOTH = 0.8f, SLOPE_ROUGH = 3.5f;
+    /** Native pixels of model elevation needed around a request to measure the slope ({@link #apply}). */
+    public static final int SLOPE_MARGIN = 3;
 
     private final FastNoiseLite islands, warpX, warpZ, direction, detail, detailWarpX, detailWarpZ;
 
@@ -72,10 +81,12 @@ public final class ArchipelagoShaper {
      * Applies the pass in place.
      *
      * @param elev elevation in metres, row-major (H, W), top-left at native pixel (i1, j1)
+     * @param padded the same model elevation with {@link #SLOPE_MARGIN} pixels more on every side, for the slope
      * @param syn  the synthetic map factory, for the archipelago zones
      * @param coarsePx native pixels per coarse pixel
      */
-    public void apply(float[] elev, int i1, int j1, int H, int W, SyntheticMapFactory syn, int coarsePx) {
+    public void apply(float[] elev, float[] padded, int i1, int j1, int H, int W, SyntheticMapFactory syn, int coarsePx) {
+        final int m = SLOPE_MARGIN, pW = W + 2 * m;
         // The zones are ~460 km across: sample the zone strength on a coarse lattice and interpolate.
         final int STEP = 64;
         int gh = H / STEP + 2, gw = W / STEP + 2;
@@ -103,7 +114,16 @@ public final class ArchipelagoShaper {
                 float z = (zone[a0 * gw + b0] * (1 - tb) + zone[a0 * gw + b0 + 1] * tb) * (1 - ta)
                         + (zone[(a0 + 1) * gw + b0] * (1 - tb) + zone[(a0 + 1) * gw + b0 + 1] * tb) * ta;
                 if (z <= 0f) continue;
-                elev[k] = shape(e, i1 + r, j1 + c, z);
+                int i = i1 + r, j = j1 + c;
+                float bh = base(e, i, j, z);
+                if (bh >= DETAIL_FADE_M || bh <= -260f) { elev[k] = bh; continue; }   // no coastline detail here
+                // Slope of the reshaped ground (flattened and drowned, before the detail), which is what decides whether
+                // the new coast is flat or steep.
+                int p = (r + m) * pW + c + m;
+                float gx = (base(padded[p + m], i, j + m, z) - base(padded[p - m], i, j - m, z)) / (2f * m);
+                float gz = (base(padded[p + m * pW], i + m, j, z) - base(padded[p - m * pW], i - m, j, z)) / (2f * m);
+                float rough = smoothstep(SLOPE_SMOOTH, SLOPE_ROUGH, (float) Math.sqrt(gx * gx + gz * gz));
+                elev[k] = shape(e, i, j, z, rough);
             }
         }
     }
@@ -116,6 +136,22 @@ public final class ArchipelagoShaper {
      * seams or plateaus. Mountains and deep ocean are left alone.
      */
     float shape(float e, int i, int j, float zone) {
+        return shape(e, i, j, zone, 1f);
+    }
+
+    /** The reshaped height before the coastline detail (the first part of {@link #shape}). */
+    float base(float e, int i, int j, float zone) {
+        float w;
+        if (e > FULL_HIGH_M) w = 1f - smoothstep(FULL_HIGH_M, FADE_HIGH_M, e);
+        else if (e < FULL_LOW_M) w = smoothstep(FADE_LOW_M, FULL_LOW_M, e);
+        else w = 1f;
+        if (w <= 0f) return e;
+        float k = zone * w;
+        return e * (1f - FLATTEN * k) - k * (DROWN_BASE_M + DROWN_VARY_M * field(i, j));
+    }
+
+    /** {@link #shape(float, int, int, float)} with the coastline detail scaled by {@code rough} (0..1). */
+    float shape(float e, int i, int j, float zone, float rough) {
         float w;
         if (e > FULL_HIGH_M) w = 1f - smoothstep(FULL_HIGH_M, FADE_HIGH_M, e);
         else if (e < FULL_LOW_M) w = smoothstep(FADE_LOW_M, FULL_LOW_M, e);
@@ -130,7 +166,7 @@ public final class ArchipelagoShaper {
         // DETAIL_FADE_M on land, so hills keep the model's own surface. The fades are gentle enough that new height
         // still rises with old height.
         float near = base >= 5f ? 1f - smoothstep(5f, DETAIL_FADE_M, base) : smoothstep(-260f, -160f, base);
-        if (near > 0f) base -= k * DETAIL_M * near * detail(i, j);
+        if (near > 0f && rough > 0f) base -= k * DETAIL_M * rough * near * detail(i, j);
         return base;
     }
 
