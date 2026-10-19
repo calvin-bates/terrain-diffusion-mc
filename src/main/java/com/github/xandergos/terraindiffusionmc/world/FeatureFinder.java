@@ -45,6 +45,11 @@ public final class FeatureFinder {
         KINDS.put("raised_coral_island", new String[]{"raised_coral_island", "raised coral island"});
         KINDS.put("landslide_scar", new String[]{"landslide_scar", "island landslide scar"});
         KINDS.put("aseismic_ridge", new String[]{"aseismic_ridge", "aseismic ridge"});
+        KINDS.put("oceanic_plateau", new String[]{"oceanic_plateau", "oceanic plateau"});
+        KINDS.put("microcontinent", new String[]{"microcontinent", "microcontinent (granite island)"});
+        KINDS.put("forearc_island", new String[]{"forearc_island", "forearc island"});
+        KINDS.put("back_arc_basin", new String[]{"back_arc_basin", "back-arc basin spreading axis"});
+        KINDS.put("mud_volcano", new String[]{"mud_volcano", "mud volcano"});
         KINDS.put("guyot", new String[]{"guyot", "guyot"});
         KINDS.put("seamount", new String[]{"seamount", "seamount"});
         KINDS.put("trench", new String[]{"trench", "trench"});
@@ -54,6 +59,11 @@ public final class FeatureFinder {
         KINDS.put("fringing_reef", new String[]{"fringing_reef", "fringing reef"});
         KINDS.put("barrier_reef", new String[]{"barrier_reef", "offshore barrier reef"});
         KINDS.put("carbonate_bank", new String[]{"carbonate_bank", "carbonate bank"});
+        KINDS.put("submarine_canyon", new String[]{"submarine_canyon", "submarine canyon"});
+        KINDS.put("deep_sea_fan", new String[]{"deep_sea_fan", "deep-sea fan channel"});
+        KINDS.put("sand_waves", new String[]{"sand_waves", "sand wave field"});
+        KINDS.put("pockmarks", new String[]{"pockmarks", "pockmark field"});
+        KINDS.put("salt_domes", new String[]{"salt_domes", "salt dome province"});
     }
 
     /** Farthest search, in native pixels (1200 km). */
@@ -126,9 +136,15 @@ public final class FeatureFinder {
                 server.execute(() -> {
                     if (!res.found()) {
                         int km = Math.round(res.searchedRadiusPx() * 30 / 1000f);
+                        String hint = switch (word) {
+                            case "fringing_reef", "barrier_reef" -> "Reefs need warm water (about 24 °C); try a tropical coast.";
+                            case "carbonate_bank" -> "Banks need a warm archipelago sea.";
+                            case "submarine_canyon" -> "Canyons cut continental slopes on about half the margins.";
+                            case "deep_sea_fan" -> "Fans lie on the deep rise below continental slopes.";
+                            default -> "These lie on continental shelves and slopes; try a different coast.";
+                        };
                         source.sendFailure(Component.literal("No " + name + " found (checked " + res.checked()
-                                + " likely spots within about " + km + " km). Reefs need warm water (about 24 °C) and "
-                                + "banks a warm archipelago sea; try a tropical coast."));
+                                + " likely spots within about " + km + " km). " + hint));
                         return;
                     }
                     report(source, name, new OceanFeatures.Landmark(word, res.i(), res.j(), 0f), pi, pj, scale);
@@ -230,6 +246,11 @@ public final class FeatureFinder {
             case "atoll" -> "reef at sea level";
             case "raised_coral_island" -> "old reef rim about " + v + " m up";
             case "aseismic_ridge" -> "crest about " + (-v) + " m down";
+            case "oceanic_plateau" -> "top about " + (-v) + " m down";
+            case "microcontinent" -> "granite island, peak " + v + " m";
+            case "forearc_island" -> "low limestone island, peak " + v + " m";
+            case "back_arc_basin" -> "axis about " + (-v) + " m down";
+            case "mud_volcano" -> "cone about " + v + " m high, on the slope; it only forms 400-3000 m down";
             case "guyot", "seamount" -> "summit " + v + " m";
             case "trench" -> "floor about " + v + " m";
             case "vent_field" -> "on the ridge axis about " + (-v) + " m down";

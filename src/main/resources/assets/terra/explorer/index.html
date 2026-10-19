@@ -1193,6 +1193,11 @@
     raised_coral_island: { name: 'Raised coral island', color: '#f5f5f4', on: true },
     landslide_scar:  { name: 'Landslide scar',  color: '#a16207', on: true },
     aseismic_ridge:  { name: 'Aseismic ridge',  color: '#818cf8', on: true },
+    oceanic_plateau: { name: 'Oceanic plateau', color: '#c084fc', on: true },
+    microcontinent:  { name: 'Microcontinent',  color: '#fb7185', on: true },
+    forearc_island:  { name: 'Forearc island',  color: '#fde68a', on: true },
+    back_arc_basin:  { name: 'Back-arc basin',  color: '#38bdf8', on: true },
+    mud_volcano:     { name: 'Mud volcano',     color: '#92400e', on: false },
     guyot:           { name: 'Guyot',           color: '#a78bfa', on: true },
     seamount:        { name: 'Seamount',        color: '#94a3b8', on: false },
     trench:          { name: 'Trench',          color: '#f43f5e', on: true },
@@ -1218,6 +1223,11 @@
       case 'raised_coral_island': return `atoll lifted out of the sea; limestone rim about ${v} m up`;
       case 'landslide_scar': return `giant landslide scar on an island ${v} m high`;
       case 'aseismic_ridge': return `continuous volcanic ridge, crest about ${-v} m down`;
+      case 'oceanic_plateau': return `flat-topped volcanic plateau, top about ${-v} m down`;
+      case 'microcontinent': return `piece of continent at shelf depth; granite island ${v} m high`;
+      case 'forearc_island': return `low limestone island on the forearc ridge, ${v} m high`;
+      case 'back_arc_basin': return `spreading axis of a back-arc basin, about ${-v} m down`;
+      case 'mud_volcano': return `mud volcano about ${v} m high (only where the slope is 400-3000 m deep)`;
       case 'guyot': return `flat summit ${-v} m down`;
       case 'seamount': return `summit ${-v} m down`;
       case 'trench': return `floor about ${-v} m down`;
