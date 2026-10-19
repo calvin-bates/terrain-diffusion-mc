@@ -40,6 +40,13 @@ public final class LocalTerrainProvider {
 
     private static final FastNoiseLite ELEV_NOISE_COARSE = makeFnl(99999, 1f/24f, 3, 2f, 0.5f);
     private static final FastNoiseLite ELEV_NOISE_FINE   = makeFnl(88888, 1f/6f,  2, 2f, 0.6f);
+    /** Block-scale wobble of the shoreline (metres), so it doesn't follow the 30 m pixel grid. */
+    private static final FastNoiseLite SHORE_NOISE = makeFnl(77773, 1f/22f, 2, 2f, 0.5f);
+    /** Ground within this many metres of sea level is settled by {@link #settleShoreline}, fading out by the second. */
+    private static final float SHORE_FULL_M = 2.5f, SHORE_FADE_M = 6f;
+    /** Wobble of the shoreline (metres either way). */
+    private static final float SHORE_WOBBLE_M = 0.9f;
+
     /** Wobble (in native pixels) for looking up ocean surface tags, so their edges don't follow the 30 m grid. */
     private static final FastNoiseLite TAG_JITTER_I = makeFnl(77771, 1f/9f, 2, 2f, 0.5f);
     private static final FastNoiseLite TAG_JITTER_J = makeFnl(77772, 1f/9f, 2, 2f, 0.5f);
@@ -630,6 +637,9 @@ public final class LocalTerrainProvider {
     // Scale > 1: pipeline at native res → bilinear upsample to block res
     // =========================================================================
 
+    /** Native pixels of margin around an upsampled tile (see {@link #handleUpsampled}). */
+    private static final int PAD_PX = 6;
+
     private HeightmapData handleUpsampled(int i1, int j1, int i2, int j2, int scale) {
         int H = i2 - i1, W = j2 - j1;
         float pixelSizeM = NATIVE_RESOLUTION / scale;
@@ -640,12 +650,12 @@ public final class LocalTerrainProvider {
         int i2n = -Math.floorDiv(-i2, scale);
         int j2n = -Math.floorDiv(-j2, scale);
 
-        // 5-pixel native padding. Bicubic resampling clamps at the array edge, which bends the outer ~1.5 native
-        // pixels; the shore pass looks up to 3 native pixels outside the tile, so it needs clean values out there
-        // for neighbouring tiles to agree. (The resize is translation-consistent, so the padding does not change
-        // the values inside.)
-        int i1p = i1n - 5, j1p = j1n - 5;
-        int i2p = i2n + 5, j2p = j2n + 5;
+        // 6-pixel native padding. Bicubic resampling clamps at the array edge, which bends the outer ~1.5 native
+        // pixels; settling the shoreline averages over 1 more; the shore pass looks up to 3 native pixels outside the
+        // tile, so it needs clean values out there for neighbouring tiles to agree. (The resize is
+        // translation-consistent, so the padding does not change the values inside.)
+        int i1p = i1n - PAD_PX, j1p = j1n - PAD_PX;
+        int i2p = i2n + PAD_PX, j2p = j2n + PAD_PX;
         int nH = i2p - i1p, nW = j2p - j1p;
 
         byte[] tagsNative = new byte[nH * nW];
@@ -657,9 +667,10 @@ public final class LocalTerrainProvider {
         float[][] elevNative2D = to2D(elevNativeFlat, nH, nW);
         // Bicubic, not bilinear: bilinear leaves creases along the 30 m pixel grid, which shows as square shores and terraces.
         float[][] elevUp = LaplacianUtils.bicubicResize(elevNative2D, nH * scale, nW * scale);
+        settleShoreline(elevUp, i1p * scale, j1p * scale, scale);
 
         // Crop offsets in the upsampled array
-        int padUp   = 5 * scale;
+        int padUp   = PAD_PX * scale;
         int offsetI = i1 - i1n * scale;
         int offsetJ = j1 - j1n * scale;
         int cropI1  = padUp + offsetI;
@@ -680,6 +691,62 @@ public final class LocalTerrainProvider {
         HeightmapData data = buildHeightmapData(elevOut, biomeFlat, H, W);
         data.oceanTags = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         return data;
+    }
+
+    /**
+     * Settles ground lying within a few metres of sea level, at block resolution, in place. Where the shore is very
+     * flat, the model's own one-pixel bumps decide what is land, and after upsampling each 30 m pixel just above the
+     * sea became its own sandy islet: rows of same-sized ovals spaced on the pixel grid (Calvin, Oct 19, X 113455
+     * Z -40212). Near sea level the height is now taken from the ground averaged over one native pixel either side
+     * (so a lone pixel above or below the water joins its surroundings), plus a little block-scale noise so the
+     * shoreline wanders instead of following the grid. Ground more than {@link #SHORE_FADE_M} from sea level, and
+     * any evenly sloping shore, is unchanged. Each block depends only on the upsampled ground within one native
+     * pixel of it, which the tile margin covers, so neighbouring tiles agree.
+     *
+     * @param up    upsampled elevation (metres), changed in place
+     * @param bi0   world block Z of {@code up[0][*]}
+     * @param bj0   world block X of {@code up[*][0]}
+     */
+    private static void settleShoreline(float[][] up, int bi0, int bj0, int scale) {
+        int h = up.length, w = up[0].length, R = scale;
+        boolean any = false;
+        for (float[] row : up) {
+            for (float v : row) if (Math.abs(v) < SHORE_FADE_M) { any = true; break; }
+            if (any) break;
+        }
+        if (!any) return;
+        // Box average over (2R+1)^2 blocks, separable, clamped at the array edges (inside the margin).
+        float[][] tmp = new float[h][w], avg = new float[h][w];
+        for (int r = 0; r < h; r++) {
+            float[] row = up[r];
+            for (int c = 0; c < w; c++) {
+                float s = 0f; int n = 0;
+                for (int q = Math.max(0, c - R); q <= Math.min(w - 1, c + R); q++) { s += row[q]; n++; }
+                tmp[r][c] = s / n;
+            }
+        }
+        for (int r = 0; r < h; r++) {
+            for (int c = 0; c < w; c++) {
+                float s = 0f; int n = 0;
+                for (int q = Math.max(0, r - R); q <= Math.min(h - 1, r + R); q++) { s += tmp[q][c]; n++; }
+                avg[r][c] = s / n;
+            }
+        }
+        for (int r = 0; r < h; r++) {
+            for (int c = 0; c < w; c++) {
+                float e = up[r][c];
+                float a = Math.abs(e);
+                if (a >= SHORE_FADE_M) continue;
+                float t = a <= SHORE_FULL_M ? 1f : 1f - smooth01((a - SHORE_FULL_M) / (SHORE_FADE_M - SHORE_FULL_M));
+                float settled = avg[r][c] + SHORE_WOBBLE_M * SHORE_NOISE.GetNoise(bj0 + c, bi0 + r);
+                up[r][c] = e + (settled - e) * t;
+            }
+        }
+    }
+
+    private static float smooth01(float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        return t * t * (3f - 2f * t);
     }
 
     /**
