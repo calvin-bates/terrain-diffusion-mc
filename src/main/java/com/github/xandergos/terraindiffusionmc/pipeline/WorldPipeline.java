@@ -463,12 +463,22 @@ public final class WorldPipeline implements AutoCloseable {
      * @return float[2]: [0] = elev (H*W flat), [1] = climate (5*H*W flat, or null)
      */
     public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate) {
+        return get(i1, j1, i2, j2, withClimate, null);
+    }
+
+    /**
+     * {@link #get(int, int, int, int, boolean)}, also writing each pixel's ocean surface tag (reef, lagoon, bank,
+     * limestone; see {@link OceanFeatures#TAG_NONE}) into {@code tagsOut} (H*W) when it is not null. All zero when
+     * ocean features are off.
+     */
+    public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate, byte[] tagsOut) {
         float[] elevFlat = computeElev(i1, j1, i2, j2);
         int H = i2 - i1, W = j2 - j1;
         // Islands at native resolution inside archipelago zones (off when oceans.archipelago_strength is 0).
         archipelagoShaper.apply(elevFlat, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION);
+        if (tagsOut != null) java.util.Arrays.fill(tagsOut, OceanFeatures.TAG_NONE);
         if (TerrainDiffusionConfig.oceanFeatures()) {
-            applyOceanFeatures(elevFlat, i1, j1, i2, j2);
+            applyOceanFeatures(elevFlat, i1, j1, i2, j2, tagsOut);
         }
         float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
         return new float[][]{elevFlat, climate};
@@ -482,13 +492,14 @@ public final class WorldPipeline implements AutoCloseable {
      * Stamps tectonic sea-floor relief and oceanic islands into the elevation (see {@link OceanFeatures}). Runs
      * before climate so island peaks get the lapse-rate cooling of any other high ground.
      */
-    private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2) {
+    private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2, byte[] tags) {
         boolean anyOcean = false;
-        for (float v : elev) if (v < -30f) { anyOcean = true; break; }
+        for (float v : elev) if (v < 0f) { anyOcean = true; break; }
         if (!anyOcean) return;
-        // Volcano centres can lie a footprint away from the request (twice that through the plate warp).
-        int padPx = (int) Math.ceil(2 * OceanFeatures.MAX_VOLCANO_REACH);
-        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, coarseField(i1 - padPx, j1 - padPx, i2 + padPx, j2 + padPx));
+        // Volcano centres can lie a footprint away from the request (twice that through the plate warp), and a
+        // hotspot volcano's moat and debris field reach MAX_FEATURE_REACH from it.
+        int padPx = (int) Math.ceil(Math.max(2 * OceanFeatures.MAX_VOLCANO_REACH, OceanFeatures.MAX_FEATURE_REACH));
+        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, coarseField(i1 - padPx, j1 - padPx, i2 + padPx, j2 + padPx), tags);
     }
 
     /** Smoothed coarse elevation and temperature covering the native-pixel window, sampled bilinearly. */
@@ -506,9 +517,12 @@ public final class WorldPipeline implements AutoCloseable {
             cTemp[px] = w > 1e-6f ? slice.data[2 * n + px] / w : 15f;
         }
         float[][] elev2 = to2D(cElev, cH, cW), temp2 = to2D(cTemp, cH, cW);
+        SyntheticMapFactory syn = syntheticMapFactory;
         return new OceanFeatures.CoarseField() {
             @Override public float elevation(double i, double j) { return sample(elev2, i, j); }
             @Override public float temperature(double i, double j) { return sample(temp2, i, j); }
+            // Same zones (and the same coordinates) as ArchipelagoShaper uses.
+            @Override public float archipelago(double i, double j) { return syn.archipelagoZone((float) (j / S), (float) (i / S)); }
 
             private float sample(float[][] a, double i, double j) {
                 // Coarse pixel k covers native rows [k*S, (k+1)*S), with its centre at (k + 0.5) * S.
@@ -526,6 +540,23 @@ public final class WorldPipeline implements AutoCloseable {
     /** The ocean features of the current seed, or null when they are switched off. Safe from any thread. */
     public OceanFeatures oceanFeatures() {
         return TerrainDiffusionConfig.oceanFeatures() ? oceanFeatures : null;
+    }
+
+    /**
+     * Likely spots (native pixel {i, j}) for a shallow-sea feature in the window, on a grid of {@code step} pixels
+     * (see {@link OceanFeatures#shallowCandidate}); empty when ocean features are off.
+     */
+    public List<double[]> shallowCandidates(String kind, int i1, int j1, int i2, int j2, int step) {
+        List<double[]> out = new ArrayList<>();
+        if (!TerrainDiffusionConfig.oceanFeatures()) return out;
+        OceanFeatures.CoarseField field = coarseField(i1, j1, i2, j2);
+        for (int i = Math.floorDiv(i1, step) * step; i < i2; i += step) {
+            for (int j = Math.floorDiv(j1, step) * step; j < j2; j += step) {
+                if (i < i1 || j < j1) continue;
+                if (oceanFeatures.shallowCandidate(kind, i, j, field)) out.add(new double[]{i, j});
+            }
+        }
+        return out;
     }
 
     public List<OceanFeatures.Landmark> oceanLandmarks(int i1, int j1, int i2, int j2) {
