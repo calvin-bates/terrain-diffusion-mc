@@ -6,8 +6,8 @@ import java.util.List;
 
 /**
  * Builds river deltas into a tile at block resolution: the lobe of new land a river has pushed out into the sea, with
- * marsh between its channels, ponds, low natural levees along the channels, a sandy rim on its front and sand bars off
- * the channel mouths. The channels themselves are cut afterwards by the river carver, from the same {@link DeltaPlan}.
+ * marsh between its channels, ponds, tidal creeks, low natural levees along the channels, a sandy rim on its shore and
+ * sand bars off the channel mouths. The new shore runs smoothly into the old coast on either side. The channels themselves are cut afterwards by the river carver, from the same {@link DeltaPlan}.
  *
  * <p>The lobe only builds over shallow water and never lowers existing ground, so it reads as part of the coast. It builds fully over water up to 25 m deep, fading out by 60 m. Delta land gets marsh biomes: mangrove swamp where it is hot and wet, swamp where it
  * is mild, the land's own biome where it is cold; the rim and the bars get beach. Every column depends only on the
@@ -17,13 +17,15 @@ public final class DeltaShaper {
 
     private static final FastNoiseLite PONDS = noise(7301, 1f / 5f);
     private static final FastNoiseLite ROUGH = noise(7302, 1f / 3f);
-    private static final FastNoiseLite CREEKS = noise(7303, 1f / 9f);
-    private static final FastNoiseLite INLETS = noise(7304, 1f / 4f);
 
-    /** Lobe height (metres) near the apex and at the front; the last stretch before the front slopes to the rim. */
-    private static final float APEX_M = 1.3f, FRONT_M = 0.4f, RIM_M = -0.6f, RIM_START = 0.92f;
-    /** The front slopes down into the sea at this many metres per native pixel. */
-    private static final float FRONT_SLOPE_M = 0.8f;
+    /** Lobe height (metres) near the apex and at the shore, and at the water's edge of the sandy rim. */
+    private static final float APEX_M = 1.3f, FRONT_M = 0.4f, RIM_M = -0.6f;
+    /** Width (native pixels) of the sandy rim along the shore. */
+    private static final float RIM_PX = 2.5f;
+    /** The front slopes down into the sea at this many metres per native pixel, over this many pixels. */
+    private static final float FRONT_SLOPE_M = 0.8f, FRONT_PX = 55f;
+    /** Half-width (native pixels) of a tidal creek. */
+    private static final float CREEK_HALF_PX = 0.35f;
 
     private DeltaShaper() {
     }
@@ -59,25 +61,29 @@ public final class DeltaShaper {
                 for (DeltaPlan p : plans) {
                     if (!p.near(x, z, 6f)) continue;
                     float u = p.lobeU(x, z);
+                    if (u == Float.POSITIVE_INFINITY) continue;
+                    float shore = p.shoreDistance(x, z);                       // pixels in from the new shore
+                    float bell = p.bellAt(x, z);
                     float target = Float.NEGATIVE_INFINITY;
                     boolean onLobe = false, rim = false;
-                    if (u < 1f) {
-                        onLobe = true;
-                        if (u > RIM_START) {
-                            target = FRONT_M + (RIM_M - FRONT_M) * (u - RIM_START) / (1f - RIM_START);
-                            // The sandy rim is broken by inlets where tidal creeks reach the sea.
-                            if (INLETS.GetNoise(x, z) > 0.3f) target = RIM_M - 0.4f;
-                            else rim = true;
-                        } else {
-                            target = APEX_M + (FRONT_M - APEX_M) * u + 0.3f * ROUGH.GetNoise(x, z);
+                    if (shore >= 0f) {
+                        onLobe = bell > 0.25f + 0.12f * PONDS.GetNoise(x * 0.3f + 50f, z * 0.3f);   // marsh on the delta proper
+                        if (shore < RIM_PX && bell > 0.05f) {
+                            target = FRONT_M + (RIM_M - FRONT_M) * (1f - shore / RIM_PX);
+                            rim = true;
+                        } else if (shore >= RIM_PX) {
+                            target = APEX_M + (FRONT_M - APEX_M) * Math.min(1f, u) + 0.3f * ROUGH.GetNoise(x, z);
                             float cd = p.channelDistance(x, z);
                             if (cd < 2.5f) target += 1.0f * (1f - cd / 2.5f);                    // natural levees
                             else if (cd > 3.5f && u > 0.15f && PONDS.GetNoise(x, z) > 0.35f) target = -0.8f;   // ponds
-                            else if (cd > 2.5f && u > 0.4f && Math.abs(CREEKS.GetNoise(x, z)) < 0.035f) target = -0.8f; // tidal creeks
                         }
-                    } else if (u < 1.8f) {
-                        float rr = (float) Math.hypot(x - p.apexX, z - p.apexZ);
-                        target = RIM_M - (rr - rr / u) * FRONT_SLOPE_M;                       // delta front
+                        // Tidal creeks, opening on the shore (they cut through the sandy rim there).
+                        if (p.creekDistance(x, z) < CREEK_HALF_PX && p.channelDistance(x, z) > 1.5f) {
+                            target = -0.8f;
+                            rim = false;
+                        }
+                    } else if (shore > -FRONT_PX) {
+                        target = RIM_M + shore * FRONT_SLOPE_M;                    // delta front, sloping into the sea
                     }
                     // Sand bars just off each channel mouth.
                     for (int b = 0; b < p.barX.length; b++) {
