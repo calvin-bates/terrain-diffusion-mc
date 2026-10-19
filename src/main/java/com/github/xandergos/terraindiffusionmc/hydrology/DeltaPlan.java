@@ -82,7 +82,7 @@ public final class DeltaPlan {
     /** Coast samples across the fan. */
     private static final int COAST_SAMPLES = 49;
     /** Farthest the coast is searched for from the apex (pixels). */
-    private static final float COAST_SEARCH = 120f;
+    private static final float COAST_SEARCH = 70f;
     /** A channel ends this far (as a fraction of the local lobe radius) past the new shore, so it opens to the sea. */
     private static final float CHANNEL_END_U = 1.04f;
     private static final int MAX_WALK = 260;
@@ -379,7 +379,7 @@ public final class DeltaPlan {
 
     /** Bounding box test: could (x, z) be affected by this delta (lobe, front slope or bars)? */
     public boolean near(float x, float z, float margin) {
-        float m = maxRadius + 60f + margin;
+        float m = maxRadius + 30f + margin;
         return Math.abs(x - apexX) <= m && Math.abs(z - apexZ) <= m;
     }
 
@@ -416,8 +416,12 @@ public final class DeltaPlan {
         return result;
     }
 
-    /** Farthest a delta reaches from its head (pixels): coast search, bulge, wiggle, front slope and bars. */
-    public static final int MAX_REACH_PX = 260;
+    /**
+     * Farthest a delta reaches from its head (pixels): coast search (70), bulge (up to 75), wiggle, front slope (25) and
+     * bars. Kept small: every tile looks for deltas in all hydrology regions within this distance, and each new region
+     * means running the terrain model over a large window.
+     */
+    public static final int MAX_REACH_PX = 180;
 
     // ---- Math ----
 

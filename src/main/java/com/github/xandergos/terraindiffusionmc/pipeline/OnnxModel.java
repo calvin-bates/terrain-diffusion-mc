@@ -42,6 +42,13 @@ public final class OnnxModel implements AutoCloseable {
     private static final Object GPU_SLOT_LOCK = new Object();
     private static OnnxModel gpuSlotHolder = null;
     private static OrtSession activeGpuSession = null;
+    /** A GPU session has been created successfully at least once this run. */
+    private static volatile boolean gpuEverWorked = false;
+    /**
+     * Set when the GPU stops working mid-run (a session that worked before can no longer be created twice in a row):
+     * every model then runs on the CPU until the game restarts, slower but without crashing the world.
+     */
+    private static volatile boolean gpuFailed = false;
 
     private final OrtEnvironment env;
     private final byte[] optimizedModelBytes;
@@ -245,11 +252,18 @@ public final class OnnxModel implements AutoCloseable {
         if (cpuSession != null) {
             return runWithSession(cpuSession, inputs);
         }
+        if (gpuFailed) {
+            return runWithSession(cpuFallbackSession(), inputs);
+        }
         if (gpuSession != null) {
             return runWithSession(gpuSession, inputs);
         }
         synchronized (GPU_SLOT_LOCK) {
-            claimGpuSlot();
+            try {
+                claimGpuSlot();
+            } catch (GpuFallback fallback) {
+                return runWithSession(cpuFallbackSession(), inputs);
+            }
             return runWithSession(activeGpuSession, inputs);
         }
     }
@@ -284,15 +298,65 @@ public final class OnnxModel implements AutoCloseable {
         }
 
         try {
-            OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-            opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-            addGpuProvider(opts);
-            activeGpuSession = env.createSession(optimizedModelBytes, opts);
-            gpuSlotHolder = this;
-            LOG.debug("GPU session ready for '{}'", name);
-        } catch (OrtException e) {
-            throw new RuntimeException("Failed to create GPU session for: " + name, e);
+            createGpuSession();
+        } catch (OrtException first) {
+            if (!gpuEverWorked) throw new RuntimeException("Failed to create GPU session for: " + name, first);
+            // The GPU worked earlier this run, so this is not a missing driver: usually the GPU or system memory ran
+            // out, or the graphics driver reset. Free what we can and try once more, then fall back to the CPU rather
+            // than crash the world.
+            LOG.error("[Terra] GPU session for '{}' failed: {}. Freeing memory and retrying once.", name, describe(first));
+            System.gc();
+            try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            try {
+                createGpuSession();
+                LOG.warn("[Terra] GPU session for '{}' recovered on retry.", name);
+            } catch (OrtException second) {
+                gpuFailed = true;
+                LOG.error("[Terra] GPU inference failed again ({}). Terrain generation continues on the CPU until "
+                        + "the game is restarted; expect it to be much slower.", describe(second));
+                throw new GpuFallback();
+            }
         }
+    }
+
+    private void createGpuSession() throws OrtException {
+        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+        opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        addGpuProvider(opts);
+        activeGpuSession = env.createSession(optimizedModelBytes, opts);
+        gpuSlotHolder = this;
+        gpuEverWorked = true;
+        LOG.debug("GPU session ready for '{}'", name);
+    }
+
+    /** Thrown inside {@link #run} when the GPU has just been given up on; the call is redone on the CPU. */
+    private static final class GpuFallback extends RuntimeException {
+        GpuFallback() { super(null, null, false, false); }
+    }
+
+    private OrtSession cpuFallback;
+
+    private synchronized OrtSession cpuFallbackSession() {
+        if (cpuFallback == null) {
+            try {
+                OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+                opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                cpuFallback = env.createSession(optimizedModelBytes, opts);
+                LOG.warn("[Terra] '{}' now runs on the CPU.", name);
+            } catch (OrtException e) {
+                throw new RuntimeException("Failed to create CPU fallback session for: " + name, e);
+            }
+        }
+        return cpuFallback;
+    }
+
+    private static String describe(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        for (Throwable c = t; c != null && sb.length() < 600; c = c.getCause()) {
+            if (sb.length() > 0) sb.append(" <- ");
+            sb.append(c.getClass().getSimpleName()).append(": ").append(c.getMessage());
+        }
+        return sb.toString();
     }
 
     private static void addGpuProvider(OrtSession.SessionOptions opts) throws OrtException {
@@ -323,7 +387,12 @@ public final class OnnxModel implements AutoCloseable {
                 added = true;
                 setResolvedProviderOnce("DirectML");
             } catch (Throwable t) {
-                if (dmlWarnLoggedOnce.compareAndSet(false, true)) {
+                if ("DirectML".equals(resolvedInferenceProvider)) {
+                    // DirectML worked earlier this run: this is a real failure (memory, driver reset), so always log
+                    // it. Out of memory is re-thrown so it is not mistaken for a missing GPU.
+                    LOG.error("[Terra] DirectML failed to start a session: {} - {}", t.getClass().getSimpleName(), t.getMessage());
+                    if (t instanceof OutOfMemoryError oom) throw oom;
+                } else if (dmlWarnLoggedOnce.compareAndSet(false, true)) {
                     LOG.warn("DirectML not available: {} - {}. This is expected if you are not using a DirectML build.",
                             t.getClass().getSimpleName(), t.getMessage());
                 }
@@ -395,6 +464,12 @@ public final class OnnxModel implements AutoCloseable {
         if (gpuSession != null) {
             try { gpuSession.close(); } catch (OrtException ignored) {}
             gpuSession = null;
+        }
+        synchronized (this) {
+            if (cpuFallback != null) {
+                try { cpuFallback.close(); } catch (OrtException ignored) {}
+                cpuFallback = null;
+            }
         }
     }
 }

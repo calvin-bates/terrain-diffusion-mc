@@ -24,7 +24,7 @@ public final class DeltaShaper {
     /** Width (native pixels) of the sandy rim along the shore. */
     private static final float RIM_PX = 2.5f;
     /** The front slopes down into the sea at this many metres per native pixel, over this many pixels. */
-    private static final float FRONT_SLOPE_M = 0.8f, FRONT_PX = 55f;
+    private static final float FRONT_SLOPE_M = 0.8f, FRONT_PX = 25f;
     /** Half-width (native pixels) of a tidal creek. */
     private static final float CREEK_HALF_PX = 0.35f;
 
@@ -84,7 +84,10 @@ public final class DeltaShaper {
                             rim = false;
                         }
                     } else if (shore > -FRONT_PX) {
-                        target = RIM_M + shore * FRONT_SLOPE_M;                    // delta front, sloping into the sea
+                        // Delta front, sloping into the sea and easing back onto the old sea floor by FRONT_PX.
+                        float slope = RIM_M + shore * FRONT_SLOPE_M;
+                        float ease = smoothstep(-FRONT_PX, -0.5f * FRONT_PX, shore);
+                        target = orig + (Math.max(orig, slope) - orig) * ease;
                     }
                     // Sand bars just off each channel mouth.
                     for (int b = 0; b < p.barX.length; b++) {
