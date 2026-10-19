@@ -149,7 +149,7 @@ public final class OceanFeatures {
     private final long seed;
     private final FastNoiseLite warpLargeX, warpLargeZ, warpSmallX, warpSmallZ;
     private final FastNoiseLite hills, trenchStrength, coastShape, gullies, motus;
-    private final FastNoiseLite reefZone, reefPatch, bankZone, bankLevel, shoals;
+    private final FastNoiseLite reefZone, reefPatch, bankZone, bankLevel, shoals, coastFine;
 
     public OceanFeatures(long seed) {
         this.seed = seed;
@@ -168,6 +168,9 @@ public final class OceanFeatures {
         bankZone = noise(s + 112, 1f / 90f);
         bankLevel = noise(s + 113, 1f / 14f);
         shoals = noise(s + 114, 1f / 0.7f);
+        coastFine = noise(s + 115, 1f / 1.8f);
+        coastFine.SetFractalOctaves(5);
+        coastFine.SetFractalGain(0.72f);
     }
 
     private static FastNoiseLite noise(int seed, float freqPerKm) {
@@ -1352,6 +1355,18 @@ public final class OceanFeatures {
     private double islandCone(double r, double radius, double sea, double landU, double ang,
                               double x, double z, long h, int style, double relief) {
         double u = roughRadius(r, radius, x, z, h) / radius;
+        // Ragged coastline: headlands and coves from ~150 m to ~3 km, up to ~1 km deep. The noise is sampled by direction around the
+        // summit (on a circle sized to the coast, so its wavelengths are in km) and only slowly with distance, and
+        // it fades in toward the coast, so along any line down from the summit the ground still only falls: no
+        // closed hollows.
+        {
+            double coastKm = landU * radius / KM;
+            double rc = coastKm / (2 * Math.PI);
+            float cfa = (float) Math.cos(ang), sfa = (float) Math.sin(ang);
+            double n = coastFine.GetNoise((float) rc * cfa + 37, (float) rc * sfa - 211, (float) (r / KM * 0.12) + (h & 0xFF));
+            double du = 1.3 * KM / radius * n;
+            u += du * smoothstep(0.3 * landU, landU, u);
+        }
         if (u >= 1) return 0;
         double s;
         if (u < landU) {

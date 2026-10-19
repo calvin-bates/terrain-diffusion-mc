@@ -28,8 +28,15 @@ public final class ArchipelagoShaper {
     private static final float FLATTEN = 0.5f;
     /** How much longer islands are than wide. */
     private static final float STRETCH = 1.8f;
+    /**
+     * Fine coastline roughness (metres either way) near sea level. The flattening leaves low ground gentle, so the
+     * coast followed the smooth 7 km field and islands came out with soft, rounded shores. This small fine-scale term
+     * breaks them into coves, points and islets. It fades out by {@link #DETAIL_FADE_M} metres above sea level, so
+     * hills keep the model's own detail.
+     */
+    private static final float DETAIL_M = 30f, DETAIL_FADE_M = 110f;
 
-    private final FastNoiseLite islands, warpX, warpZ, direction;
+    private final FastNoiseLite islands, warpX, warpZ, direction, detail, detailWarpX, detailWarpZ;
 
     public ArchipelagoShaper(long seed) {
         int s = (int) (seed ^ (seed >>> 32));
@@ -42,6 +49,14 @@ public final class ArchipelagoShaper {
         warpX = simple(s + 302, 1f / 12f);
         warpZ = simple(s + 303, 1f / 12f);
         direction = simple(s + 304, 1f / 250f);
+        detail = new FastNoiseLite(s + 305);
+        detail.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        detail.SetFrequency(1f / 2.2f);                 // per km: headlands of ~2 km down to coves of ~150 m
+        detail.SetFractalType(FastNoiseLite.FractalType.FBm);
+        detail.SetFractalOctaves(5);
+        detail.SetFractalGain(0.55f);
+        detailWarpX = simple(s + 306, 1f / 2.5f);
+        detailWarpZ = simple(s + 307, 1f / 2.5f);
     }
 
     private static FastNoiseLite simple(int seed, float freqPerKm) {
@@ -110,12 +125,25 @@ public final class ArchipelagoShaper {
         // Flatten toward sea level, then drown. Both keep new height rising with old height (the flattening
         // factor stays positive and its fade is gentle), so slopes are never reversed.
         float k = zone * w;
-        return e * (1f - FLATTEN * k) - k * drown;
+        float base = e * (1f - FLATTEN * k) - k * drown;
+        // Coastline detail, centred on the new shoreline: full from 160 m deep up to 5 m above the sea, fading out by
+        // DETAIL_FADE_M on land, so hills keep the model's own surface. The fades are gentle enough that new height
+        // still rises with old height.
+        float near = base >= 5f ? 1f - smoothstep(5f, DETAIL_FADE_M, base) : smoothstep(-260f, -160f, base);
+        if (near > 0f) base -= k * DETAIL_M * near * detail(i, j);
+        return base;
     }
 
     private static float smoothstep(float e0, float e1, float v) {
         float t = Math.max(0f, Math.min(1f, (v - e0) / (e1 - e0)));
         return t * t * (3f - 2f * t);
+    }
+
+    /** Fine, warped coastline noise in about [-1, 1] at native pixel (i, j). */
+    float detail(double i, double j) {
+        float xk = (float) (j / KM), zk = (float) (i / KM);
+        float x = xk + 0.45f * detailWarpX.GetNoise(xk, zk), z = zk + 0.45f * detailWarpZ.GetNoise(xk, zk);
+        return detail.GetNoise(x, z);
     }
 
     /**
