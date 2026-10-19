@@ -93,7 +93,7 @@ public final class OceanFeatures {
     private static final double ARC_DISTANCE = 90 * KM, ARC_SPACING = 32 * KM;
 
     // Hotspots and seamounts
-    private static final double HOTSPOT_CELL = 450 * KM, HOTSPOT_CHANCE = 0.4;
+    private static final double HOTSPOT_CELL = 450 * KM, HOTSPOT_CHANCE = 0.8;
     private static final double SEAMOUNT_CELL = 45 * KM, SEAMOUNT_CHANCE = 0.3;
     /** Volcanoes only stand where the coarse map is at least this deep (metres). */
     private static final float VOLCANO_MIN_DEPTH = 1800f;
@@ -235,6 +235,10 @@ public final class OceanFeatures {
         final double[] opX = new double[8], opZ = new double[8];
         /** Ops placed in warped space (island-arc volcanoes): measured from (qx, qz) instead of the pixel. */
         final boolean[] opWarped = new boolean[8];
+        /** Each op's own volcano height at this pixel (metres above the floor). */
+        final double[] opC = new double[8];
+        /** The two largest single-volcano heights at this pixel, and the last one added. */
+        double top1, top2, lastC;
         /** This pixel in warped space. */
         double qx, qz;
         /** Surface tag for this pixel, and whether a reef ring (atoll, barrier reef, raised reef) covers it. */
@@ -269,6 +273,8 @@ public final class OceanFeatures {
         double[] dd = {ctx.d1, ctx.d2, ctx.d3};
         double ridgeUp = Double.NEGATIVE_INFINITY, trenchDown = 0;
         ctx.add = 0;
+        ctx.top1 = 0;
+        ctx.top2 = 0;
         ctx.ridge = 0;
         ctx.flex = 0;
         ctx.nOps = 0;
@@ -949,7 +955,7 @@ public final class OceanFeatures {
                 int extra = arcExtra(peak, warm, h);
                 double relief = peak - floor;
                 int style = extra == ARC_CALDERA ? STYLE_CALDERA : 0;
-                ctx.add += relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief);
+                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief));
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
@@ -958,7 +964,7 @@ public final class OceanFeatures {
                     ctx.opWarped[ctx.nOps - 1] = true;
                 }
             } else {
-                ctx.add += (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false);
+                volcano(ctx, (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false));
             }
         }
     }
@@ -1194,10 +1200,10 @@ public final class OceanFeatures {
                 boolean guyot = isGuyot(peak, h);
                 if (guyot) {
                     // A guyot was planed flat at sea level, then sank: build it taller and cut the top off.
-                    ctx.add += (peak + 600 - floor) * tableCone(r, radius, x, z, h);
+                    volcano(ctx, (peak + 600 - floor) * tableCone(r, radius, x, z, h));
                     pushOp(ctx, OP_GUYOT, peak, 0, radius, 0, h, sx, sz);
                 } else {
-                    ctx.add += (peak - floor) * cone(r, radius, x, z, h, false);
+                    volcano(ctx, (peak - floor) * cone(r, radius, x, z, h, false));
                 }
             }
         }
@@ -1212,7 +1218,7 @@ public final class OceanFeatures {
                 double ang = Math.atan2(z - vcz, x - vcx);
                 double relief = peak - floor;
                 int style = (stage.equals("flooded_caldera") ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
-                ctx.add += relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief);
+                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief));
                 if (stage.equals("barrier_reef_island")) {
                     // The island is sinking and its fringing reef grew up into a ring offshore, with a lagoon between.
                     double landR = landU * radius;
@@ -1222,7 +1228,7 @@ public final class OceanFeatures {
             case "atoll", "raised_coral_island" -> {
                 // The volcano has sunk out of sight and its fringing reef kept growing up into a ring.
                 double sub = Math.min(peak, -350);
-                ctx.add += (sub - floor) * tableCone(r, radius, x, z, h);
+                volcano(ctx, (sub - floor) * tableCone(r, radius, x, z, h));
                 double rim = radius * (0.22 + 0.13 * unit(mix(h + 9)));
                 if (stage.equals("atoll")) {
                     pushOp(ctx, OP_ATOLL, rim, REEF_ATOLL, radius, 0, h, vcx, vcz);
@@ -1234,10 +1240,10 @@ public final class OceanFeatures {
             case "guyot" -> {
                 double top = Math.min(peak, -250);
                 double rs = radius * SUBMERGED_SHRINK;
-                ctx.add += (top + 600 - floor) * tableCone(r, rs, x, z, h);
+                volcano(ctx, (top + 600 - floor) * tableCone(r, rs, x, z, h));
                 pushOp(ctx, OP_GUYOT, top, 0, rs, 0, h, vcx, vcz);
             }
-            default -> ctx.add += (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false);
+            default -> volcano(ctx, (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false));
         }
     }
 
@@ -1264,11 +1270,11 @@ public final class OceanFeatures {
         return ARC_PLAIN;
     }
 
-    private static boolean arcExists(long h) { return unit(h) <= 0.75; }
+    private static boolean arcExists(long h) { return unit(h) <= 1.0; }
     private static double arcAlong(long k, long h) { return k * ARC_SPACING + (unit(mix(h)) - 0.5) * 14 * KM; }
     private static double arcAcross(long h) { return ARC_DISTANCE + (unit(mix(h + 1)) - 0.5) * 16 * KM; }
     private static double arcRadius(long h) { return (7 + 7 * unit(mix(h + 2))) * KM; }
-    private static double arcPeak(double strength, long h) { return lerp(-2500, -800 + 2400 * unit(mix(h + 3)), strength); }
+    private static double arcPeak(double strength, long h) { return lerp(-2500, -350 + 2500 * unit(mix(h + 3)), strength); }
 
     /**
      * What a hotspot volcano has become by now, from its peak height (how far it has sunk), the water temperature,
@@ -1472,12 +1478,34 @@ public final class OceanFeatures {
         return r * (1 + 0.14 * coastShape.GetNoise(kx, kz));
     }
 
+    /**
+     * Adds one volcano's height (metres above the sea floor) at this pixel. Overlapping volcanoes do not stack: the
+     * higher one wins, with the join rounded off over a few hundred metres so neighbours still merge with a saddle.
+     * (Summing them put a seamount's whole 2-4 km cone on top of any island whose flank it sat on: tall, perfectly
+     * conical spires.)
+     */
+    private static void volcano(Ctx ctx, double c) {
+        ctx.lastC = c;
+        if (c <= 0) return;
+        if (c > ctx.top1) { ctx.top2 = ctx.top1; ctx.top1 = c; } else if (c > ctx.top2) ctx.top2 = c;
+        ctx.add = smoothUnion(ctx.add, c);
+    }
+
+    /** max(a, b) for non-negative heights, rounded where they are close; exactly the max when either is 0. */
+    private static double smoothUnion(double a, double b) {
+        double k = Math.min(300, 0.5 * Math.min(a, b));
+        double diff = Math.abs(a - b);
+        if (k <= 0 || diff >= k) return Math.max(a, b);
+        double t = (k - diff) / k;
+        return Math.max(a, b) + t * t * k * 0.25;
+    }
+
     private static void pushOp(Ctx ctx, int type, double a, double b, double radius, double u, long h,
                                double cx, double cz) {
         if (ctx.nOps >= ctx.opType.length) return;
         int o = ctx.nOps++;
         ctx.opType[o] = type; ctx.opA[o] = a; ctx.opB[o] = b; ctx.opR[o] = radius; ctx.opU[o] = u;
-        ctx.opH[o] = h; ctx.opX[o] = cx; ctx.opZ[o] = cz; ctx.opWarped[o] = false;
+        ctx.opH[o] = h; ctx.opX[o] = cx; ctx.opZ[o] = cz; ctx.opWarped[o] = false; ctx.opC[o] = ctx.lastC;
     }
 
     private double applyOp(double v, int o, double x, double z, Ctx ctx) {
@@ -1485,8 +1513,14 @@ public final class OceanFeatures {
         double px = warped ? ctx.qx : x, pz = warped ? ctx.qz : z;
         double r = Math.hypot(px - ctx.opX[o], pz - ctx.opZ[o]);
         if (ctx.opType[o] == OP_GUYOT) {
+            // The planed-off top belongs to this guyot only: where another volcano stands higher (an island it sits
+            // beside), leave that one alone instead of cutting a flat notch through it.
             double top = ctx.opA[o];
-            if (r < ctx.opR[o] && v > top) v = top + (v - top) * 0.03;
+            if (r < ctx.opR[o] && v > top) {
+                double own = ctx.opC[o], others = own >= ctx.top1 ? ctx.top2 : ctx.top1;
+                double w = 1 - smoothstep(-100, 150, others - own);
+                v -= (v - (top + (v - top) * 0.03)) * w;
+            }
             return v;
         }
         ctx.reefOp = true;
