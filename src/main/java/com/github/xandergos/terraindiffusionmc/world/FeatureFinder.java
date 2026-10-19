@@ -124,7 +124,7 @@ public final class FeatureFinder {
         LocalTerrainProvider.Delta d = res.nearest();
         if (d == null) {
             source.sendFailure(Component.literal("No river delta within about " + searchedKm + " km. Deltas form where a river "
-                    + "crosses a low, flat coastal plain (under 10 m for its last 900 m); try a lowland coast."));
+                    + "crosses a low, flat coastal plain (under 15 m for its last 900 m) to a shallow sea; try a lowland coast."));
             return;
         }
         long x = Math.round((d.mouthJ() + 0.5) * scale), z = Math.round((d.mouthI() + 0.5) * scale);

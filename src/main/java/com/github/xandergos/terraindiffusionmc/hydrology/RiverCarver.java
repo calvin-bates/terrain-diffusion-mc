@@ -158,11 +158,11 @@ public final class RiverCarver {
         }
     }
 
-    // ---- River mouths (v27) ----------------------------------------------------------------------------------------
-    // Estuaries: over the last ESTUARY pixels before the sea a river widens into a funnel and deepens; the widened
-    // channel is cut below sea level near the coast, where it fills with sea water. Deltas: a main river that crosses
-    // low, flat ground to the sea splits DELTA_START pixels from the coast into two extra distributaries fanning out to
-    // the shore. Both come from the region data only, so tiles agree.
+    // ---- River mouths (v27, deltas reworked in v29) ----------------------------------------------------------------
+    // Estuaries: over the last ESTUARY pixels before the sea a river widens into a funnel and deepens. Deltas: a river
+    // or main river that crosses low, flat ground to the sea builds a lobe of new land out into the shallows and splits
+    // into 3 to 6 distributaries across it (DeltaPlan; the land itself is raised by pipeline.DeltaShaper). Both come
+    // from the region data only, so tiles agree.
 
     /** Y of the sea's top water block (sea level 63). */
     private static final int SEA_SURFACE_Y = 62;
@@ -175,8 +175,7 @@ public final class RiverCarver {
     /** A delta splits this many pixels (900 m) upstream of the sea. */
     static final int DELTA_START = 30;
     /** Ground on a delta (metres) stays below this; anything higher is a valley, which makes an estuary instead. */
-    private static final float DELTA_MAX_M = 10f;
-    private static final int DELTA_MAX_STEPS = 2 * DELTA_START + 10;
+    static final float DELTA_MAX_M = 15f;
 
     /** Steps along the flow from pixel k to the first sea pixel (elevation at or below 0), or -1 within {@code limit}. */
     static int stepsToSea(RiverService.Region reg, int k, int limit) {
@@ -253,47 +252,15 @@ public final class RiverCarver {
                 && stepsToSea(reg, k, DELTA_START) == DELTA_START && lowPathToSea(reg, k);
     }
 
-    /**
-     * Draws a delta's two distributaries from pixel k: they leave at about +-30 degrees from the flow, wander a little
-     * and run until they reach the sea (or high ground, or a length limit), widening toward their mouths. A main
-     * river's distributaries are river-sized, a river's are streams.
-     */
-    private static void drawDelta(RiverService.Region reg, int k, int scale, int i1, int j1, int H, int W,
+    /** Draws a delta's distributaries (see {@link DeltaPlan}): each channel widens a little toward the sea. */
+    private static void drawDelta(DeltaPlan plan, int scale, int i1, int j1, int H, int W,
                                   float[] score, float[] sA, byte[] cA, float[] wA, float[] cpx, float[] cpz) {
-        int kr = k / reg.width, kc = k % reg.width;
-        // Mean flow direction over the delta's first half.
-        int cur = k;
-        for (int s = 0; s < DELTA_START / 2; s++) {
-            int d = reg.downstream[cur];
-            if (d < 0) break;
-            cur = d;
-        }
-        float fx = cur % reg.width - kc, fz = cur / reg.width - kr;
-        float fl = (float) Math.sqrt(fx * fx + fz * fz);
-        if (fl < 1f) return;
-        fx /= fl; fz /= fl;
-        long h = (long) (reg.i0 + kr) * 73856093L ^ (long) (reg.j0 + kc) * 19349663L;
-        byte branch = reg.cls[k] == RiverMap.MAIN ? RiverMap.RIVER : RiverMap.STREAM;
-        for (int side = -1; side <= 1; side += 2) {
-            double ang = side * (0.5 + 0.2 * latticeHash((int) h, side));
-            float px = reg.j0 + kc + 0.5f, pz = reg.i0 + kr + 0.5f;   // native pixel coordinates
-            float sp = reg.surface[k];
-            double heading = Math.atan2(fz, fx) + ang;
-            for (int st = 0; st < DELTA_MAX_STEPS; st++) {
-                // Wander gently back and forth and bend slowly back toward the main flow.
-                heading += 0.25 * (latticeHash((int) h + st * 31, side) - 0.5) - 0.006 * side;
-                float nx = px + (float) Math.cos(heading), nz = pz + (float) Math.sin(heading);
-                int q = reg.index((int) Math.floor(nz), (int) Math.floor(nx));
-                if (q < 0) break;
-                float e = reg.elev[q];
-                if (e > DELTA_MAX_M) break;                                   // blocked by higher ground
-                float t = Math.min(1f, (float) st / DELTA_START);
+        for (DeltaPlan.Channel ch : plan.channels) {
+            for (int i = 0; i + 1 < ch.x.length; i++) {
+                float t = Math.min(1f, (float) i / DELTA_START);
                 float widen = 1f + 0.6f * t * t;
-                float sq = Math.max(0f, Math.min(sp, reg.surface[q]));
-                drawCapsule(px * scale, pz * scale, nx * scale, nz * scale, sp, sq, branch, widen, scale,
-                        i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
-                px = nx; pz = nz; sp = sq;
-                if (e <= 0f) break;                                           // reached the sea
+                drawCapsule(ch.x[i] * scale, ch.z[i] * scale, ch.x[i + 1] * scale, ch.z[i + 1] * scale,
+                        ch.surface[i], ch.surface[i + 1], ch.cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
             }
         }
     }
@@ -382,7 +349,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v28 (river mouths stay off the sea floor)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v29 (delta lobes and branching distributaries)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -514,21 +481,24 @@ public final class RiverCarver {
             }
         }
 
-        // ---- deltas: distributaries can reach this tile from a delta head up to DELTA_MAX_STEPS pixels away.
-        {
-            int dpad = pad + DELTA_MAX_STEPS + 2;
-            int di0 = Math.floorDiv(i1, scale) - dpad, di1 = Math.floorDiv(i1 + H - 1, scale) + dpad;
-            int dj0 = Math.floorDiv(j1, scale) - dpad, dj1 = Math.floorDiv(j1 + W - 1, scale) + dpad;
-            RiverService.Region dreg = null;
-            int dRi = Integer.MIN_VALUE, dRj = Integer.MIN_VALUE;
-            for (int pi = di0; pi <= di1; pi++) {
-                for (int pj = dj0; pj <= dj1; pj++) {
-                    int ri = ownerIndex(pi, prefRi, regionSize, trust);
-                    int rj = ownerIndex(pj, prefRj, regionSize, trust);
-                    if (dreg == null || ri != dRi || rj != dRj) { dreg = regions.get(ri, rj); dRi = ri; dRj = rj; }
-                    int k = dreg.index(pi, pj);
-                    if (k < 0 || dreg.cls[k] < RiverMap.RIVER || dreg.cls[k] > RiverMap.MAIN || !isDeltaHead(dreg, k)) continue;
-                    drawDelta(dreg, k, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
+        // ---- deltas: the distributaries of every delta whose plan can reach this tile (see DeltaPlan). Each plan comes
+        // from the region that owns its head, so all tiles draw the same channels.
+        boolean nearSeaLevel = false;
+        for (int v : ytop) if (v >= 50 && v <= 66) { nearSeaLevel = true; break; }
+        if (nearSeaLevel) {   // deltas only touch ground near sea level; don't load neighbouring regions for others
+            int dpad = pad + DeltaPlan.MAX_REACH_PX;
+            int ri0 = Math.floorDiv(Math.floorDiv(i1, scale) - dpad, regionSize);
+            int ri1 = Math.floorDiv(Math.floorDiv(i1 + H - 1, scale) + dpad, regionSize);
+            int rj0 = Math.floorDiv(Math.floorDiv(j1, scale) - dpad, regionSize);
+            int rj1 = Math.floorDiv(Math.floorDiv(j1 + W - 1, scale) + dpad, regionSize);
+            float tcx = (j1 + W / 2f) / scale, tcz = (i1 + H / 2f) / scale;
+            float tileHalf = Math.max(H, W) / 2f / scale + pad;
+            for (int ri = ri0; ri <= ri1; ri++) {
+                for (int rj = rj0; rj <= rj1; rj++) {
+                    for (DeltaPlan plan : DeltaPlan.of(regions.get(ri, rj), ri, rj, regionSize)) {
+                        if (!plan.near(tcx, tcz, tileHalf)) continue;
+                        drawDelta(plan, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
+                    }
                 }
             }
         }

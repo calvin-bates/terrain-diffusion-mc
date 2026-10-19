@@ -1,6 +1,7 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+import com.github.xandergos.terraindiffusionmc.hydrology.DeltaPlan;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverMap;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverService;
@@ -10,7 +11,9 @@ import com.github.xandergos.terraindiffusionmc.world.WorldScaleManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
@@ -386,6 +389,39 @@ public final class LocalTerrainProvider {
         }
     }
 
+    /**
+     * River deltas whose lobe or channels may reach this tile (see {@link DeltaPlan}), from the regions that own their
+     * heads; empty if rivers are off, the tile has no ground near sea level, or the hydrology is unavailable. Runs on
+     * the inference thread, like the rest of tile building.
+     */
+    private List<DeltaPlan> deltaPlansNear(float[] elev, int i1, int j1, int H, int W, int scale) {
+        if (!TerrainDiffusionConfig.riversEnabled()) return List.of();
+        boolean near = false;
+        for (float e : elev) if (e > -45f && e < 15f) { near = true; break; }
+        if (!near) return List.of();
+        try {
+            RiverService svc = rivers();
+            int size = svc.regionSize();
+            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            int pad = DeltaPlan.MAX_REACH_PX;
+            int ri0 = Math.floorDiv(Math.floorDiv(i1, scale) - pad, size), ri1 = Math.floorDiv(Math.floorDiv(i1 + H - 1, scale) + pad, size);
+            int rj0 = Math.floorDiv(Math.floorDiv(j1, scale) - pad, size), rj1 = Math.floorDiv(Math.floorDiv(j1 + W - 1, scale) + pad, size);
+            float cx = (j1 + W / 2f) / scale, cz = (i1 + H / 2f) / scale, half = Math.max(H, W) / 2f / scale;
+            List<DeltaPlan> out = new ArrayList<>();
+            for (int ri = ri0; ri <= ri1; ri++) {
+                for (int rj = rj0; rj <= rj1; rj++) {
+                    for (DeltaPlan p : DeltaPlan.of(svc.region(ri, rj, source), ri, rj, size)) {
+                        if (p.near(cx, cz, half + 4)) out.add(p);
+                    }
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: deltas unavailable for tile at ({}, {}): {}", j1, i1, e.toString());
+            return List.of();
+        }
+    }
+
     /** Native pixels around a river mouth within which the coast keeps no cliff (fading out to RIVER_MOUTH_FADE_PX). */
     private static final float RIVER_MOUTH_CLEAR_PX = 1.5f, RIVER_MOUTH_FADE_PX = 3.5f;
 
@@ -529,6 +565,7 @@ public final class LocalTerrainProvider {
         short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION);
         CoastShaper.apply(elevMargin2D, 3, 3, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
+        DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
         return buildHeightmapData(elevFlat, biomeFlat, H, W);
     }
 
@@ -581,6 +618,7 @@ public final class LocalTerrainProvider {
         short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM);
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
+        DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
         return buildHeightmapData(elevOut, biomeFlat, H, W);
     }
 
