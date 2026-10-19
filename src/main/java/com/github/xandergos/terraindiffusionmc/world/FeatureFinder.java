@@ -24,10 +24,12 @@ import static net.minecraft.commands.Commands.argument;
 import static net.minecraft.commands.Commands.literal;
 
 /**
- * {@code /terra-find <feature>}: the nearest ocean feature of a kind (volcanic island, island-arc island, atoll,
- * guyot, seamount, trench or archipelago sea) or river delta, with a click-to-teleport. Uses the same placement rules as the terrain
- * ({@link OceanFeatures#landmarks}), so it can point at places that are not generated yet. The search runs off the
- * server thread because far-away searches compute the coarse map.
+ * {@code /terra-find <feature>}: the nearest ocean feature of a kind (volcanic island and its later stages, island-arc
+ * island, landslide scar, aseismic ridge, guyot, seamount, trench, archipelago sea, vent field), river delta, or
+ * reef or carbonate bank, with a click-to-teleport. Ocean features use the same placement rules as the terrain
+ * ({@link OceanFeatures#landmarks}), so it can point at places that are not generated yet. Deltas, reefs and banks
+ * depend on the model's own terrain, so they are searched for by computing it. The search runs off the server thread
+ * because far-away searches compute the coarse map.
  */
 public final class FeatureFinder {
     private static final Logger LOG = LoggerFactory.getLogger(FeatureFinder.class);
@@ -36,14 +38,22 @@ public final class FeatureFinder {
     private static final Map<String, String[]> KINDS = new LinkedHashMap<>();
     static {
         KINDS.put("volcanic_island", new String[]{"volcanic_island", "volcanic island"});
+        KINDS.put("flooded_caldera", new String[]{"flooded_caldera", "flooded caldera"});
+        KINDS.put("barrier_reef_island", new String[]{"barrier_reef_island", "island with a barrier reef"});
         KINDS.put("arc_island", new String[]{"arc_island", "island-arc island"});
         KINDS.put("atoll", new String[]{"atoll", "atoll"});
+        KINDS.put("raised_coral_island", new String[]{"raised_coral_island", "raised coral island"});
+        KINDS.put("landslide_scar", new String[]{"landslide_scar", "island landslide scar"});
+        KINDS.put("aseismic_ridge", new String[]{"aseismic_ridge", "aseismic ridge"});
         KINDS.put("guyot", new String[]{"guyot", "guyot"});
         KINDS.put("seamount", new String[]{"seamount", "seamount"});
         KINDS.put("trench", new String[]{"trench", "trench"});
         KINDS.put("archipelago", new String[]{"archipelago", "archipelago sea"});
         KINDS.put("vent_field", new String[]{"vent_field", "hydrothermal vent field"});
         KINDS.put("delta", new String[]{"delta", "river delta"});
+        KINDS.put("fringing_reef", new String[]{"fringing_reef", "fringing reef"});
+        KINDS.put("barrier_reef", new String[]{"barrier_reef", "offshore barrier reef"});
+        KINDS.put("carbonate_bank", new String[]{"carbonate_bank", "carbonate bank"});
     }
 
     /** Farthest search, in native pixels (1200 km). */
@@ -77,6 +87,10 @@ public final class FeatureFinder {
             findDelta(source, server, pi, pj, scale);
             return 1;
         }
+        if (OceanFeatures.shallowTag(word) >= 0) {
+            findShallow(source, server, word, kind[1], pi, pj, scale);
+            return 1;
+        }
 
         Thread worker = new Thread(() -> {
             try {
@@ -90,6 +104,42 @@ public final class FeatureFinder {
         worker.setDaemon(true);
         worker.start();
         return 1;
+    }
+
+    /** Farthest reef or bank search (600 km) and most spots whose terrain is computed. */
+    private static final int SHALLOW_RADIUS_PX = 20_000, SHALLOW_MAX_CHECKS = 25;
+
+    /**
+     * Reefs and banks depend on the model's own sea depths, so likely spots come from the coarse map and the terrain is
+     * computed around the nearest ones (a few seconds each the first time) until one has the feature.
+     */
+    private static void findShallow(CommandSourceStack source, MinecraftServer server, String word, String name,
+                                    double pi, double pj, int scale) {
+        Thread worker = new Thread(() -> {
+            try {
+                LocalTerrainProvider.ShallowSearch res = LocalTerrainProvider.findNearestShallow(word, pi, pj,
+                        SHALLOW_RADIUS_PX, SHALLOW_MAX_CHECKS, reachedPx -> {
+                            int km = Math.round(reachedPx * 30 / 1000f);
+                            server.execute(() -> source.sendSuccess(() -> Component.literal("…searched about " + km
+                                    + " km around you").withStyle(ChatFormatting.GRAY), false));
+                        });
+                server.execute(() -> {
+                    if (!res.found()) {
+                        int km = Math.round(res.searchedRadiusPx() * 30 / 1000f);
+                        source.sendFailure(Component.literal("No " + name + " found (checked " + res.checked()
+                                + " likely spots within about " + km + " km). Reefs need warm water (about 24 °C) and "
+                                + "banks a warm archipelago sea; try a tropical coast."));
+                        return;
+                    }
+                    report(source, name, new OceanFeatures.Landmark(word, res.i(), res.j(), 0f), pi, pj, scale);
+                });
+            } catch (Exception e) {
+                LOG.error("terra-find " + word + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     /** Rings of river regions (7.7 km each) searched for deltas around the player. */
@@ -175,8 +225,11 @@ public final class FeatureFinder {
     private static String describe(OceanFeatures.Landmark l) {
         int v = Math.round(l.value());
         return switch (l.type()) {
-            case "volcanic_island", "arc_island" -> "peak " + v + " m";
+            case "volcanic_island", "arc_island", "flooded_caldera", "barrier_reef_island" -> "peak " + v + " m";
+            case "landslide_scar" -> "on an island " + v + " m high";
             case "atoll" -> "reef at sea level";
+            case "raised_coral_island" -> "old reef rim about " + v + " m up";
+            case "aseismic_ridge" -> "crest about " + (-v) + " m down";
             case "guyot", "seamount" -> "summit " + v + " m";
             case "trench" -> "floor about " + v + " m";
             case "vent_field" -> "on the ridge axis about " + (-v) + " m down";

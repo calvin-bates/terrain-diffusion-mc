@@ -2,6 +2,7 @@ package com.github.xandergos.terraindiffusionmc.mixin;
 
 import com.github.xandergos.terraindiffusionmc.world.DryCaves;
 import com.github.xandergos.terraindiffusionmc.world.InlandWaterCarving;
+import com.github.xandergos.terraindiffusionmc.world.OceanSurfaces;
 import com.github.xandergos.terraindiffusionmc.world.RiverWaterPlacer;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import net.minecraft.core.BlockPos;
@@ -34,7 +35,8 @@ import java.util.function.Function;
 
 /**
  * Fills river and lake water right after the terrain pass, while the chunk is still a plain
- * generation chunk (no block-update side effects, no waiting on neighbouring chunks).
+ * generation chunk (no block-update side effects, no waiting on neighbouring chunks), then lays the
+ * reef, lagoon, bank and limestone surfaces ({@link OceanSurfaces}).
  */
 @Mixin(NoiseBasedChunkGenerator.class)
 public abstract class NoiseBasedChunkGeneratorMixin {
@@ -47,8 +49,10 @@ public abstract class NoiseBasedChunkGeneratorMixin {
         if (!(((ChunkGenerator) (Object) this).getBiomeSource() instanceof TerrainDiffusionBiomeSource)) {
             return;
         }
+        int seaLevel = ((NoiseBasedChunkGenerator) (Object) this).getSeaLevel();
         cir.setReturnValue(cir.getReturnValue().thenApply(built -> {
             RiverWaterPlacer.place(built);
+            OceanSurfaces.place(built, seaLevel);
             return built;
         }));
     }

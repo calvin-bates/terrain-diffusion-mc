@@ -40,6 +40,9 @@ public final class LocalTerrainProvider {
 
     private static final FastNoiseLite ELEV_NOISE_COARSE = makeFnl(99999, 1f/24f, 3, 2f, 0.5f);
     private static final FastNoiseLite ELEV_NOISE_FINE   = makeFnl(88888, 1f/6f,  2, 2f, 0.6f);
+    /** Wobble (in native pixels) for looking up ocean surface tags, so their edges don't follow the 30 m grid. */
+    private static final FastNoiseLite TAG_JITTER_I = makeFnl(77771, 1f/9f, 2, 2f, 0.5f);
+    private static final FastNoiseLite TAG_JITTER_J = makeFnl(77772, 1f/9f, 2, 2f, 0.5f);
 
     private static FastNoiseLite makeFnl(int seed, float freq, int oct, float lac, float gain) {
         FastNoiseLite fnl = new FastNoiseLite(seed);
@@ -63,6 +66,11 @@ public final class LocalTerrainProvider {
         public short[][] waterY;
         /** True where the water at that column is a lake rather than a river. */
         public boolean[][] waterIsLake;
+        /**
+         * Ocean surface tag per column ({@link OceanFeatures#TAG_REEF} and so on: where coral, seagrass and limestone
+         * go); null if the tile has none.
+         */
+        public byte[][] oceanTags;
 
         public HeightmapData(short[][] heightmap, short[][] biomeIds, int width, int height) {
             this.heightmap = heightmap;
@@ -214,6 +222,52 @@ public final class LocalTerrainProvider {
             // Anything within the square's inner circle is certainly the nearest one.
             if (best != null && bestD <= radius) return best;
             if (radius >= maxRadiusPx) return best;
+            radius = Math.min(maxRadiusPx, radius * 2);
+        }
+    }
+
+    /** Result of a reef or bank search: the spot found (native pixels) if any, spots checked, how far it reached. */
+    public record ShallowSearch(boolean found, double i, double j, int checked, int searchedRadiusPx) {}
+
+    /**
+     * A nearby fringing reef, continental barrier reef or carbonate bank ({@code kind} as in
+     * {@link OceanFeatures#shallowCandidate}). These depend on the model's own sea depths, so likely spots are picked
+     * from the coarse map in squares of growing size around native pixel (pi, pj), and the terrain is then computed
+     * around the nearest ones (a few seconds each the first time) until one really has the feature. Stops after
+     * {@code maxChecks} spots or at {@code maxRadiusPx}. Never call this on the server thread.
+     */
+    public static ShallowSearch findNearestShallow(String kind, double pi, double pj, int maxRadiusPx, int maxChecks,
+                                                   java.util.function.IntConsumer progress) throws Exception {
+        byte tag = OceanFeatures.shallowTag(kind);
+        final int step = 96, win = 160;
+        java.util.Set<Long> done = new java.util.HashSet<>();
+        int checked = 0;
+        int radius = Math.min(500, maxRadiusPx);
+        while (true) {
+            final int i1 = (int) Math.floor(pi) - radius, j1 = (int) Math.floor(pj) - radius, r2 = 2 * radius;
+            List<double[]> cands = submitToInferenceThread(
+                    () -> getInstance().pipeline.shallowCandidates(kind, i1, j1, i1 + r2, j1 + r2, step));
+            cands.sort(Comparator.comparingDouble(c -> Math.hypot(c[0] - pi, c[1] - pj)));
+            for (double[] c : cands) {
+                if (Math.hypot(c[0] - pi, c[1] - pj) > radius) break;   // the rest wait for a bigger square
+                int wi = Math.floorDiv((int) c[0], win) * win, wj = Math.floorDiv((int) c[1], win) * win;
+                if (!done.add(((long) wi << 32) ^ (wj & 0xFFFFFFFFL))) continue;
+                byte[] tags = new byte[win * win];
+                submitToInferenceThread(() -> getInstance().pipeline.get(wi, wj, wi + win, wj + win, false, tags));
+                checked++;
+                double best = Double.MAX_VALUE;
+                int bi = -1, bj = -1;
+                for (int k = 0; k < tags.length; k++) {
+                    if (tags[k] != tag) continue;
+                    int ti = wi + k / win, tj = wj + k % win;
+                    double dd = Math.hypot(ti - pi, tj - pj);
+                    if (dd < best) { best = dd; bi = ti; bj = tj; }
+                }
+                if (bi >= 0) return new ShallowSearch(true, bi + 0.5, bj + 0.5, checked, radius);
+                if (checked >= maxChecks) return new ShallowSearch(false, 0, 0, checked, radius);
+            }
+            progress.accept(radius);
+            if (radius >= maxRadiusPx) return new ShallowSearch(false, 0, 0, checked, radius);
             radius = Math.min(maxRadiusPx, radius * 2);
         }
     }
@@ -558,7 +612,8 @@ public final class LocalTerrainProvider {
         float[] elevMargin = pipeline.get(i1 - 3, j1 - 3, i2 + 3, j2 + 3, false)[0];
         float[][] elevMargin2D = to2D(elevMargin, H + 6, W + 6);
         float[] elevPadded = cropFlat(elevMargin2D, 2, 2, H + 2, W + 2, H + 6, W + 6);
-        float[][] out = pipeline.get(i1, j1, i2, j2, true);
+        byte[] tags = new byte[H * W];
+        float[][] out = pipeline.get(i1, j1, i2, j2, true, tags);
         float[] elevFlat = out[0];
         float[] climate  = out[1];
 
@@ -566,7 +621,9 @@ public final class LocalTerrainProvider {
         CoastShaper.apply(elevMargin2D, 3, 3, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
-        return buildHeightmapData(elevFlat, biomeFlat, H, W);
+        HeightmapData data = buildHeightmapData(elevFlat, biomeFlat, H, W);
+        data.oceanTags = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
+        return data;
     }
 
     // =========================================================================
@@ -591,7 +648,8 @@ public final class LocalTerrainProvider {
         int i2p = i2n + 5, j2p = j2n + 5;
         int nH = i2p - i1p, nW = j2p - j1p;
 
-        float[][] out = pipeline.get(i1p, j1p, i2p, j2p, true);
+        byte[] tagsNative = new byte[nH * nW];
+        float[][] out = pipeline.get(i1p, j1p, i2p, j2p, true, tagsNative);
         float[] elevNativeFlat    = out[0];
         float[] climateNativeFlat = out[1];
 
@@ -619,7 +677,36 @@ public final class LocalTerrainProvider {
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
-        return buildHeightmapData(elevOut, biomeFlat, H, W);
+        HeightmapData data = buildHeightmapData(elevOut, biomeFlat, H, W);
+        data.oceanTags = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
+        return data;
+    }
+
+    /**
+     * Ocean surface tags for the tile's blocks from the native-pixel tags (top-left native pixel (ni0, nj0), nH x nW),
+     * or null if there are none. Each block takes the tag of the native pixel under it, looked up at a point that
+     * wobbles smoothly by up to ~0.7 pixel, so tagged patches get natural edges. The wobble depends only on the
+     * block position, so neighbouring tiles agree.
+     */
+    private static byte[][] blockTags(byte[] tags, int ni0, int nj0, int nH, int nW, int i1, int j1, int H, int W, int scale) {
+        boolean any = false;
+        for (byte t : tags) if (t != OceanFeatures.TAG_NONE) { any = true; break; }
+        if (!any) return null;
+        byte[][] out = new byte[H][W];
+        any = false;
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int bi = i1 + r, bj = j1 + c;
+                float fi = (bi + 0.5f) / scale - 0.5f + 0.7f * TAG_JITTER_I.GetNoise(bj, bi);
+                float fj = (bj + 0.5f) / scale - 0.5f + 0.7f * TAG_JITTER_J.GetNoise(bj, bi);
+                int ni = Math.max(0, Math.min(nH - 1, Math.round(fi) - ni0));
+                int nj = Math.max(0, Math.min(nW - 1, Math.round(fj) - nj0));
+                byte t = tags[ni * nW + nj];
+                out[r][c] = t;
+                any |= t != OceanFeatures.TAG_NONE;
+            }
+        }
+        return any ? out : null;
     }
 
     // =========================================================================

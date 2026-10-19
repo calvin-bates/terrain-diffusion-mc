@@ -1186,8 +1186,13 @@
   // detail map around it and get a /tp command.
   const FEATURE_TYPES = {
     volcanic_island: { name: 'Volcanic island', color: '#f97316', on: true },
+    flooded_caldera: { name: 'Flooded caldera', color: '#dc2626', on: true },
+    barrier_reef_island: { name: 'Barrier-reef island', color: '#22d3ee', on: true },
     arc_island:      { name: 'Arc island',      color: '#facc15', on: true },
     atoll:           { name: 'Atoll',           color: '#2dd4bf', on: true },
+    raised_coral_island: { name: 'Raised coral island', color: '#f5f5f4', on: true },
+    landslide_scar:  { name: 'Landslide scar',  color: '#a16207', on: true },
+    aseismic_ridge:  { name: 'Aseismic ridge',  color: '#818cf8', on: true },
     guyot:           { name: 'Guyot',           color: '#a78bfa', on: true },
     seamount:        { name: 'Seamount',        color: '#94a3b8', on: false },
     trench:          { name: 'Trench',          color: '#f43f5e', on: true },
@@ -1207,7 +1212,12 @@
     const v = Math.round(f.value);
     switch (f.type) {
       case 'volcanic_island': case 'arc_island': return `peak ${v} m above the sea`;
+      case 'flooded_caldera': return `ring island, peak ${v} m, around a flooded caldera`;
+      case 'barrier_reef_island': return `peak ${v} m, ringed by a barrier reef and lagoon`;
       case 'atoll': return 'reef ring at sea level';
+      case 'raised_coral_island': return `atoll lifted out of the sea; limestone rim about ${v} m up`;
+      case 'landslide_scar': return `giant landslide scar on an island ${v} m high`;
+      case 'aseismic_ridge': return `continuous volcanic ridge, crest about ${-v} m down`;
       case 'guyot': return `flat summit ${-v} m down`;
       case 'seamount': return `summit ${-v} m down`;
       case 'trench': return `floor about ${-v} m down`;
