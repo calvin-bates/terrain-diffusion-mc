@@ -1,5 +1,7 @@
 package com.github.xandergos.terraindiffusionmc.hydrology;
 
+import com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -51,6 +53,16 @@ public final class DeltaPlan {
     public final List<Channel> channels;
     /** Mouth bars: centre, unit direction (along the channel) for each. */
     public final float[] barX, barZ, barDX, barDZ;
+
+    /** Small-scale wiggle of the delta's shoreline (world coordinates, so every plan and tile agree). */
+    private static final FastNoiseLite OUTLINE = new FastNoiseLite(7311);
+    static {
+        OUTLINE.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        OUTLINE.SetFrequency(1f / 7f);
+        OUTLINE.SetFractalType(FastNoiseLite.FractalType.FBm);
+        OUTLINE.SetFractalOctaves(3);
+        OUTLINE.SetFractalGain(0.55f);
+    }
 
     private final double[] frontPhase = new double[3];
     private final double[] frontAmp = new double[3];
@@ -158,7 +170,8 @@ public final class DeltaPlan {
         double rel = wrap(Math.atan2(dz, dx) - Math.atan2(dirZ, dirX));
         float rad = radiusAt(rel);
         if (rad <= 0f) return Float.POSITIVE_INFINITY;
-        return r / rad;
+        // Ragged shoreline: lobes, coves and points from ~200 m down to ~50 m.
+        return r / (rad * (1f + 0.16f * OUTLINE.GetNoise(x, z)));
     }
 
     /** Lobe radius (pixels) at an angle from the axis: full along the axis, closing to 0 at the fan's edge. */

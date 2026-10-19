@@ -23,7 +23,8 @@ import net.minecraft.world.level.material.Fluids;
  *
  * <ul>
  *   <li><b>Black smokers</b> on mid-ocean ridge axes, deep under the sea: clusters of chimneys of blackstone,
- *       basalt, sulfur and cinnabar on a sulfur-stained mound, ringed by sulfur spikes. Each chimney is capped with
+ *       basalt, sulfur and cinnabar on a sulfur-stained mound, broad at the foot and tapering to a spire, ringed by
+ *       sulfur spikes. Each chimney is capped with
  *       potent sulfur over a magma block, so it streams sulfur bubbles. (Vanilla geysers only erupt under at most
  *       4 blocks of water, so deep ones bubble but never blow.)</li>
  *   <li><b>Shallow geysers</b> around active volcanoes (a hotspot chain's young island, island-arc volcanoes): potent
@@ -82,9 +83,9 @@ public final class HydrothermalVents {
             int floor = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR_WG, x, z);
             int water = waterAbove(chunk, pos, x, floor, z);
             if (water < minWater || floor + water != seaLevel - 1) continue;   // open sea only
-            int height = 3 + rnd.nextInt(3 + (int) Math.round(5 * strength));
+            int height = 5 + rnd.nextInt(3 + (int) Math.round(7 * strength));
             height = Math.min(height, water - 2);
-            if (height < 3) continue;
+            if (height < 4) continue;
 
             // Mound of sulfur-stained rock around the chimney's foot.
             for (int dx = -2; dx <= 2; dx++) {
@@ -96,26 +97,19 @@ public final class HydrothermalVents {
                     if (rnd.nextFloat() < 0.8f) set(level, pos.set(fx, f, fz), moundBlock(rnd));
                 }
             }
-            // The chimney: a knobbly column, magma at the core of its top, potent sulfur venting at the tip.
-            for (int y = 1; y <= height - 2; y++) {
-                set(level, pos.set(x, floor + y, z), chimneyBlock(rnd));
-                if (rnd.nextFloat() < 0.3f) {
-                    Direction d = Direction.Plane.HORIZONTAL.getRandomDirection(rnd);
-                    int kx = x + d.getStepX(), kz = z + d.getStepZ();
-                    if (isWater(chunk, pos.set(kx, floor + y, kz))) set(level, pos, chimneyBlock(rnd));
-                }
-            }
-            set(level, pos.set(x, floor + height - 1, z), Blocks.MAGMA_BLOCK.defaultBlockState());
-            set(level, pos.set(x, floor + height, z), potentSulfur(PotentSulfurState.DORMANT));
-            // A smaller side spire now and then.
-            if (rnd.nextFloat() < 0.4f) {
+            // The chimney: broad at the foot and tapering to a single-block spire, with a ragged outline. Magma at
+            // the core of its top, potent sulfur venting at the tip.
+            float r0 = 1.2f + 1.3f * rnd.nextFloat();
+            spire(level, chunk, pos, rnd, x, z, floor, height, r0);
+            // A smaller spire leaning on it now and then.
+            if (rnd.nextFloat() < 0.45f) {
                 Direction d = Direction.Plane.HORIZONTAL.getRandomDirection(rnd);
-                int sx = x + d.getStepX(), sz = z + d.getStepZ();
-                int sh = 1 + rnd.nextInt(Math.max(1, height / 2));
-                for (int y = 1; y < sh; y++) {
-                    if (isWater(chunk, pos.set(sx, floor + y, sz))) set(level, pos, chimneyBlock(rnd));
+                int sx = x + 2 * d.getStepX(), sz = z + 2 * d.getStepZ();
+                int sf = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR_WG, sx, sz);
+                int sh = Math.max(3, height / 2 + rnd.nextInt(2));
+                if (Math.abs(sf - floor) <= 2 && sf + sh < floor + water - 1) {
+                    spire(level, chunk, pos, rnd, sx, sz, sf, sh, 0.8f + 0.6f * rnd.nextFloat());
                 }
-                if (isWater(chunk, pos.set(sx, floor + sh, sz))) set(level, pos, potentSulfur(PotentSulfurState.WET));
             }
             // Sulfur spikes scattered over the mound and around it.
             int spikes = 3 + rnd.nextInt(5);
@@ -134,6 +128,41 @@ public final class HydrothermalVents {
                 }
             }
         }
+    }
+
+    /**
+     * One tapering spire from the floor at (x, floor, z): layer y has radius {@code r0 * (1 - t)^1.4} (t = 0 at the
+     * foot, 1 at the top), edge blocks dropped now and then so the outline is ragged, and the foot carried down to
+     * the floor where the ground dips. The top two blocks are magma under potent sulfur. Never replaces anything but
+     * water, and stays inside the chunk.
+     */
+    private static void spire(WorldGenLevel level, ChunkAccess chunk, BlockPos.MutableBlockPos pos, RandomSource rnd,
+                              int x, int z, int floor, int height, float r0) {
+        int body = height - 2;
+        for (int y = 1; y <= body; y++) {
+            float t = body <= 1 ? 1f : (y - 1f) / (body - 1f);
+            float r = r0 * (float) Math.pow(1f - t, 1.4f);
+            int ri = (int) Math.ceil(r);
+            for (int dx = -ri; dx <= ri; dx++) {
+                for (int dz = -ri; dz <= ri; dz++) {
+                    float d2 = dx * dx + dz * dz;
+                    if (d2 > r * r + 0.35f) continue;
+                    boolean core = dx == 0 && dz == 0;
+                    if (!core && Math.sqrt(d2) > r - 0.8f && rnd.nextFloat() < 0.3f) continue;   // ragged edge
+                    int bx = x + dx, bz = z + dz;
+                    if (!inChunk(chunk, bx, bz)) continue;
+                    if (isWater(chunk, pos.set(bx, floor + y, bz))) set(level, pos, chimneyBlock(rnd));
+                    if (y == 1) {
+                        // Carry the foot down to the floor where it dips, so the base sits on the ground.
+                        for (int yy = floor; yy > floor - 3 && isWater(chunk, pos.set(bx, yy, bz)); yy--) {
+                            set(level, pos, moundBlock(rnd));
+                        }
+                    }
+                }
+            }
+        }
+        set(level, pos.set(x, floor + height - 1, z), Blocks.MAGMA_BLOCK.defaultBlockState());
+        set(level, pos.set(x, floor + height, z), potentSulfur(PotentSulfurState.DORMANT));
     }
 
     private static BlockState moundBlock(RandomSource rnd) {

@@ -17,6 +17,8 @@ public final class DeltaShaper {
 
     private static final FastNoiseLite PONDS = noise(7301, 1f / 5f);
     private static final FastNoiseLite ROUGH = noise(7302, 1f / 3f);
+    private static final FastNoiseLite CREEKS = noise(7303, 1f / 9f);
+    private static final FastNoiseLite INLETS = noise(7304, 1f / 4f);
 
     /** Lobe height (metres) near the apex and at the front; the last stretch before the front slopes to the rim. */
     private static final float APEX_M = 1.3f, FRONT_M = 0.4f, RIM_M = -0.6f, RIM_START = 0.92f;
@@ -63,12 +65,15 @@ public final class DeltaShaper {
                         onLobe = true;
                         if (u > RIM_START) {
                             target = FRONT_M + (RIM_M - FRONT_M) * (u - RIM_START) / (1f - RIM_START);
-                            rim = true;
+                            // The sandy rim is broken by inlets where tidal creeks reach the sea.
+                            if (INLETS.GetNoise(x, z) > 0.3f) target = RIM_M - 0.4f;
+                            else rim = true;
                         } else {
                             target = APEX_M + (FRONT_M - APEX_M) * u + 0.3f * ROUGH.GetNoise(x, z);
                             float cd = p.channelDistance(x, z);
                             if (cd < 2.5f) target += 1.0f * (1f - cd / 2.5f);                    // natural levees
                             else if (cd > 3.5f && u > 0.15f && PONDS.GetNoise(x, z) > 0.35f) target = -0.8f;   // ponds
+                            else if (cd > 2.5f && u > 0.4f && Math.abs(CREEKS.GetNoise(x, z)) < 0.035f) target = -0.8f; // tidal creeks
                         }
                     } else if (u < 1.8f) {
                         float rr = (float) Math.hypot(x - p.apexX, z - p.apexZ);
