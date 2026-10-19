@@ -17,6 +17,7 @@ public final class DeltaShaper {
 
     private static final FastNoiseLite PONDS = noise(7301, 1f / 5f);
     private static final FastNoiseLite ROUGH = noise(7302, 1f / 3f);
+    private static final FastNoiseLite BARS = noise(7305, 1f / 3f);
 
     /** Lobe height (metres) near the apex and at the shore, and at the water's edge of the sandy rim. */
     private static final float APEX_M = 1.3f, FRONT_M = 0.4f, RIM_M = -0.6f;
@@ -87,10 +88,8 @@ public final class DeltaShaper {
                     }
                     // Sand bars just off each channel mouth.
                     for (int b = 0; b < p.barX.length; b++) {
-                        float dx = x - p.barX[b], dz = z - p.barZ[b];
-                        float along = dx * p.barDX[b] + dz * p.barDZ[b], across = -dx * p.barDZ[b] + dz * p.barDX[b];
-                        float q = (along / 2.2f) * (along / 2.2f) + (across / 3.5f) * (across / 3.5f);
-                        if (q < 1f && 0.6f * (1f - q) > target) { target = 0.6f * (1f - q); rim = true; }
+                        float bar = barHeight(p, b, x, z);
+                        if (bar > target) { target = bar; rim = true; }
                     }
                     if (target > best) { best = target; lobe = onLobe; sand = rim; }
                 }
@@ -116,6 +115,40 @@ public final class DeltaShaper {
                 }
             }
         }
+    }
+
+    /**
+     * Height (metres, or -inf) of mouth bar {@code b} at (x, z): a thin, curved bar lying across the channel's mouth,
+     * bowed out toward the sea, 5-12 pixels long and about one pixel thick, with a ragged outline and the odd gap where
+     * the water has broken through. Its size and bend come from a hash of its position, so each bar is different.
+     */
+    private static float barHeight(DeltaPlan p, int b, float x, float z) {
+        float bx = p.barX[b], bz = p.barZ[b];
+        float dx = x - bx, dz = z - bz;
+        if (dx * dx + dz * dz > 64f) return Float.NEGATIVE_INFINITY;
+        long h = Float.floatToIntBits(bx) * 0x9E3779B97F4A7C15L ^ Float.floatToIntBits(bz) * 0xC2B2AE3D27D4EB4FL;
+        float halfLen = 2.5f + 3.5f * unit(h, 1);
+        float halfThick = 0.55f + 0.35f * unit(h, 2);
+        float bend = (0.08f + 0.12f * unit(h, 3)) * (unit(h, 4) < 0.15f ? -1f : 1f);
+        float skew = (unit(h, 5) - 0.5f) * 0.6f;
+        float along = dx * p.barDX[b] + dz * p.barDZ[b], across = -dx * p.barDZ[b] + dz * p.barDX[b];
+        float t = across / halfLen;
+        if (Math.abs(t) >= 1f) return Float.NEGATIVE_INFINITY;
+        // Centre line bowed seaward (and a little skewed), thinning toward both tips.
+        float centre = bend * across * across * -1f + bend * halfLen * halfLen * 0.5f + skew * across;
+        float thick = halfThick * (float) Math.sqrt(1f - t * t) * (1f + 0.35f * BARS.GetNoise(x * 2f, z * 2f));
+        float off = Math.abs(along - centre) + 0.22f * BARS.GetNoise(x * 3f + 40f, z * 3f);
+        if (off >= thick || thick <= 0f) return Float.NEGATIVE_INFINITY;
+        if (BARS.GetNoise(x * 0.9f - 70f, z * 0.9f) < -0.45f) return Float.NEGATIVE_INFINITY;   // breaks in the bar
+        return 0.6f * (1f - off / thick);
+    }
+
+    private static float unit(long h, long salt) {
+        long z = h + salt * 0x9E3779B97F4A7C15L;
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        z ^= z >>> 31;
+        return (z >>> 40) / (float) (1L << 24);
     }
 
     private static float smoothstep(float e0, float e1, float v) {
