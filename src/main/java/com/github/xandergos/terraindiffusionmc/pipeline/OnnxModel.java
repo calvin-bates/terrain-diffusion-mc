@@ -112,11 +112,12 @@ public final class OnnxModel implements AutoCloseable {
             Files.createDirectories(optimizedModelPath.getParent());
             Path temporaryOptimizedModelPath = optimizedModelPath.resolveSibling(optimizedModelPath.getFileName() + ".tmp");
             Files.deleteIfExists(temporaryOptimizedModelPath);
-            OrtSession.SessionOptions optimizationOptions = new OrtSession.SessionOptions();
-            optimizationOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT);
-            optimizationOptions.setOptimizedModelFilePath(temporaryOptimizedModelPath.toAbsolutePath().toString());
-            try (OrtSession ignored = env.createSession(sourceModelBytes, optimizationOptions)) {
-                // Session creation materializes the optimized model on disk.
+            try (OrtSession.SessionOptions optimizationOptions = new OrtSession.SessionOptions()) {
+                optimizationOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT);
+                optimizationOptions.setOptimizedModelFilePath(temporaryOptimizedModelPath.toAbsolutePath().toString());
+                try (OrtSession ignored = env.createSession(sourceModelBytes, optimizationOptions)) {
+                    // Session creation materializes the optimized model on disk.
+                }
             }
             byte[] optimizedModelBytesFromDisk = Files.readAllBytes(temporaryOptimizedModelPath);
             Files.move(
@@ -155,9 +156,10 @@ public final class OnnxModel implements AutoCloseable {
      */
     private void initializeModelSession(byte[] modelBytes, long startMillis) throws OrtException {
         if ("cpu".equals(TerrainDiffusionConfig.inferenceDevice())) {
-            OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
-            sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-            this.cpuSession = env.createSession(modelBytes, sessionOptions);
+            try (OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions()) {
+                sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                this.cpuSession = env.createSession(modelBytes, sessionOptions);
+            }
             this.gpuSession = null;
             setResolvedProviderOnce("CPU");
             LOG.info("ONNX model '{}' loaded on CPU ({} KB) in {} ms",
@@ -165,15 +167,16 @@ public final class OnnxModel implements AutoCloseable {
             return;
         }
         if (!TerrainDiffusionConfig.offloadModels()) {
-            OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
-            sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-            addGpuProvider(sessionOptions);
-            if ("CoreML".equals(resolvedInferenceProvider)) {
-                throw new OrtException(
-                        "inference.offload_models=false is not supported with CoreML. " +
-                        "Set inference.offload_models=true in terra.properties.");
+            try (OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions()) {
+                sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                addGpuProvider(sessionOptions);
+                if ("CoreML".equals(resolvedInferenceProvider)) {
+                    throw new OrtException(
+                            "inference.offload_models=false is not supported with CoreML. " +
+                            "Set inference.offload_models=true in terra.properties.");
+                }
+                this.gpuSession = env.createSession(modelBytes, sessionOptions);
             }
-            this.gpuSession = env.createSession(modelBytes, sessionOptions);
             this.cpuSession = null;
             LOG.info("ONNX model '{}' loaded on GPU ({} KB) in {} ms",
                     name, modelBytes.length / 1024, System.currentTimeMillis() - startMillis);
@@ -319,11 +322,18 @@ public final class OnnxModel implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates this model's GPU session. The session options are closed right after: with DirectML they hold the
+     * provider, which keeps a GPU device alive, and with offloading a session is created on every switch between
+     * models. Never closing them leaked one GPU device per switch until Windows refused to create more
+     * ("8007000E Not enough memory resources", Calvin, Oct 18 and 19, after long play).
+     */
     private void createGpuSession() throws OrtException {
-        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-        opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-        addGpuProvider(opts);
-        activeGpuSession = env.createSession(optimizedModelBytes, opts);
+        try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions()) {
+            opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+            addGpuProvider(opts);
+            activeGpuSession = env.createSession(optimizedModelBytes, opts);
+        }
         gpuSlotHolder = this;
         gpuEverWorked = true;
         LOG.debug("GPU session ready for '{}'", name);
@@ -339,9 +349,10 @@ public final class OnnxModel implements AutoCloseable {
     private synchronized OrtSession cpuFallbackSession() {
         if (cpuFallback == null) {
             try {
-                OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-                opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-                cpuFallback = env.createSession(optimizedModelBytes, opts);
+                try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions()) {
+                    opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+                    cpuFallback = env.createSession(optimizedModelBytes, opts);
+                }
                 LOG.warn("[Terra] '{}' now runs on the CPU.", name);
             } catch (OrtException e) {
                 throw new RuntimeException("Failed to create CPU fallback session for: " + name, e);
