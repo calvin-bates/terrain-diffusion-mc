@@ -110,6 +110,11 @@ public final class TerrainDiffusionConfig {
     /** Tectonic sea-floor features and oceanic islands (ridges, trenches, island arcs, hotspot chains, atolls). */
     public static boolean oceanFeatures() { return readBoolean("oceans.features", true); }
     /**
+     * Whether the diffusion model draws the big oceanic islands (hotspot, island-arc and forearc islands) itself,
+     * guided to where they belong, instead of procedural cones being stamped onto its terrain afterwards.
+     */
+    public static boolean modelIslands() { return readBoolean("oceans.model_islands", true); }
+    /**
      * How strongly the continent conditioning is pushed toward archipelagos: shallow seas scattered with islands.
      * 0 turns it off (the model's own coastlines only); 1 is the default; up to 2 for island-heavy worlds.
      */

@@ -90,7 +90,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.decoderModel = models.getDecoderModel();
         this.ownModels = false;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
-        this.oceanFeatures = new OceanFeatures(this.seed);
+        this.oceanFeatures = newOceanFeatures(this.seed);
         this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
@@ -107,7 +107,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath("decoder_model.onnx"), "decoder");
         this.ownModels = true;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
-        this.oceanFeatures = new OceanFeatures(this.seed);
+        this.oceanFeatures = newOceanFeatures(this.seed);
         this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
@@ -121,9 +121,15 @@ public final class WorldPipeline implements AutoCloseable {
         if (s == this.seed) return;
         this.seed = s;
         this.syntheticMapFactory = new SyntheticMapFactory(s);
-        this.oceanFeatures = new OceanFeatures(s);
+        this.oceanFeatures = newOceanFeatures(s);
         this.archipelagoShaper = new ArchipelagoShaper(s);
         tileStore.clearAllCaches();
+    }
+
+    private static OceanFeatures newOceanFeatures(long seed) {
+        OceanFeatures of = new OceanFeatures(seed);
+        of.modelIslands = TerrainDiffusionConfig.oceanFeatures() && TerrainDiffusionConfig.modelIslands();
+        return of;
     }
 
     // =========================================================================
@@ -236,40 +242,46 @@ public final class WorldPipeline implements AutoCloseable {
 
         InfiniteTensor initLatent = tileStore.getOrCreateBatched(
                 "init_latent_map", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, null, args.get(0), tInit, 5819, ww),
+                (wis, args) -> latentBatch(wis, null, args.get(0), tInit, 5819, ww, STAGE_INIT),
                 outWin, new InfiniteTensor[]{coarse}, new TensorWindow[]{coarseWin},
+                cacheLimitBytes, 4);
+
+        // Islands: tiles with a model-drawn island get an extra, noisier pass (see islandGuide); others pass through.
+        float islandT = (float) Math.atan(ISLAND_SIGMA / SIGMA_DATA);
+        InfiniteTensor islandLatent = tileStore.getOrCreateBatched(
+                "island_latent_map", new Integer[]{6, null, null},
+                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), islandT, 5821, ww, STAGE_ISLAND),
+                outWin, new InfiniteTensor[]{initLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
                 cacheLimitBytes, 4);
 
         float interT = (float) Math.atan(0.35f / SIGMA_DATA);
         return tileStore.getOrCreateBatched(
                 "step_latent_map_0", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), interT, 5820, ww),
-                outWin, new InfiniteTensor[]{initLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
+                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), interT, 5820, ww, STAGE_STEP),
+                outWin, new InfiniteTensor[]{islandLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
                 cacheLimitBytes, 4);
     }
 
+    private static final int STAGE_INIT = 0, STAGE_ISLAND = 1, STAGE_STEP = 2;
+
     private List<FloatTensor> latentBatch(List<int[]> wis, List<FloatTensor> prevSamples,
                                            List<FloatTensor> coarseSlices, float t,
-                                           int seedOffset, float[] ww) {
+                                           int seedOffset, float[] ww, int stage) {
         int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE;
         int batch = wis.size();
         float cosT = (float) Math.cos(t), sinT = (float) Math.sin(t);
+        OceanFeatures of = oceanFeatures;
 
-        // Intermediate storage: xT per batch element (needed for output step)
-        float[][] xTArr = new float[batch][5 * S * S];
-
-        float[] modelInBatch   = new float[batch * 5 * S * S];
-        float[] condInputBatch = new float[batch * 58];
-
+        // Each tile's input sample (unnormalized prev output, or zeros) and, for tiles the model runs on, its x_t.
+        float[][] samples = new float[batch][];
+        float[][] xTArr = new float[batch][];
+        float[][] conds = new float[batch][];
+        IslandGuide[] guides = new IslandGuide[batch];
+        int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
             int i1 = ctx[1] * ST, j1 = ctx[2] * ST;
 
-            // Build conditioning from coarse slice (7, 4, 4)
-            float[] cond58 = buildLatentConditioning(coarseSlices.get(b));
-            System.arraycopy(cond58, 0, condInputBatch, b * 58, 58);
-
-            // Build sample (unnormalized prev output or zeros)
             float[] sample = new float[5 * S * S];
             if (prevSamples != null) {
                 FloatTensor ps = prevSamples.get(b);
@@ -279,6 +291,20 @@ public final class WorldPipeline implements AutoCloseable {
                         sample[ch * S * S + px] = (w > 1e-6f) ? ps.data[ch * S * S + px] / w * SIGMA_DATA : 0f;
                     }
             }
+            samples[b] = sample;
+
+            // Islands for the model to draw (see islandGuide).
+            IslandGuide guide = stage != STAGE_INIT && of.modelIslands ? islandGuide(of, ctx[1], ctx[2]) : null;
+            guides[b] = guide;
+            if (stage == STAGE_ISLAND) {
+                if (guide == null || !guide.inTile()) continue;     // passes through unchanged
+                guide.prepareIslandPass(sample, S);
+            } else if (stage == STAGE_STEP && guide != null) {
+                guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
+            }
+
+            // Build conditioning from coarse slice (7, 4, 4)
+            conds[b] = buildLatentConditioning(coarseSlices.get(b), guide);
 
             // z = noise * sigma_data; x_t = cos(t)*sample + sin(t)*z
             float[] noise = flatten3D(GaussianNoisePatch.generate(seed + seedOffset, i1, j1, S, S, 5, S, S));
@@ -288,30 +314,48 @@ public final class WorldPipeline implements AutoCloseable {
                 xT[k] = cosT * sample[k] + sinT * z;
             }
             xTArr[b] = xT;
-
-            // model_in = xT / sigma_data
-            for (int k = 0; k < 5 * S * S; k++)
-                modelInBatch[b * 5 * S * S + k] = xT[k] / SIGMA_DATA;
+            run++;
         }
 
-        String chunkList = wis.stream().map(w -> "(" + w[1] + "," + w[2] + ")").collect(Collectors.joining(", "));
-        LOG.debug("Base model called for {} chunks: {}", batch, chunkList);
+        float[] predBatch = null;
+        int[] slot = new int[batch];
+        if (run > 0) {
+            float[] modelInBatch   = new float[run * 5 * S * S];
+            float[] condInputBatch = new float[run * 58];
+            int n = 0;
+            for (int b = 0; b < batch; b++) {
+                if (xTArr[b] == null) continue;
+                slot[b] = n;
+                for (int k = 0; k < 5 * S * S; k++) modelInBatch[n * 5 * S * S + k] = xTArr[b][k] / SIGMA_DATA;
+                System.arraycopy(conds[b], 0, condInputBatch, n * 58, 58);
+                n++;
+            }
+            String chunkList = wis.stream().map(w -> "(" + w[1] + "," + w[2] + ")").collect(Collectors.joining(", "));
+            LOG.debug("Base model called for {} of {} chunks: {}", run, batch, chunkList);
 
-        float[] noiseLabels = new float[batch];
-        for (int b = 0; b < batch; b++) noiseLabels[b] = t;
-
-        float[] predBatch = baseModel.runModel(
-                modelInBatch, new long[]{batch, 5, S, S},
-                noiseLabels, new float[][]{condInputBatch}, new long[][]{{batch, 58}});
+            float[] noiseLabels = new float[run];
+            java.util.Arrays.fill(noiseLabels, t);
+            predBatch = baseModel.runModel(
+                    modelInBatch, new long[]{run, 5, S, S},
+                    noiseLabels, new float[][]{condInputBatch}, new long[][]{{run, 58}});
+        }
 
         // Build outputs: pred = -raw_model_out; sample = cos(t)*xT - sin(t)*sigma_data*pred
         List<FloatTensor> results = new ArrayList<>(batch);
         for (int b = 0; b < batch; b++) {
-            float[] xT = xTArr[b];
             float[] newSample = new float[5 * S * S];
-            for (int k = 0; k < 5 * S * S; k++) {
-                float pred = -predBatch[b * 5 * S * S + k];  // base model output is negated
-                newSample[k] = (cosT * xT[k] - sinT * SIGMA_DATA * pred) / SIGMA_DATA;
+            float[] xT = xTArr[b];
+            if (xT == null) {
+                for (int k = 0; k < 5 * S * S; k++) newSample[k] = samples[b][k] / SIGMA_DATA;   // passed through
+            } else {
+                int base = slot[b] * 5 * S * S;
+                for (int k = 0; k < 5 * S * S; k++) {
+                    float pred = -predBatch[base + k];  // base model output is negated
+                    newSample[k] = (cosT * xT[k] - sinT * SIGMA_DATA * pred) / SIGMA_DATA;
+                }
+                // The refinement is the last word on the latent: make sure every island is there and its bays and
+                // calderas reach the sea (the model's own mountains are left alone).
+                if (stage == STAGE_STEP && guides[b] != null) guides[b].pullLowfreq(newSample, S, 1f, ISLAND_FINAL_UP, ISLAND_FINAL_DOWN, true);
             }
 
             FloatTensor out = new FloatTensor(new int[]{6, S, S});
@@ -324,8 +368,171 @@ public final class WorldPipeline implements AutoCloseable {
         return results;
     }
 
+    // ---- Model-drawn islands ----
+
+    /** How far apart (sqrt-metres) the model's low-frequency floor and an island guide blend smoothly. */
+    private static final float ISLAND_BLEND = 1.5f;
+    /** Noise level of the island pass: high enough that the model redraws the terrain under the island. */
+    private static final float ISLAND_SIGMA = 1.0f;
+    /** How far (sqrt-metres) above the floor an island must stand to clear the old floor detail fully. */
+    private static final float ISLAND_CLEAR = 4f;
+    /** Share of the way the refinement step's input is pulled back to the islands. */
+    private static final float ISLAND_STEP_PULL = 0.65f;
+    /**
+     * After the refinement: share of the way the latent is pulled up to an island where it came out lower (so no
+     * island is lost), and down where an island's bay or caldera floor is under the sea but the model filled it in.
+     */
+    private static final float ISLAND_FINAL_UP = 0.6f, ISLAND_FINAL_DOWN = 0.9f;
+    /** Guide samples per side of each coarse pixel, for the conditioning. */
+    private static final int ISLAND_COARSE_SAMPLES = 8;
+
+    /**
+     * The islands {@link OceanFeatures#islandGuide} wants drawn in one latent tile: their surface in signed-sqrt
+     * metres at each latent pixel of the tile ({@code tile}, NaN where there is none) and at a grid of points in each
+     * of the 16 coarse pixels its conditioning covers ({@code coarse}).
+     */
+    private static final class IslandGuide {
+        final float[] tile, tileW;
+        final float[][] coarse, coarseW;
+
+        IslandGuide(float[] tile, float[] tileW, float[][] coarse, float[][] coarseW) {
+            this.tile = tile; this.tileW = tileW; this.coarse = coarse; this.coarseW = coarseW;
+        }
+
+        /** Whether any island reaches into the tile itself (not just its conditioning's surroundings). */
+        boolean inTile() {
+            for (float g : tile) if (!Float.isNaN(g)) return true;
+            return false;
+        }
+
+        /**
+         * Low-frequency height {@code l} (signed sqrt) moved {@code up} of the way up to the island here and
+         * {@code down} of the way down to it on the island's upper part (above ~600 m deep: calderas, bays and
+         * landslide scars the model filled in), or with {@code seaOnly} only where the island's surface is under the
+         * sea. Fades out toward the island's footprint edge, so the island meets the model's floor without a step.
+         */
+        float pulled(float l, int px, float up, float down, boolean seaOnly) {
+            float g = tile[px];
+            if (Float.isNaN(g)) return l;
+            float raise = smoothMax(l, g, ISLAND_BLEND) - l;
+            float lower = Math.min(0f, g - l) * smoothstep(-30f, -20f, g);
+            if (seaOnly) lower *= 1f - smoothstep(-1f, 1f, g);
+            return l + tileW[px] * (up * raise + down * lower);
+        }
+
+        /**
+         * Input for the island pass: the low-frequency channel (4) is moved to the islands, and where an island stands
+         * clear of the floor the detail channels (0-3), which still describe open ocean floor there, fade to zero, so
+         * the model makes up its own island terrain from the noise.
+         */
+        void prepareIslandPass(float[] sample, int S) {
+            int off = 4 * S * S;
+            for (int px = 0; px < S * S; px++) {
+                float g = tile[px];
+                if (Float.isNaN(g)) continue;
+                float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
+                float w = smoothstep(0f, ISLAND_CLEAR, g - l) * tileW[px];
+                for (int ch = 0; ch < 4; ch++) sample[ch * S * S + px] *= 1f - w;
+                sample[off + px] = (pulled(l, px, 1f, 1f, false) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
+            }
+        }
+
+        /** {@link #pulled} on the low-frequency channel of a latent sample stored scaled by {@code scale}. */
+        void pullLowfreq(float[] sample, int S, float scale, float up, float down, boolean seaOnly) {
+            int off = 4 * S * S;
+            for (int px = 0; px < S * S; px++) {
+                if (Float.isNaN(tile[px])) continue;
+                float l = sample[off + px] / scale * LOWFREQ_STD + LOWFREQ_MEAN;
+                sample[off + px] = (pulled(l, px, up, down, seaOnly) - LOWFREQ_MEAN) / LOWFREQ_STD * scale;
+            }
+        }
+
+        /** Lifts the conditioning's mean and 5th-percentile elevation (signed sqrt, unweighted) to the islands. */
+        void liftConditioning(float[] condFlat, int N) {
+            for (int px = 0; px < N; px++) {
+                float[] g = coarse[px];
+                float mean = condFlat[px], p5 = condFlat[N + px];
+                double lift = 0;
+                float[] lows = new float[g.length];
+                for (int k = 0; k < g.length; k++) {
+                    boolean none = Float.isNaN(g[k]);
+                    lift += none ? 0 : Math.max(0f, g[k] - mean) * coarseW[px][k];
+                    lows[k] = none ? p5 : Math.max(p5, g[k]);
+                }
+                if (lift <= 0) continue;
+                java.util.Arrays.sort(lows);
+                condFlat[px] = (float) (mean + lift / g.length);
+                condFlat[N + px] = Math.min(lows[(int) (0.05f * lows.length)], condFlat[px]);
+            }
+        }
+    }
+
+    /**
+     * Where the islands of {@link OceanFeatures} go in latent tile (ti, tj), or null if there are none near it.
+     * Instead of stamping procedural cones onto the finished terrain, the refinement step of the latent model is
+     * told about each island (its conditioning says the coarse pixel holds land, and its low-frequency input already
+     * rises to the island), so the model draws the island itself in its own style.
+     */
+    private IslandGuide islandGuide(OceanFeatures of, int ti, int tj) {
+        int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE, lc = LATENT_COMPRESSION, CS = 32 * lc, G = ISLAND_COARSE_SAMPLES;
+        // The tile's conditioning covers coarse pixels (ti - 1 .. ti + 2, tj - 1 .. tj + 2).
+        int ni0 = (ti - 1) * CS, nj0 = (tj - 1) * CS;
+        int pad = (int) Math.ceil(Math.max(2 * OceanFeatures.MAX_VOLCANO_REACH, OceanFeatures.MAX_FEATURE_REACH));
+        OceanFeatures.CoarseField field = coarseField(ni0 - pad, nj0 - pad, ni0 + 4 * CS + pad, nj0 + 4 * CS + pad);
+        OceanFeatures.Ctx octx = new OceanFeatures.Ctx();
+        float[][] coarseG = new float[16][G * G], coarseW = new float[16][G * G];
+        boolean any = false;
+        for (int a = 0; a < 4; a++)
+            for (int b = 0; b < 4; b++)
+                for (int u = 0; u < G; u++)
+                    for (int v = 0; v < G; v++) {
+                        int i = ni0 + a * CS + (2 * u + 1) * CS / (2 * G), j = nj0 + b * CS + (2 * v + 1) * CS / (2 * G);
+                        float g = signedSqrtOrNaN(of.islandGuide(i, j, field, octx));
+                        coarseG[a * 4 + b][u * G + v] = g;
+                        coarseW[a * 4 + b][u * G + v] = edgeWeight(octx);
+                        any |= !Float.isNaN(g);
+                    }
+        if (!any) return null;
+        float[] tile = new float[S * S], tileW = new float[S * S];
+        int li = ti * ST, lj = tj * ST;
+        for (int r = 0; r < S; r++)
+            for (int c = 0; c < S; c++) {
+                tile[r * S + c] = signedSqrtOrNaN(of.islandGuide((li + r) * lc + lc / 2, (lj + c) * lc + lc / 2, field, octx));
+                tileW[r * S + c] = edgeWeight(octx);
+            }
+        return new IslandGuide(tile, tileW, coarseG, coarseW);
+    }
+
+    /** How much an island guide counts at the last sampled point: fades in over its first 200 m above its floor. */
+    private static float edgeWeight(OceanFeatures.Ctx octx) {
+        return smoothstep(0f, 200f, (float) octx.guideC);
+    }
+
+    private static float signedSqrtOrNaN(double e) {
+        if (e == Double.NEGATIVE_INFINITY) return Float.NaN;
+        return (float) (Math.signum(e) * Math.sqrt(Math.abs(e)));
+    }
+
+    private static float smoothstep(float e0, float e1, float x) {
+        float t = Math.max(0f, Math.min(1f, (x - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+    }
+
+    /** max(a, b), rounded over {@code k} where they are close. */
+    private static float smoothMax(float a, float b, float k) {
+        float d = Math.abs(a - b);
+        if (d >= k) return Math.max(a, b);
+        float t = (k - d) / k;
+        return Math.max(a, b) + t * t * k * 0.25f;
+    }
+
     /** Build 58-dim conditioning vector from a (7,4,4) coarse tile slice. */
     private float[] buildLatentConditioning(FloatTensor coarseSlice) {
+        return buildLatentConditioning(coarseSlice, null);
+    }
+
+    /** {@link #buildLatentConditioning(FloatTensor)}, with the coarse elevation lifted to the islands of {@code guide}. */
+    private float[] buildLatentConditioning(FloatTensor coarseSlice, IslandGuide guide) {
         int N = 4 * 4;
         // Unnormalize: cond[:-1] / cond[-1] for each pixel
         float[] condFlat = new float[6 * N];
@@ -334,6 +541,7 @@ public final class WorldPipeline implements AutoCloseable {
                 float w = coarseSlice.data[6 * N + px];
                 condFlat[ch * N + px] = (w > 1e-6f) ? coarseSlice.data[ch * N + px] / w : 0f;
             }
+        if (guide != null) guide.liftConditioning(condFlat, N);
 
         // Append mask channel (all ones = (1 - mean) / std normalized)
         float[] condImg7 = new float[7 * N];
@@ -500,7 +708,7 @@ public final class WorldPipeline implements AutoCloseable {
     private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2, byte[] tags) {
         boolean anyOcean = false;
         for (float v : elev) if (v < 0f) { anyOcean = true; break; }
-        if (!anyOcean) return;
+        if (!anyOcean && !oceanFeatures.modelIslands) return;   // island craters are cut into all-land tiles too
         // Volcano centres can lie a footprint away from the request (twice that through the plate warp), and a
         // hotspot volcano's moat and debris field reach MAX_FEATURE_REACH from it.
         int padPx = (int) Math.ceil(Math.max(2 * OceanFeatures.MAX_VOLCANO_REACH, OceanFeatures.MAX_FEATURE_REACH));
