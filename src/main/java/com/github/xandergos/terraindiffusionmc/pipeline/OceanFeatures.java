@@ -316,6 +316,8 @@ public final class OceanFeatures {
         boolean reefOp;
         /** Model-drawn islands' combined surface (absolute metres) here, or -infinity; see {@link #islandGuide}. */
         double guideTop;
+        /** The tallest model-drawn island's height above its own floor here (metres), for fading its edge. */
+        double guideC;
         /** Only the island guide is wanted: skip everything else in {@link #shape}. */
         boolean guideOnly;
         /** The hotspot chains within two cells of the last hotspot cell asked for (rows of pixels share a cell). */
@@ -335,6 +337,7 @@ public final class OceanFeatures {
         ctx.plain = 0;
         ctx.continent = 0;
         ctx.guideTop = Double.NEGATIVE_INFINITY;
+        ctx.guideC = 0;
         if (!ctx.guideOnly) {
             if (raw < -SHELF_TOP_M && raw > -SHELF_BASE_M) raw = shelf(raw, x, z, coarse, ctx);
             if (raw < -CANYON_TOP_M) raw = margin(raw, x, z, coarse, ctx);
@@ -455,6 +458,9 @@ public final class OceanFeatures {
         if (surf > Double.NEGATIVE_INFINITY) {
             // Volcanoes rise out of the model's terrain (a smooth max), so they never stack onto shallow ground.
             double cone = surf + Math.min(0, relief) * smoothstep(-200, -1500, surf);
+            // Fade in over the volcanoes' first 200 m, so where the model's floor lies below the volcano's own floor
+            // the edge of its footprint is not a step.
+            cone = floorOnly + (cone - floorOnly) * smoothstep(0, 200, Math.max(ctx.top1, ctx.ridge));
             total = smoothMax(cone, floorOnly, Math.min(150, 0.3 * Math.max(ctx.top1, ctx.ridge)));
             // Canyons, fan channels and the other margin floors are buried where a volcano stands on them.
             if (cone > floorOnly + 30 && ctx.tag >= TAG_CANYON && ctx.tag <= TAG_SALT) ctx.tag = TAG_NONE;
@@ -2273,6 +2279,7 @@ public final class OceanFeatures {
         if (!modelIslands && !ctx.guideOnly) { volcano(ctx, c, floor); return; }
         ctx.lastC = c;
         if (c <= 0) return;
+        ctx.guideC = Math.max(ctx.guideC, c);
         double a = floor + c;
         if (ctx.guideTop == Double.NEGATIVE_INFINITY) { ctx.guideTop = a; return; }
         double k = 300, diff = Math.abs(a - ctx.guideTop), m = Math.max(a, ctx.guideTop);
