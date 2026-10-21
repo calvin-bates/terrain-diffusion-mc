@@ -147,7 +147,9 @@ public final class TerrainDiffusionConfig {
      * Model-drawn archipelagos: how far (latent units; the channel's spread is ~1.2) latent channel 0, which the decoder
      * reads as local height (Oct 21 probe: residual ~ -0.5..-1.4 sqrt-m per unit, correlation -0.6..-0.8), is pushed
      * with the fine island field near sea level, before the refinement ({@code _in}) and after it ({@code _out}), so
-     * the islands below ~3 km follow the drowned hills (the low-frequency channel only carries ~5 km and up). Being tuned.
+     * the islands below ~3 km follow the drowned hills (the low-frequency channel only carries ~5 km and up). Off: at 3/2
+     * it about doubled the islands but they came out smooth and textureless, and on the island pass it washed out;
+     * Calvin chose the model's own islands without a nudge (Oct 21).
      */
     public static float archipelagoSteerIn() { return readFloat("oceans.archipelago_steer_in", 0f); }
     public static float archipelagoSteerOut() { return readFloat("oceans.archipelago_steer_out", 0f); }

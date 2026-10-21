@@ -57,7 +57,7 @@ public final class TerraPreview {
         // Archipelagos: the old pass, and model-drawn in each mode being tuned.
         // Variants: old, or mode@finalPull@detail@steerIn@steerOut@steerIsland.
         String[] variants = System.getProperty("terra.archVariants",
-                "keep@1.0@0.4@3@2,keep@1.0@0.4@0@0@3,keep@1.0@0.4@1.5@0@3,keep@1.0@0.4@0@0@5").split(",");
+                "old,keep@1.0@0.4").split(",");
         for (String variant : variants) {
             TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", variant.equals("old") ? "false" : "true");
             if (!variant.equals("old")) {
@@ -82,7 +82,7 @@ public final class TerraPreview {
                     dumpPatch(out.resolve("archipelago" + k + "_" + variant.replace("@", "_") + "_stages.bin"), win,
                             p.debugModel, p.debugShaped, e, tags);
                     String name = "archipelago" + k + "_" + variant.replace("@", "_");
-                    if (k < 2 && variant.equals("old")) dumpLatents(out.resolve(name + "_latent.bin"), p, i1, j1, win);
+                    if (Boolean.getBoolean("terra.dumpLatents") && k < 2) dumpLatents(out.resolve(name + "_latent.bin"), p, i1, j1, win);
                     write(render(e, win, win), out.resolve(name + ".png"));
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
                             Math.round(m.i() * 6), stats(e, win, win), (System.nanoTime() - t0) / 1e9));
