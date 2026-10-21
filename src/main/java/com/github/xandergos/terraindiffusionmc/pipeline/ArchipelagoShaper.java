@@ -63,6 +63,8 @@ public final class ArchipelagoShaper {
      * which left a few big rounded islands.)
      */
     private static final float M_FLATTEN = 0.6f, M_RELIEF = 70f, M_DROWN = 25f, M_DROWN_VARY = 70f, M_FINE_KM = 4.5f;
+    /** Ground above this (metres) is not squeezed further: island hills keep their height ({@link #modelBase}). */
+    private static final float M_KEEP_ABOVE = 40f;
     private static final int SETTLE_R = 4;
 
     private final FastNoiseLite islands, islandsFine, warpX, warpZ, direction, detail, detailWarpX, detailWarpZ;
@@ -216,7 +218,10 @@ public final class ArchipelagoShaper {
         else w = 1f;
         if (w <= 0f) return e;
         float k = zone * w;
-        return e * (1f - M_FLATTEN * k) + k * (M_RELIEF * field(islandsFine, i, j) - M_DROWN - M_DROWN_VARY * field(i, j));
+        // Squeeze toward sea level only up to M_KEEP_ABOVE metres: hills above keep their height (islands squeezed flat
+        // came out as smooth plates; the decoder's texture grows with height).
+        float squeeze = M_FLATTEN * k * Math.min(e, M_KEEP_ABOVE);
+        return e - squeeze + k * (M_RELIEF * field(islandsFine, i, j) - M_DROWN - M_DROWN_VARY * field(i, j));
     }
 
     /** The fine island field (about -1..1; positive raises) that {@link #modelBase} adds hills from. */

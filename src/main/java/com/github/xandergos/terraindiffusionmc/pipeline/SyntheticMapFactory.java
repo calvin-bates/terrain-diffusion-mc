@@ -139,7 +139,10 @@ public final class SyntheticMapFactory {
         // Island groups near sea level with shallow sounds, deeper basins between groups (above ~0.15 is land). The
         // islands themselves come from the finer drowned hills at native scale (ArchipelagoShaper.modelBase); a target
         // of -350 + 1100 n (Oct 21) made the model draw a few big islands in a sea too deep for any small ones.
-        float target = Math.max(-450f, -100f + 650f * archipelagoIslands.GetNoise(x, y));
+        // Island groups rise into hills (Aegean islands reach several hundred metres): flat low islands came out as
+        // smooth, textureless plates (Calvin, Oct 21).
+        float n = archipelagoIslands.GetNoise(x, y);
+        float target = Math.max(-450f, -100f + 650f * n + 1400f * Math.max(0f, n - 0.15f));
         return elev + (target - elev) * k;
     }
 

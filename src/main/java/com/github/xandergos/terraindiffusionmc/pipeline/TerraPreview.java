@@ -187,15 +187,18 @@ public final class TerraPreview {
         int[] lab = new int[W * W];
         int[] stack = new int[W * W];
         int[] bins = new int[4];
+        List<Float> tops = new ArrayList<>();
         int next = 0;
         for (int s0 = 0; s0 < W * W; s0++) {
             if (e[s0] < 0 || lab[s0] != 0) continue;
             next++;
             int sp = 0, area = 0;
+            float top = 0f;
             boolean edge = false;
             stack[sp++] = s0; lab[s0] = next;
             while (sp > 0) {
                 int k = stack[--sp]; area++;
+                top = Math.max(top, e[k]);
                 int r = k / W, c = k % W;
                 if (r == 0 || c == 0 || r == W - 1 || c == W - 1) edge = true;
                 int[] nb = {k - W, k + W, c > 0 ? k - 1 : -1, c < W - 1 ? k + 1 : -1};
@@ -204,9 +207,12 @@ public final class TerraPreview {
             if (edge) continue;
             double km2 = area * 0.0009;
             bins[km2 < 0.1 ? 0 : km2 < 1 ? 1 : km2 < 10 ? 2 : 3]++;
+            if (km2 >= 1) tops.add(top);
         }
-        return String.format("islands inside the window: %d (<0.1 km2 %d, 0.1-1 %d, 1-10 %d, >10 %d)",
-                bins[0] + bins[1] + bins[2] + bins[3], bins[0], bins[1], bins[2], bins[3]);
+        tops.sort(null);
+        String topStr = tops.isEmpty() ? "none" : String.format("%.0f m", tops.get(tops.size() / 2));
+        return String.format("islands inside the window: %d (<0.1 km2 %d, 0.1-1 %d, 1-10 %d, >10 %d); median top of those over 1 km2: %s",
+                bins[0] + bins[1] + bins[2] + bins[3], bins[0], bins[1], bins[2], bins[3], topStr);
     }
 
     private static boolean lone(float[] e, int k, int W) {
