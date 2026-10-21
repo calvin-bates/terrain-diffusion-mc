@@ -128,6 +128,7 @@ public final class LocalTerrainProvider {
             CACHE.clear();
             PENDING.clear();
             clearRivers();
+            COAST_PLANS.clear();
         }
     }
 
@@ -159,6 +160,7 @@ public final class LocalTerrainProvider {
         CACHE.clear();
         PENDING.clear();
         clearRivers();
+        COAST_PLANS.clear();
     }
 
     // =========================================================================
@@ -201,6 +203,7 @@ public final class LocalTerrainProvider {
             CACHE.clear();
             PENDING.clear();
             clearRivers();
+            COAST_PLANS.clear();
             return null;
         });
     }
@@ -569,6 +572,103 @@ public final class LocalTerrainProvider {
         }
     }
 
+    // ---- Spits, tombolos and cuspate forelands (CoastPlan) ----
+
+    /** Coastal region plans, most recently used last. Plans are small (their distance grids are built on demand). */
+    private static final Map<Long, CoastPlan> COAST_PLANS = java.util.Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override protected boolean removeEldestEntry(Map.Entry<Long, CoastPlan> e) { return size() > 64; }
+            });
+
+    /** The plan of coastal region (ri, rj), computing it if needed (empty outside sand-landform zones). Inference thread. */
+    private CoastPlan coastPlan(int ri, int rj) {
+        long seed = instanceSeed;
+        if (!CoastPlan.zoneActive(seed, ri, rj)) return CoastPlan.EMPTY;
+        long key = ((long) ri << 32) ^ (rj & 0xFFFFFFFFL);
+        CoastPlan p = COAST_PLANS.get(key);
+        if (p != null) return p;
+        p = CoastPlan.build(seed, ri, rj, (a, b, c, d) -> pipeline.get(a, b, c, d, true), pipeline::archipelagoAt);
+        COAST_PLANS.put(key, p);
+        return p;
+    }
+
+    /**
+     * The coastal region plans (sand landforms) that may reach the native window [pi0, pi1) x [pj0, pj1), whose ground
+     * (at any resolution, after the rias) is {@code ground}; empty if ocean features are off or no ground in the window
+     * is low enough for a plan to change ({@link CoastPlan#touches}). Runs on the inference thread.
+     */
+    private List<CoastPlan> coastPlansNear(float[][] ground, int pi0, int pj0, int pi1, int pj1) {
+        if (!TerrainDiffusionConfig.oceanFeatures() || !CoastPlan.touches(ground)) return List.of();
+        try {
+            List<CoastPlan> out = new ArrayList<>();
+            int R = CoastPlan.REACH_PX, S = CoastPlan.SIZE;
+            for (int ri = Math.floorDiv(pi0 - R, S); ri <= Math.floorDiv(pi1 + R, S); ri++) {
+                for (int rj = Math.floorDiv(pj0 - R, S); rj <= Math.floorDiv(pj1 + R, S); rj++) {
+                    CoastPlan p = coastPlan(ri, rj);
+                    if (!p.isEmpty()) out.add(p);
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: coastal landforms unavailable for ({}, {}): {}", pj0, pi0, e.toString());
+            return List.of();
+        }
+    }
+
+    /** Builds the sand landforms into block-resolution ground (as {@link #applyRias}), in place. */
+    private static void applyCoastPlans(List<CoastPlan> plans, float[][] grid, int bi0, int bj0, int scale) {
+        if (plans.isEmpty()) return;
+        for (int r = 0; r < grid.length; r++) {
+            float z = (bi0 + r + 0.5f) / scale;
+            float[] row = grid[r];
+            for (int c = 0; c < row.length; c++) {
+                float x = (bj0 + c + 0.5f) / scale;
+                for (CoastPlan p : plans) row[c] = p.apply(x, z, row[c]);
+            }
+        }
+    }
+
+    /** A sand landform found near a point: kind (CoastPlan.SPIT, TOMBOLO, FORELAND) and where (native pixels). */
+    public record CoastFeature(int kind, float i, float j) {}
+
+    /** Result of a sand landform search: the nearest one of the kind (or null), how many seen, how far it reached. */
+    public record CoastSearch(CoastFeature nearest, int count, int searchedRadiusPx) {}
+
+    /**
+     * The nearest spit, tombolo or cuspate foreland ({@code kind} as in {@link CoastPlan}) to native pixel (pi, pj),
+     * searching coastal regions ring by ring out to {@code maxRings}. Each new region in a zone computes the terrain over
+     * a 19 km window, so this is short-range. Never call this on the server thread.
+     */
+    public static CoastSearch findNearestCoastFeature(int kind, double pi, double pj, int maxRings,
+                                                      java.util.function.IntConsumer progress) throws Exception {
+        int S = CoastPlan.SIZE;
+        int ci = Math.floorDiv((int) Math.floor(pi), S), cj = Math.floorDiv((int) Math.floor(pj), S);
+        CoastFeature best = null;
+        double bestD = Double.MAX_VALUE;
+        int count = 0, reached = 0;
+        for (int ring = 0; ring <= maxRings; ring++) {
+            for (int ri = ci - ring; ri <= ci + ring; ri++) {
+                for (int rj = cj - ring; rj <= cj + ring; rj++) {
+                    if (Math.max(Math.abs(ri - ci), Math.abs(rj - cj)) != ring) continue;
+                    final int fri = ri, frj = rj;
+                    CoastPlan plan = submitToInferenceThread(() -> getInstance().coastPlan(fri, frj));
+                    List<float[]> spots = new ArrayList<>();
+                    for (CoastPlan.Bar b : plan.bars) if (b.kind == kind) spots.add(new float[]{b.midZ(), b.midX()});
+                    if (kind == CoastPlan.FORELAND) for (CoastPlan.Foreland f : plan.forelands) spots.add(new float[]{f.apexZ(), f.apexX()});
+                    for (float[] sp : spots) {
+                        count++;
+                        double d = Math.hypot(sp[0] - pi, sp[1] - pj);
+                        if (d < bestD) { bestD = d; best = new CoastFeature(kind, sp[0], sp[1]); }
+                    }
+                }
+            }
+            reached = ring * S + S / 2;
+            progress.accept(reached);
+            if (best != null && bestD <= ring * S) break;
+        }
+        return new CoastSearch(best, count, reached);
+    }
+
     /** Native pixels around a river mouth within which the coast keeps no cliff (fading out to RIVER_MOUTH_FADE_PX). */
     private static final float RIVER_MOUTH_CLEAR_PX = 1.5f, RIVER_MOUTH_FADE_PX = 3.5f;
 
@@ -708,12 +808,14 @@ public final class LocalTerrainProvider {
         float[][] elevMargin2D = to2D(elevMargin, H + 2 * M, W + 2 * M);
         List<RiaPlan> rias = riaPlansNear(elevMargin, i1 - M, j1 - M, i2 + M, j2 + M);
         applyRias(rias, elevMargin2D, i1 - M, j1 - M, 1);
+        List<CoastPlan> sand = coastPlansNear(elevMargin2D, i1 - M, j1 - M, i2 + M, j2 + M);
+        applyCoastPlans(sand, elevMargin2D, i1 - M, j1 - M, 1);
         float[] elevPadded = cropFlat(elevMargin2D, M - 1, M - 1, H + 2, W + 2, H + 2 * M, W + 2 * M);
         byte[] tags = new byte[H * W];
         float[][] out = pipeline.get(i1, j1, i2, j2, true, tags);
         float[] elevFlat = out[0];
         float[] climate  = out[1];
-        if (!rias.isEmpty()) {
+        if (!rias.isEmpty() || !sand.isEmpty()) {
             for (int r = 0; r < H; r++) System.arraycopy(elevMargin2D[r + M], M, elevFlat, r * W, W);
         }
 
@@ -762,6 +864,7 @@ public final class LocalTerrainProvider {
         float[][] elevUp = LaplacianUtils.bicubicResize(elevNative2D, nH * scale, nW * scale);
         settleShoreline(elevUp, i1p * scale, j1p * scale, scale);
         applyRias(riaPlansNear(elevNativeFlat, i1p, j1p, i2p, j2p), elevUp, i1p * scale, j1p * scale, scale);
+        applyCoastPlans(coastPlansNear(elevUp, i1p, j1p, i2p, j2p), elevUp, i1p * scale, j1p * scale, scale);
 
         // Crop offsets in the upsampled array
         int padUp   = PAD_PX * scale;

@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.world;
 
+import com.github.xandergos.terraindiffusionmc.pipeline.CoastPlan;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.OceanFeatures;
 import com.mojang.brigadier.CommandDispatcher;
@@ -58,6 +59,9 @@ public final class FeatureFinder {
         KINDS.put("vent_field", new String[]{"vent_field", "hydrothermal vent field"});
         KINDS.put("delta", new String[]{"delta", "river delta"});
         KINDS.put("ria", new String[]{"ria", "ria (drowned river valley)"});
+        KINDS.put("spit", new String[]{"spit", "sand spit"});
+        KINDS.put("tombolo", new String[]{"tombolo", "tombolo"});
+        KINDS.put("cuspate_foreland", new String[]{"cuspate_foreland", "cuspate foreland"});
         KINDS.put("fringing_reef", new String[]{"fringing_reef", "fringing reef"});
         KINDS.put("barrier_reef", new String[]{"barrier_reef", "offshore barrier reef"});
         KINDS.put("carbonate_bank", new String[]{"carbonate_bank", "carbonate bank"});
@@ -103,6 +107,11 @@ public final class FeatureFinder {
         }
         if (word.equals("ria")) {
             findRia(source, server, pi, pj, scale);
+            return 1;
+        }
+        if (word.equals("spit") || word.equals("tombolo") || word.equals("cuspate_foreland")) {
+            int k = word.equals("spit") ? CoastPlan.SPIT : (word.equals("tombolo") ? CoastPlan.TOMBOLO : CoastPlan.FORELAND);
+            findCoast(source, server, k, kind[1], pi, pj, scale);
             return 1;
         }
         if (OceanFeatures.shallowTag(word) >= 0) {
@@ -219,6 +228,35 @@ public final class FeatureFinder {
                 });
             } catch (Exception e) {
                 LOG.error("terra-find ria failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** Rings of coastal regions (7.7 km each) searched for sand landforms. */
+    private static final int COAST_RINGS = 3;
+
+    private static void findCoast(CommandSourceStack source, MinecraftServer server, int k, String name, double pi, double pj, int scale) {
+        Thread worker = new Thread(() -> {
+            try {
+                LocalTerrainProvider.CoastSearch res = LocalTerrainProvider.findNearestCoastFeature(k, pi, pj, COAST_RINGS, reachedPx -> {
+                    int km = Math.round(reachedPx * 30 / 1000f);
+                    server.execute(() -> source.sendSuccess(() -> Component.literal("…searched about " + km + " km around you")
+                            .withStyle(ChatFormatting.GRAY), false));
+                });
+                server.execute(() -> {
+                    int searchedKm = Math.round(res.searchedRadiusPx() * 30 / 1000f);
+                    if (res.nearest() == null) {
+                        source.sendFailure(Component.literal("No " + name + " within about " + searchedKm + " km. These form on low, "
+                                + "sandy coasts with shallow water, in zones a few hundred km across; try another lowland coast."));
+                        return;
+                    }
+                    report(source, name, new OceanFeatures.Landmark(name, res.nearest().i(), res.nearest().j(), 0f), pi, pj, scale);
+                });
+            } catch (Exception e) {
+                LOG.error("terra-find " + name + " failed", e);
                 server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
             }
         }, "terra-find");

@@ -760,11 +760,12 @@ public final class WorldPipeline implements AutoCloseable {
         };
     }
 
-    /**
-     * Ocean features whose centres lie in the native-pixel window, for the terrain explorer and /terra-find:
-     * the volcanoes, atolls and trenches from {@link OceanFeatures#landmarks}, plus one marker per archipelago sea
-     * (the strongest point of each 24-coarse-pixel cell that lies well inside an archipelago zone).
-     */
+    /** Archipelago zone strength (0..1) at native pixel (i, j), as ArchipelagoShaper and the ocean features see it. */
+    public float archipelagoAt(double i, double j) {
+        int S = 32 * LATENT_COMPRESSION;
+        return syntheticMapFactory.archipelagoZone((float) (j / S), (float) (i / S));
+    }
+
     /** The ocean features of the current seed, or null when they are switched off. Safe from any thread. */
     public OceanFeatures oceanFeatures() {
         return TerrainDiffusionConfig.oceanFeatures() ? oceanFeatures : null;
@@ -787,6 +788,11 @@ public final class WorldPipeline implements AutoCloseable {
         return out;
     }
 
+    /**
+     * Ocean features whose centres lie in the native-pixel window, for the terrain explorer and /terra-find:
+     * the volcanoes, atolls and trenches from {@link OceanFeatures#landmarks}, plus one marker per archipelago sea
+     * (the strongest point of each 24-coarse-pixel cell that lies well inside an archipelago zone).
+     */
     public List<OceanFeatures.Landmark> oceanLandmarks(int i1, int j1, int i2, int j2) {
         OceanFeatures.CoarseField field = coarseField(i1, j1, i2, j2);
         List<OceanFeatures.Landmark> out = new ArrayList<>();
