@@ -86,6 +86,16 @@ public final class ArchipelagoShaper {
      * @param coarsePx native pixels per coarse pixel
      */
     public void apply(float[] elev, float[] padded, int i1, int j1, int H, int W, SyntheticMapFactory syn, int coarsePx) {
+        apply(elev, padded, i1, j1, H, W, syn, coarsePx, false);
+    }
+
+    /**
+     * {@link #apply(float[], float[], int, int, int, int, SyntheticMapFactory, int)}; with {@code detailOnly} the
+     * terrain is taken as already drowned (the model drew the archipelago itself, see WorldPipeline#archipelagoTarget)
+     * and only the fine coastline roughness is added, on the model's own shoreline and slopes.
+     */
+    public void apply(float[] elev, float[] padded, int i1, int j1, int H, int W, SyntheticMapFactory syn, int coarsePx,
+                      boolean detailOnly) {
         final int m = SLOPE_MARGIN, pW = W + 2 * m;
         // The zones are ~460 km across: sample the zone strength on a coarse lattice and interpolate.
         final int STEP = 64;
@@ -115,6 +125,14 @@ public final class ArchipelagoShaper {
                         + (zone[(a0 + 1) * gw + b0] * (1 - tb) + zone[(a0 + 1) * gw + b0 + 1] * tb) * ta;
                 if (z <= 0f) continue;
                 int i = i1 + r, j = j1 + c;
+                if (detailOnly) {
+                    if (e >= DETAIL_FADE_M || e <= -260f) continue;
+                    int p = (r + m) * pW + c + m;
+                    float gx = (padded[p + m] - padded[p - m]) / (2f * m), gz = (padded[p + m * pW] - padded[p - m * pW]) / (2f * m);
+                    float rough = smoothstep(SLOPE_SMOOTH, SLOPE_ROUGH, (float) Math.sqrt(gx * gx + gz * gz));
+                    elev[k] = detailOnly(e, i, j, z, rough);
+                    continue;
+                }
                 float bh = base(e, i, j, z);
                 if (bh >= DETAIL_FADE_M || bh <= -260f) { elev[k] = bh; continue; }   // no coastline detail here
                 // Slope of the reshaped ground (flattened and drowned, before the detail), which is what decides whether
@@ -148,6 +166,17 @@ public final class ArchipelagoShaper {
         if (w <= 0f) return e;
         float k = zone * w;
         return e * (1f - FLATTEN * k) - k * (DROWN_BASE_M + DROWN_VARY_M * field(i, j));
+    }
+
+    /** Only the coastline detail of {@link #shape}, for ground {@code e} the model has already drowned. */
+    float detailOnly(float e, int i, int j, float zone, float rough) {
+        float w;
+        if (e > FULL_HIGH_M) w = 1f - smoothstep(FULL_HIGH_M, FADE_HIGH_M, e);
+        else if (e < FULL_LOW_M) w = smoothstep(FADE_LOW_M, FULL_LOW_M, e);
+        else w = 1f;
+        float near = e >= 5f ? 1f - smoothstep(5f, DETAIL_FADE_M, e) : smoothstep(-260f, -160f, e);
+        if (near <= 0f || rough <= 0f || w <= 0f) return e;
+        return e - zone * w * DETAIL_M * rough * near * detail(i, j);
     }
 
     /** {@link #shape(float, int, int, float)} with the coastline detail scaled by {@code rough} (0..1). */

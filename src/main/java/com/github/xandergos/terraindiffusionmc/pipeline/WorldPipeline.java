@@ -242,7 +242,7 @@ public final class WorldPipeline implements AutoCloseable {
 
         InfiniteTensor initLatent = tileStore.getOrCreateBatched(
                 "init_latent_map", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, null, args.get(0), tInit, 5819, ww, STAGE_INIT),
+                (wis, args) -> latentBatch(wis, null, args.get(0), null, tInit, 5819, ww, STAGE_INIT),
                 outWin, new InfiniteTensor[]{coarse}, new TensorWindow[]{coarseWin},
                 cacheLimitBytes, 4);
 
@@ -250,22 +250,24 @@ public final class WorldPipeline implements AutoCloseable {
         float islandT = (float) Math.atan(ISLAND_SIGMA / SIGMA_DATA);
         InfiniteTensor islandLatent = tileStore.getOrCreateBatched(
                 "island_latent_map", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), islandT, 5821, ww, STAGE_ISLAND),
+                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), args.get(0), islandT, 5821, ww, STAGE_ISLAND),
                 outWin, new InfiniteTensor[]{initLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
                 cacheLimitBytes, 4);
 
         float interT = (float) Math.atan(0.35f / SIGMA_DATA);
+        // The refinement also sees the init latent: model-drawn archipelagos are pulled back toward the drowning of the
+        // model's own first terrain (see archipelagoTarget), which the island pass has already redrawn.
         return tileStore.getOrCreateBatched(
                 "step_latent_map_0", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), interT, 5820, ww, STAGE_STEP),
-                outWin, new InfiniteTensor[]{islandLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
+                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), args.get(2), interT, 5820, ww, STAGE_STEP),
+                outWin, new InfiniteTensor[]{islandLatent, coarse, initLatent}, new TensorWindow[]{outWin, coarseWin, outWin},
                 cacheLimitBytes, 4);
     }
 
     private static final int STAGE_INIT = 0, STAGE_ISLAND = 1, STAGE_STEP = 2;
 
     private List<FloatTensor> latentBatch(List<int[]> wis, List<FloatTensor> prevSamples,
-                                           List<FloatTensor> coarseSlices, float t,
+                                           List<FloatTensor> coarseSlices, List<FloatTensor> initSamples, float t,
                                            int seedOffset, float[] ww, int stage) {
         int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE;
         int batch = wis.size();
@@ -277,6 +279,9 @@ public final class WorldPipeline implements AutoCloseable {
         float[][] xTArr = new float[batch][];
         float[][] conds = new float[batch][];
         IslandGuide[] guides = new IslandGuide[batch];
+        float[][] archs = new float[batch][];
+        boolean modelArch = stage != STAGE_INIT && initSamples != null && TerrainDiffusionConfig.modelArchipelagos()
+                && TerrainDiffusionConfig.archipelagoStrength() > 0f;
         int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
@@ -296,11 +301,17 @@ public final class WorldPipeline implements AutoCloseable {
             // Islands for the model to draw (see islandGuide).
             IslandGuide guide = stage != STAGE_INIT && of.modelIslands ? islandGuide(of, ctx[1], ctx[2]) : null;
             guides[b] = guide;
+            // Archipelago islands for the model to draw (see archipelagoTarget), from the init latent.
+            float[] arch = modelArch ? archipelagoTarget(unscaled(initSamples.get(b), S), ctx[1], ctx[2]) : null;
+            archs[b] = arch;
             if (stage == STAGE_ISLAND) {
-                if (guide == null || !guide.inTile()) continue;     // passes through unchanged
-                guide.prepareIslandPass(sample, S);
-            } else if (stage == STAGE_STEP && guide != null) {
-                guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
+                boolean island = guide != null && guide.inTile();
+                if (!island && arch == null) continue;              // passes through unchanged
+                if (arch != null) prepareArchipelagoPass(sample, arch, S);
+                if (island) guide.prepareIslandPass(sample, S);
+            } else if (stage == STAGE_STEP) {
+                if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, ARCH_STEP_PULL);
+                if (guide != null) guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
             }
 
             // Build conditioning from coarse slice (7, 4, 4)
@@ -355,6 +366,7 @@ public final class WorldPipeline implements AutoCloseable {
                 }
                 // The refinement is the last word on the latent: make sure every island is there and its bays and
                 // calderas reach the sea (the model's own mountains are left alone).
+                if (stage == STAGE_STEP && archs[b] != null) pullTowards(newSample, archs[b], S, 1f, ARCH_FINAL_PULL);
                 if (stage == STAGE_STEP && guides[b] != null) guides[b].pullLowfreq(newSample, S, 1f, ISLAND_FINAL_UP, ISLAND_FINAL_DOWN, true);
             }
 
@@ -366,6 +378,90 @@ public final class WorldPipeline implements AutoCloseable {
             results.add(out);
         }
         return results;
+    }
+
+    // ---- Model-drawn archipelagos ----
+
+    /** How far (sqrt-metres) the drowning must move the ground for its old detail to be cleared fully (island pass). */
+    private static final float ARCH_CLEAR = 3f;
+    /** Share of the way the refinement step's input, and then its output, are pulled back to the drowned terrain. */
+    private static final float ARCH_STEP_PULL = 0.65f, ARCH_FINAL_PULL = 0.6f;
+
+    /** A latent sample as stored (weighted), unweighted and scaled by SIGMA_DATA like {@code samples} in latentBatch. */
+    private static float[] unscaled(FloatTensor ps, int S) {
+        float[] out = new float[5 * S * S];
+        for (int ch = 0; ch < 5; ch++)
+            for (int px = 0; px < S * S; px++) {
+                float w = ps.data[5 * S * S + px];
+                out[ch * S * S + px] = (w > 1e-6f) ? ps.data[ch * S * S + px] / w * SIGMA_DATA : 0f;
+            }
+        return out;
+    }
+
+    /**
+     * Where latent tile (ti, tj) lies in an archipelago zone: the low-frequency terrain (signed-sqrt metres, per latent
+     * pixel; NaN where nothing changes) that the archipelago drowning makes of the model's own first terrain
+     * ({@code init}, the init latent, scaled like {@code samples}), or null if none of the tile is in a zone.
+     *
+     * <p>{@link ArchipelagoShaper} used to flatten and drown the finished terrain, so the islands' shapes below ~25 km
+     * were pasted in: soft, smooth and without the model's texture. Now the same drowning (same zones, island field and
+     * heights) is applied to the model's low-frequency terrain in the island pass, the detail it no longer fits is
+     * cleared, and the model redraws the islands, channels and coasts in its own style; the refinement step keeps them
+     * close to the drowned layout. Every tile reads the same blended init latent, so overlapping tiles agree.
+     */
+    private float[] archipelagoTarget(float[] init, int ti, int tj) {
+        int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE, lc = LATENT_COMPRESSION, CS = 32 * lc;
+        SyntheticMapFactory syn = syntheticMapFactory;
+        ArchipelagoShaper shaper = archipelagoShaper;
+        int li = ti * ST, lj = tj * ST, off = 4 * S * S;
+        // Zones are ~460 km across: test the tile's corners and centre first.
+        boolean anyZone = false;
+        for (int a = 0; a <= 2 && !anyZone; a++)
+            for (int b = 0; b <= 2 && !anyZone; b++)
+                anyZone = syn.archipelagoZone((float) ((lj + b * (S - 1) / 2) * lc) / CS, (float) ((li + a * (S - 1) / 2) * lc) / CS) > 0f;
+        if (!anyZone) return null;
+        float[] target = new float[S * S];
+        boolean any = false;
+        for (int r = 0; r < S; r++)
+            for (int c = 0; c < S; c++) {
+                int px = r * S + c;
+                int i = (li + r) * lc + lc / 2, j = (lj + c) * lc + lc / 2;
+                float z = syn.archipelagoZone((float) j / CS, (float) i / CS);
+                float l = init[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
+                float e = Math.signum(l) * l * l;
+                float e2 = z > 0f ? shaper.base(e, i, j, z) : e;
+                if (e2 == e) { target[px] = Float.NaN; continue; }
+                target[px] = (float) (Math.signum(e2) * Math.sqrt(Math.abs(e2)));
+                any = true;
+            }
+        return any ? target : null;
+    }
+
+    /**
+     * Input for the island pass in an archipelago zone: the low-frequency channel (4) is set to the drowned terrain, and
+     * the detail channels (0-3) fade out where that moved the ground, so the model redraws it from the noise.
+     */
+    private static void prepareArchipelagoPass(float[] sample, float[] target, int S) {
+        int off = 4 * S * S;
+        for (int px = 0; px < S * S; px++) {
+            float g = target[px];
+            if (Float.isNaN(g)) continue;
+            float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
+            float w = smoothstep(0f, ARCH_CLEAR, Math.abs(g - l));
+            for (int ch = 0; ch < 4; ch++) sample[ch * S * S + px] *= 1f - w;
+            sample[off + px] = (g - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
+        }
+    }
+
+    /** Moves the low-frequency channel of a latent sample stored scaled by {@code scale} {@code k} of the way to target. */
+    private static void pullTowards(float[] sample, float[] target, int S, float scale, float k) {
+        int off = 4 * S * S;
+        for (int px = 0; px < S * S; px++) {
+            float g = target[px];
+            if (Float.isNaN(g)) continue;
+            float l = sample[off + px] / scale * LOWFREQ_STD + LOWFREQ_MEAN;
+            sample[off + px] = (l + k * (g - l) - LOWFREQ_MEAN) / LOWFREQ_STD * scale;
+        }
     }
 
     // ---- Model-drawn islands ----
@@ -688,7 +784,9 @@ public final class WorldPipeline implements AutoCloseable {
         float[] elevFlat = new float[H * W];
         for (int r = 0; r < H; r++) System.arraycopy(padded, (r + m) * pW + m, elevFlat, r * W, W);
         // Islands at native resolution inside archipelago zones (off when oceans.archipelago_strength is 0).
-        archipelagoShaper.apply(elevFlat, padded, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION);
+        // With model-drawn archipelagos the model has already drawn the islands: only the fine coastline roughness is added.
+        boolean detailOnly = TerrainDiffusionConfig.modelArchipelagos();
+        archipelagoShaper.apply(elevFlat, padded, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION, detailOnly);
         if (tagsOut != null) java.util.Arrays.fill(tagsOut, OceanFeatures.TAG_NONE);
         if (TerrainDiffusionConfig.oceanFeatures()) {
             OceanFeatures.CoarseField field = oceanCoarseField(i1, j1, i2, j2);

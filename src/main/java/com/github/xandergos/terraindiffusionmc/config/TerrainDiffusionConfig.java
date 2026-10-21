@@ -115,6 +115,12 @@ public final class TerrainDiffusionConfig {
      */
     public static boolean modelIslands() { return readBoolean("oceans.model_islands", true); }
     /**
+     * Whether the diffusion model draws the islands of archipelago seas itself (the drowning is applied to its own
+     * low-frequency terrain inside the latent stages, and it redraws the detail), instead of the finished terrain being
+     * flattened and drowned afterwards.
+     */
+    public static boolean modelArchipelagos() { return readBoolean("oceans.model_archipelagos", true); }
+    /**
      * How strongly the continent conditioning is pushed toward archipelagos: shallow seas scattered with islands.
      * 0 turns it off (the model's own coastlines only); 1 is the default; up to 2 for island-heavy worlds.
      */
