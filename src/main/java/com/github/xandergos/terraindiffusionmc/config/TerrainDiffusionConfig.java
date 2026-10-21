@@ -143,6 +143,14 @@ public final class TerrainDiffusionConfig {
     public static float archipelagoDetail() {
         return Math.max(0f, Math.min(2f, readFloat("oceans.archipelago_detail", 0.4f)));
     }
+    /**
+     * Model-drawn archipelagos: how far (latent units; the channel's spread is ~1.2) latent channel 0, which the decoder
+     * reads as local height (Oct 21 probe: residual ~ -0.5..-1.4 sqrt-m per unit, correlation -0.6..-0.8), is pushed
+     * with the fine island field near sea level, before the refinement ({@code _in}) and after it ({@code _out}), so
+     * the islands below ~3 km follow the drowned hills (the low-frequency channel only carries ~5 km and up). Being tuned.
+     */
+    public static float archipelagoSteerIn() { return readFloat("oceans.archipelago_steer_in", 0f); }
+    public static float archipelagoSteerOut() { return readFloat("oceans.archipelago_steer_out", 0f); }
     /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
     public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */

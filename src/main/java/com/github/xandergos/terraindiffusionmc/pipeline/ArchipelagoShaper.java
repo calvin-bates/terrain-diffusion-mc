@@ -219,6 +219,11 @@ public final class ArchipelagoShaper {
         return e * (1f - M_FLATTEN * k) + k * (M_RELIEF * field(islandsFine, i, j) - M_DROWN - M_DROWN_VARY * field(i, j));
     }
 
+    /** The fine island field (about -1..1; positive raises) that {@link #modelBase} adds hills from. */
+    public float fineField(double i, double j) {
+        return field(islandsFine, i, j);
+    }
+
     /** Only the coastline detail of {@link #shape}, for ground {@code e} the model has already drowned. */
     float detailOnly(float e, int i, int j, float zone, float rough) {
         float w;

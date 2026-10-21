@@ -55,8 +55,9 @@ public final class TerraPreview {
                 + count(marks, "rift_sea") + " rift seas, " + count(marks, "active_margin") + " active-margin markers");
 
         // Archipelagos: the old pass, and model-drawn in each mode being tuned.
-        // Variants: old, or mode@finalPull@detail.
-        String[] variants = System.getProperty("terra.archVariants", "old,keep@1.0@0.4").split(",");
+        // Variants: old, or mode@finalPull@detail@steerIn@steerOut.
+        String[] variants = System.getProperty("terra.archVariants",
+                "old,keep@1.0@0.4,keep@1.0@0.4@2@0,keep@1.0@0.4@2@1,keep@1.0@0.4@3@2").split(",");
         for (String variant : variants) {
             TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", variant.equals("old") ? "false" : "true");
             if (!variant.equals("old")) {
@@ -64,6 +65,8 @@ public final class TerraPreview {
                 TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", mv[0]);
                 TerrainDiffusionConfig.setForTools("oceans.archipelago_final_pull", mv.length > 1 ? mv[1] : "1.0");
                 TerrainDiffusionConfig.setForTools("oceans.archipelago_detail", mv.length > 2 ? mv[2] : "0.4");
+                TerrainDiffusionConfig.setForTools("oceans.archipelago_steer_in", mv.length > 3 ? mv[3] : "0");
+                TerrainDiffusionConfig.setForTools("oceans.archipelago_steer_out", mv.length > 4 ? mv[4] : "0");
             }
             try (WorldPipeline p = new WorldPipeline(seed)) {
                 for (int k = 0; k < arch.size(); k++) {
@@ -78,7 +81,7 @@ public final class TerraPreview {
                     dumpPatch(out.resolve("archipelago" + k + "_" + variant.replace("@", "_") + "_stages.bin"), win,
                             p.debugModel, p.debugShaped, e, tags);
                     String name = "archipelago" + k + "_" + variant.replace("@", "_");
-                    if (k < 2) dumpLatents(out.resolve(name + "_latent.bin"), p, i1, j1, win);
+                    if (k < 2 && variant.equals("old")) dumpLatents(out.resolve(name + "_latent.bin"), p, i1, j1, win);
                     write(render(e, win, win), out.resolve(name + ".png"));
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
                             Math.round(m.i() * 6), stats(e, win, win), (System.nanoTime() - t0) / 1e9));
@@ -91,6 +94,8 @@ public final class TerraPreview {
         TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", "keep");
         TerrainDiffusionConfig.setForTools("oceans.archipelago_final_pull", "1.0");
         TerrainDiffusionConfig.setForTools("oceans.archipelago_detail", "0.4");
+        TerrainDiffusionConfig.setForTools("oceans.archipelago_steer_in", "0");
+        TerrainDiffusionConfig.setForTools("oceans.archipelago_steer_out", "0");
 
         // Rift seas and active margins at coarse resolution, with and without.
         for (String variant : new String[]{"on", "off"}) {

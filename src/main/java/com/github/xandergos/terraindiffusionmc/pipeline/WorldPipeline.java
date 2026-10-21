@@ -286,6 +286,7 @@ public final class WorldPipeline implements AutoCloseable {
         String archMode = TerrainDiffusionConfig.archipelagoMode();
         if (stage == STAGE_ISLAND && "step".equals(archMode)) modelArch = false;
         float archFinalPull = "clear".equals(archMode) ? ARCH_FINAL_PULL : TerrainDiffusionConfig.archipelagoFinalPull();
+        float steerIn = TerrainDiffusionConfig.archipelagoSteerIn(), steerOut = TerrainDiffusionConfig.archipelagoSteerOut();
         int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
@@ -315,6 +316,7 @@ public final class WorldPipeline implements AutoCloseable {
                 if (island) guide.prepareIslandPass(sample, S);
             } else if (stage == STAGE_STEP) {
                 if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, "clear".equals(archMode) ? ARCH_STEP_PULL : 1f);
+                if (arch != null && steerIn != 0f) steerDetail(sample, arch, S, SIGMA_DATA, steerIn, ctx[1], ctx[2]);
                 if (guide != null) guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
             }
 
@@ -372,6 +374,7 @@ public final class WorldPipeline implements AutoCloseable {
                 // The refinement is the last word on the latent: make sure every island is there and its bays and
                 // calderas reach the sea (the model's own mountains are left alone).
                 if (stage == STAGE_STEP && archs[b] != null) pullTowards(newSample, archs[b], S, 1f, archFinalPull);
+                if (stage == STAGE_STEP && archs[b] != null && steerOut != 0f) steerDetail(newSample, archs[b], S, 1f, steerOut, wis.get(b)[1], wis.get(b)[2]);
                 if (stage == STAGE_STEP && guides[b] != null) guides[b].pullLowfreq(newSample, S, 1f, ISLAND_FINAL_UP, ISLAND_FINAL_DOWN, true);
             }
 
@@ -440,6 +443,32 @@ public final class WorldPipeline implements AutoCloseable {
                 any = true;
             }
         return any ? target : null;
+    }
+
+    /**
+     * Steers the islands below the low-frequency channel's reach: latent channel 0 (the decoder's local height, higher
+     * for lower values) is moved by {@code amount} times the fine island field, where the drowned target is near sea
+     * level (within ~16 m, fading out by ~80 m) and in proportion to the zone strength, and kept within +-3.5 (the
+     * channel's spread is ~1.2). Pointwise in the tile's latent pixels, so overlapping tiles agree.
+     */
+    private void steerDetail(float[] sample, float[] target, int S, float scale, float amount, int ti, int tj) {
+        int ST = LATENT_TILE_STRIDE, lc = LATENT_COMPRESSION, CS = 32 * lc;
+        int li = ti * ST, lj = tj * ST;
+        for (int r = 0; r < S; r++)
+            for (int c = 0; c < S; c++) {
+                int px = r * S + c;
+                float g = target[px];
+                if (Float.isNaN(g)) continue;
+                float near = 1f - smoothstep(4f, 9f, Math.abs(g));
+                if (near <= 0f) continue;
+                int i = (li + r) * lc + lc / 2, j = (lj + c) * lc + lc / 2;
+                float z = syntheticMapFactory.archipelagoZone((float) j / CS, (float) i / CS);
+                if (z <= 0f) continue;
+                float v = sample[px] / scale;
+                float nv = v - amount * z * near * archipelagoShaper.fineField(i, j);
+                float lim = Math.max(3.5f, Math.abs(v));
+                sample[px] = Math.max(-lim, Math.min(lim, nv)) * scale;
+            }
     }
 
     /**
