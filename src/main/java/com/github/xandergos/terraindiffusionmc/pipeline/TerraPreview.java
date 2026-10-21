@@ -79,6 +79,7 @@ public final class TerraPreview {
                     write(render(e, win, win), out.resolve(name + ".png"));
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
                             Math.round(m.i() * 6), stats(e, win, win), (System.nanoTime() - t0) / 1e9));
+                    summary.add("    " + speckSources(p.debugModel, p.debugShaped, e, tags, win));
                 }
             }
         }
@@ -128,6 +129,26 @@ public final class TerraPreview {
             for (int r = 0; r < N; r++) for (int c = 0; c < N; c++) buf.putFloat(a == null ? Float.NaN : a[(r0 + r) * win + c0 + c]);
         for (int r = 0; r < N; r++) for (int c = 0; c < N; c++) buf.put(tags[(r0 + r) * win + c0 + c]);
         Files.write(file, buf.array());
+    }
+
+    /** Lone pixels (no 8-neighbour on the same side of sea level) at each stage, and in the final by surface tag. */
+    private static String speckSources(float[] model, float[] shaped, float[] fin, byte[] tags, int W) {
+        java.util.TreeMap<Integer, Integer> byTag = new java.util.TreeMap<>();
+        int nm = 0, ns = 0, nf = 0;
+        for (int r = 1; r < W - 1; r++) for (int c = 1; c < W - 1; c++) {
+            int k = r * W + c;
+            if (model != null && lone(model, k, W)) nm++;
+            if (shaped != null && lone(shaped, k, W)) ns++;
+            if (lone(fin, k, W)) { nf++; byTag.merge((int) tags[k], 1, Integer::sum); }
+        }
+        return "lone pixels: model " + nm + ", after archipelago pass " + ns + ", final " + nf + " (by tag " + byTag + ")";
+    }
+
+    private static boolean lone(float[] e, int k, int W) {
+        boolean l = e[k] >= 0;
+        for (int dr = -1; dr <= 1; dr++) for (int dc = -1; dc <= 1; dc++)
+            if ((dr | dc) != 0 && (e[k + dr * W + dc] >= 0) == l) return false;
+        return true;
     }
 
     private static List<OceanFeatures.Landmark> nearest(List<OceanFeatures.Landmark> all, String type, int n) {

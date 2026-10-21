@@ -188,7 +188,7 @@ public final class OceanFeatures {
     private final FastNoiseLite shelfZone, currentDir, sandWaves, drowned, saltLumps;
     private final FastNoiseLite islandCoast, islandCoastWarpX, islandCoastWarpZ;
     private final FastNoiseLite troughNoise, troughZone;
-    private final FastNoiseLite strandZone, strandPatch, strandRough, skerries;
+    private final FastNoiseLite strandZone, strandPatch, strandRough, skerries, skerryCluster;
 
     public OceanFeatures(long seed) {
         this.seed = seed;
@@ -228,9 +228,10 @@ public final class OceanFeatures {
         troughZone = noise(s + 130, 1f / 350f);
         strandZone = noise(s + 131, 1f / 300f);
         strandPatch = noise(s + 132, 1f / 40f);
-        strandRough = noise(s + 133, 1f / 0.4f);
-        strandRough.SetFractalOctaves(3);
-        skerries = noise(s + 134, 1f / 0.35f);
+        strandRough = noise(s + 133, 1f / STRAND_ROUGH_KM);
+        skerries = noise(s + 134, 1f / SKERRY_KM);
+        skerries.SetFractalGain(0.35f);
+        skerryCluster = noise(s + 135, 1f / SKERRY_CLUSTER_KM);
     }
 
     /** Single-octave noise at frequency 1 (callers scale their coordinates). */
@@ -315,6 +316,15 @@ public final class OceanFeatures {
     private static final float STRAND_TEMP_FULL = 2f, STRAND_TEMP = 4.5f;
     /** Share of cold coasts in strandflat zones (noise level; higher = rarer), and of those, the patches. */
     private static final float STRAND_ZONE = 0.15f, STRAND_PATCH = -0.15f;
+    /**
+     * Scale (km) of the plain's knolls and hollows (two octaves: the smallest are ~7 pixels across, so the waterline
+     * wanders in coves and points rather than breaking into single-pixel islets and pools).
+     */
+    private static final float STRAND_ROUGH_KM = 0.4f;
+    /** Skerries: the knob noise's scale (km), the scale of their clusters (km), and the knob threshold outside and
+     *  inside a cluster (noise level; higher = fewer, smaller). */
+    private static final float SKERRY_KM = 0.75f, SKERRY_CLUSTER_KM = 3.5f;
+    private static final double SKERRY_THRESHOLD = 0.5, SKERRY_THRESHOLD_CLUSTER = 0.22, SKERRY_EDGE = 0.18;
 
     /**
      * <b>Strandflats</b> (the coast of Norway): on cold, once-glaciated coasts, a broad low rock plain cut across the
@@ -350,12 +360,16 @@ public final class OceanFeatures {
                 // A little roughness on the plain (ice-scoured knolls and hollows, metres high).
                 double plain = smoothstep(-12, -6, v) * (1 - smoothstep(10, 16, v));
                 v += 2.5 * strandRough.GetNoise(kx, kz) * plain * z;
-                // Skerries: knobs of rock rising from the drowned plain, a few just breaking the surface.
+                // Skerries: rounded knobs of ice-smoothed rock rising from the drowned plain, gathered in clusters
+                // (thick swarms of islets with open water between), from rocks a few pixels across to islets of
+                // several hundred metres; a few just break the surface.
                 double inSea = smoothstep(-14, -9, v) * (1 - smoothstep(-2, 0, v));
                 if (inSea > 0) {
                     double n = skerries.GetNoise(kx, kz);
-                    double knob = smoothstep(0.4, 0.65, n) * inSea * z;
-                    double top = 0.5 + 5 * smoothstep(0.5, 0.9, n);           // mostly islets 1-5 m high
+                    double cl = smoothstep(-0.1, 0.4, skerryCluster.GetNoise(kx, kz));
+                    double thr = SKERRY_THRESHOLD + (SKERRY_THRESHOLD_CLUSTER - SKERRY_THRESHOLD) * cl;
+                    double knob = smoothstep(thr, thr + SKERRY_EDGE, n) * inSea * z;
+                    double top = 1 + 6 * smoothstep(thr + 0.1, thr + 0.45, n);   // islets mostly 1-7 m high
                     if (top > v) v += (top - v) * knob;
                 }
                 elev[k] = (float) v;
