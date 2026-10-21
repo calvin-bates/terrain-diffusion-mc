@@ -386,11 +386,14 @@ public final class OceanFeatures {
                             forearcIslands(x, z, xo, along, pair, subHi, mx, mz, nx, nz, tx, tz, w, coarse, ctx);
                         }
                     }
-                    if (xo > BACKARC_AT - 90 * KM && xo < BACKARC_AT + 90 * KM && hasBackArc(pair)) {
-                        trenchDown += backArc(xo - BACKARC_AT, along, pair) * strength * deepFade;
-                        if (Math.abs(xo - BACKARC_AT) < 4 * KM && strength > 0.4) {
-                            ctx.ridgeAxis = Math.min(ctx.ridgeAxis, Math.abs(xo - BACKARC_AT - backArcOffset(along, pair)));
-                        }
+                }
+                // Back-arc basin: follows the trench's strength averaged along the arc, so it is not gated by it here.
+                double xob = subHi ? -ds : ds;
+                if (xob > BACKARC_AT - 90 * KM && xob < BACKARC_AT + 90 * KM && hasBackArc(pair)) {
+                    double bs = backArcStrength(along, pair) * w;
+                    if (bs > 0) {
+                        trenchDown += backArc(xob - BACKARC_AT, along, pair) * bs * deepFade;
+                        if (bs > 0.4) ctx.ridgeAxis = Math.min(ctx.ridgeAxis, Math.abs(xob - BACKARC_AT - backArcOffset(along, pair)));
                     }
                 }
             }
@@ -753,7 +756,9 @@ public final class OceanFeatures {
     // =========================================================================
 
     /** Big stamps: one chance per cell (native pixels), and the share of them that are microcontinents. */
-    private static final double PLATEAU_CELL = 800 * KM, PLATEAU_CHANCE = 0.4, MICRO_SHARE = 0.4;
+    private static final double PLATEAU_CELL = 420 * KM, PLATEAU_CHANCE = 0.55, MICRO_SHARE = 0.45;
+    /** Coarse depth (metres) a plateau or microcontinent needs at its centre. */
+    private static final float PLATEAU_MIN_DEPTH = 2500f;
     /** Largest radius of a plateau or microcontinent (native pixels). */
     private static final double PLATEAU_MAX_R = 60 * KM;
     /** Granite islands on a microcontinent: count and size. */
@@ -809,7 +814,7 @@ public final class OceanFeatures {
                 double r = Math.hypot(x - p.x, z - p.z);
                 if (r > p.radius * 1.35) continue;
                 float floor = coarse.elevation(p.z, p.x);
-                if (floor > -3000) continue;
+                if (floor > -PLATEAU_MIN_DEPTH) continue;
                 // Lobed outline, at the plateau's own scale.
                 double scale = KM * 4 / p.radius;
                 float kx = (float) (x / KM * scale) + (p.h & 0xFF), kz = (float) (z / KM * scale) + ((p.h >>> 8) & 0xFF);
@@ -870,7 +875,7 @@ public final class OceanFeatures {
     /** Forearc islands: spacing along the arc, chance per slot, needed trench strength. */
     private static final double FOREARC_SPACING = 75 * KM, FOREARC_CHANCE = 0.3, FOREARC_MIN_STRENGTH = 0.7;
     /** Back-arc basin: distance behind the trench (native pixels), basin depth (m), share of trenches with one. */
-    private static final double BACKARC_AT = 185 * KM, BACKARC_DEPTH = 700, BACKARC_CHANCE = 0.55;
+    private static final double BACKARC_AT = 185 * KM, BACKARC_DEPTH = 1100, BACKARC_CHANCE = 0.55;
 
     /**
      * The forearc: the wedge of sediment scraped off the sinking plate and stacked against the overriding one, a
@@ -924,6 +929,16 @@ public final class OceanFeatures {
 
     private boolean hasBackArc(long pair) { return unit(mix(pair ^ 0xBACCL)) < BACKARC_CHANCE; }
 
+    /**
+     * How strongly a back-arc basin is open at this point along the trench (0..1): the trench's strength averaged
+     * over ~300 km, so the basin runs the length of an arc instead of following each short strong stretch of trench.
+     */
+    private double backArcStrength(double along, long pair) {
+        double s = 0;
+        for (int k = -3; k <= 3; k++) s += trenchStrength(along + k * 50 * KM, pair);
+        return smoothstep(0.2, 0.55, s / 7);
+    }
+
     private double backArcOffset(double along, long pair) {
         double phase = unit(mix(pair ^ 0xBA5EL)) * SEGMENT;
         long k = (long) Math.floor((along + phase) / (0.6 * SEGMENT));
@@ -937,9 +952,11 @@ public final class OceanFeatures {
      */
     private double backArc(double xb, double along, long pair) {
         double basin = -BACKARC_DEPTH * Math.exp(-sq(xb / (45 * KM)));
-        double xr = Math.abs(xb - backArcOffset(along, pair));
-        double axis = 800 * Math.exp(-xr / (14 * KM)) - 420 * Math.exp(-sq(xr / (2.2 * KM)));
-        return basin + axis * Math.exp(-sq(xb / (40 * KM)));
+        double xa = xb - backArcOffset(along, pair), xr = Math.abs(xa);
+        double axis = 900 * Math.exp(-xr / (12 * KM)) - 480 * Math.exp(-sq(xr / (2.2 * KM)));
+        // Fresh crust: ridges and troughs parallel to the axis, like a mid-ocean ridge's abyssal hills.
+        float fabric = hills.GetNoise((float) (along / KM / 20) + (pair & 0xFF), (float) (xa / KM / 2.8));
+        return basin + (axis + 220 * fabric) * Math.exp(-sq(xb / (40 * KM)));
     }
 
     /** Distance (native pixels) from a ridge-boundary point (ds across, along) to the ridge's (offset) axis. */
@@ -1148,7 +1165,7 @@ public final class OceanFeatures {
             for (int gx = gx0; gx <= gx1; gx++) {
                 Plateau p = plateau(gx, gz);
                 if (p == null || !inside(p.z, p.x, i0, j0, i1, j1)) continue;
-                if (coarse.elevation(p.z, p.x) > -3000) continue;
+                if (coarse.elevation(p.z, p.x) > -PLATEAU_MIN_DEPTH) continue;
                 if (!p.micro) {
                     out.add(new Landmark("oceanic_plateau", p.z, p.x, (float) p.top));
                 } else {
@@ -1314,7 +1331,7 @@ public final class OceanFeatures {
                 if (hasBackArc(pair)) {
                     double bstep = 25 * KM, bprev = 0, bprev2 = 0;
                     for (double a = amin - bstep; a <= amax + 2 * bstep; a += bstep) {
-                        double st = trenchStrength(a, pair) * edgeWeightAt(mx + tx * a, mz + tz * a, ia, ib, seedX, seedZ);
+                        double st = backArcStrength(a, pair) * edgeWeightAt(mx + tx * a, mz + tz * a, ia, ib, seedX, seedZ);
                         double am = a - bstep;
                         if (bprev >= 0.6 && bprev >= bprev2 && bprev > st) {
                             double across = BACKARC_AT + backArcOffset(am, pair);
