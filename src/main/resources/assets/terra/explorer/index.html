@@ -1194,7 +1194,6 @@
     landslide_scar:  { name: 'Landslide scar',  color: '#a16207', on: true },
     aseismic_ridge:  { name: 'Aseismic ridge',  color: '#818cf8', on: true },
     tuff_ring:       { name: 'Tuff ring / maar', color: '#d6d3d1', on: true },
-    lava_delta:      { name: 'Lava delta',      color: '#ef4444', on: true },
     oceanic_plateau: { name: 'Oceanic plateau', color: '#c084fc', on: true },
     forearc_island:  { name: 'Forearc island',  color: '#fde68a', on: true },
     back_arc_basin:  { name: 'Back-arc basin',  color: '#38bdf8', on: true },
@@ -1226,7 +1225,6 @@
       case 'aseismic_ridge': return `continuous volcanic ridge, crest about ${-v} m down`;
       case 'tuff_ring': return v >= 1000 ? `maar crater with a lake, rim about ${v - 1000} m high`
           : (v < 0 ? `tuff ring breached and flooded by the sea, rim about ${-v} m high` : `tuff ring breached toward the sea, rim about ${v} m high`);
-      case 'lava_delta': return `lava delta about ${v} m above the sea, fed by a live flow`;
       case 'oceanic_plateau': return `flat-topped volcanic plateau, top about ${-v} m down`;
       case 'forearc_island': return `low limestone island on the forearc ridge, ${v} m high`;
       case 'back_arc_basin': return `spreading axis of a back-arc basin, about ${-v} m down`;

@@ -30,10 +30,8 @@ import org.slf4j.LoggerFactory;
  *       on flat ground; inside the old lagoon basin it lies under the soil.</li>
  *   <li><b>Deep floors</b> (round 3): pale ooze (calcite and diorite) above ~4.3 km, red-brown clay (terracotta mix)
  *       below, pillow lava (basalt, smooth basalt, blackstone) by spreading ridges, mud around mud volcanoes.</li>
- *   <li><b>Coastal cones and lava</b> (round 4): tuff rings in tuff with patches of smooth basalt, grass only on their
- *       flatter ground; fresh lava flows and deltas in bare basalt and blackstone, with the odd magma block in a
- *       hollow and pools of live lava along the active channel wherever it lies level and well away from anything
- *       that burns.</li>
+ *   <li><b>Coastal cones</b> (round 4): tuff rings in tuff with patches of smooth basalt, grass only on their
+ *       flatter ground.</li>
  *   <li><b>Strandflats</b> (round 4): bare, ice-scoured rock with gravel and moss in patches and a little grass, and
  *       gravel and stone where the plain is drowned.</li>
  * </ul>
@@ -120,7 +118,7 @@ public final class OceanSurfaces {
                             limestone(chunk, data, pos, x, z, lx, lz, h, tag == OceanFeatures.TAG_LIMESTONE, minY, blockSize);
                     case OceanFeatures.TAG_OOZE, OceanFeatures.TAG_RED_CLAY, OceanFeatures.TAG_PILLOW, OceanFeatures.TAG_MUD ->
                             deepFloor(chunk, pos, x, z, tag, seaLevel, minY);
-                    case OceanFeatures.TAG_TUFF, OceanFeatures.TAG_LAVA, OceanFeatures.TAG_LAVA_CHANNEL ->
+                    case OceanFeatures.TAG_TUFF ->
                             volcanicRock(chunk, data, pos, x, z, lx, lz, h, tag, minY, blockSize, scale);
                     case OceanFeatures.TAG_STRANDFLAT -> strandflat(chunk, pos, x, z, minY);
                     default -> {
@@ -250,14 +248,10 @@ public final class OceanSurfaces {
         return calcite ? Blocks.CALCITE.defaultBlockState() : Blocks.DIORITE.defaultBlockState();
     }
 
-    // ---- Coastal cones and lava (round 4) ----
+    // ---- Coastal cones (round 4) ----
 
-    /** Blocks of tuff below a tuff ring's surface, and of fresh rock below a lava flow's. */
-    private static final int TUFF_DEPTH = 5, LAVA_DEPTH = 3;
-    /** Share of level spots on a cooled flow with a magma block. */
-    private static final float MAGMA_CHANCE = 0.06f;
-    /** Live lava needs this many blocks of fresh, bare rock around it in every direction (nothing to set alight). */
-    private static final int LAVA_CLEARANCE = 3;
+    /** Blocks of tuff below a tuff ring's surface. */
+    private static final int TUFF_DEPTH = 5;
 
     private static void volcanicRock(ChunkAccess chunk, HeightmapData data, BlockPos.MutableBlockPos pos, int x, int z,
                                      int lx, int lz, long h, byte tag, int minY, float blockSize, int scale) {
@@ -281,26 +275,6 @@ public final class OceanSurfaces {
                 soil = 0;
                 chunk.setBlockState(pos, tuffAt(x, yy, z), 0);
             }
-            return;
-        }
-        for (int yy = y; yy >= Math.max(minY + 1, y - LAVA_DEPTH); yy--) {
-            BlockState st = chunk.getBlockState(pos.set(x, yy, z));
-            if (!isRock(st)) continue;
-            chunk.setBlockState(pos, lavaRockAt(x, yy, z), 0);
-        }
-        if (underWater) return;
-        BlockState above = chunk.getBlockState(pos.set(x, y + 1, z));
-        if (above.is(Blocks.SNOW)) chunk.setBlockState(pos, Blocks.AIR.defaultBlockState(), 0);
-        else if (!above.isAir()) return;
-        if (data.waterY != null && data.waterY[lz][lx] != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE) return;
-        // Only where the ground is level or a hollow, so nothing can run out (checked on the tile, across chunk edges).
-        int own = tileTop(data, lx, lz, scale);
-        if (own != y || !levelOrHollow(data, lx, lz, scale, own)) return;
-        if (tag == OceanFeatures.TAG_LAVA_CHANNEL && clearOfFuel(data, lx, lz)) {
-            chunk.setBlockState(pos.set(x, y, z), Blocks.LAVA.defaultBlockState(), 0);
-            chunk.setBlockState(pos.set(x, y - 1, z), Blocks.MAGMA_BLOCK.defaultBlockState(), 0);
-        } else if (unit(mix(h + 9)) < MAGMA_CHANCE) {
-            chunk.setBlockState(pos.set(x, y, z), Blocks.MAGMA_BLOCK.defaultBlockState(), 0);
         }
     }
 
@@ -335,46 +309,6 @@ public final class OceanSurfaces {
         float p = PATCHES.GetNoise(x * 0.9f - 700, z * 0.9f + 50);
         float q = STRATA.GetNoise(x * 0.4f + 90, y * 3f, z * 0.4f);
         return p > 0.45f || q > 0.7f ? Blocks.SMOOTH_BASALT.defaultBlockState() : Blocks.TUFF.defaultBlockState();
-    }
-
-    /** Fresh lava rock: basalt and blackstone in patches, a little smooth basalt. */
-    private static BlockState lavaRockAt(int x, int y, int z) {
-        float p = PATCHES.GetNoise(x * 1.3f + 1500, z * 1.3f);
-        float q = STRATA.GetNoise(x * 0.8f - 900, y * 2f, z * 0.8f);
-        if (q > 0.55f) return Blocks.SMOOTH_BASALT.defaultBlockState();
-        return p > 0.1f ? Blocks.BLACKSTONE.defaultBlockState() : Blocks.BASALT.defaultBlockState();
-    }
-
-    /** Top solid block Y of tile column (lx, lz) from the tile (rivers included), or MIN_VALUE outside the tile. */
-    private static int tileTop(HeightmapData data, int lx, int lz, int scale) {
-        if (lz < 0 || lx < 0 || lz >= data.heightmap.length || lx >= data.heightmap[0].length) return Integer.MIN_VALUE;
-        if (data.surfaceY != null && data.surfaceY[lz][lx] != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE) {
-            return data.surfaceY[lz][lx];
-        }
-        return HeightConverter.convertToMinecraftHeight(data.heightmap[lz][lx], scale) - 1;
-    }
-
-    /** Whether all eight neighbours of tile column (lx, lz) stand at least as high as {@code own}. */
-    private static boolean levelOrHollow(HeightmapData data, int lx, int lz, int scale, int own) {
-        for (int dz = -1; dz <= 1; dz++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                if ((dx != 0 || dz != 0) && tileTop(data, lx + dx, lz + dz, scale) < own) return false;
-            }
-        }
-        return true;
-    }
-
-    /** Whether every column within {@link #LAVA_CLEARANCE} blocks is fresh lava rock (so no tree or grass is near). */
-    private static boolean clearOfFuel(HeightmapData data, int lx, int lz) {
-        byte[][] t = data.oceanTags;
-        for (int dz = -LAVA_CLEARANCE; dz <= LAVA_CLEARANCE; dz++) {
-            for (int dx = -LAVA_CLEARANCE; dx <= LAVA_CLEARANCE; dx++) {
-                int r = lz + dz, c = lx + dx;
-                if (r < 0 || c < 0 || r >= t.length || c >= t[0].length) return false;
-                if (t[r][c] != OceanFeatures.TAG_LAVA && t[r][c] != OceanFeatures.TAG_LAVA_CHANNEL) return false;
-            }
-        }
-        return true;
     }
 
     // ---- Deep floors: ooze, red clay, pillow lava, mud ----

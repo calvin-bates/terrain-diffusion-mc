@@ -47,7 +47,6 @@ public final class FeatureFinder {
         KINDS.put("landslide_scar", new String[]{"landslide_scar", "island landslide scar"});
         KINDS.put("aseismic_ridge", new String[]{"aseismic_ridge", "aseismic ridge"});
         KINDS.put("tuff_ring", new String[]{"tuff_ring", "tuff ring or maar"});
-        KINDS.put("lava_delta", new String[]{"lava_delta", "lava delta"});
         KINDS.put("oceanic_plateau", new String[]{"oceanic_plateau", "oceanic plateau"});
         KINDS.put("forearc_island", new String[]{"forearc_island", "forearc island"});
         KINDS.put("back_arc_basin", new String[]{"back_arc_basin", "back-arc basin spreading axis"});
@@ -328,7 +327,6 @@ public final class FeatureFinder {
             case "tuff_ring" -> v >= 1000 ? "a maar with a lake, rim about " + (v - 1000) + " m high"
                     : (v < 0 ? "breached and flooded by the sea, rim about " + (-v) + " m high"
                     : "breached toward the sea, rim about " + v + " m high");
-            case "lava_delta" -> "new land about " + v + " m above the sea, with live lava on its channel";
             case "oceanic_plateau" -> "top about " + (-v) + " m down";
             case "forearc_island" -> "low limestone island, peak " + v + " m";
             case "back_arc_basin" -> "axis about " + (-v) + " m down";
