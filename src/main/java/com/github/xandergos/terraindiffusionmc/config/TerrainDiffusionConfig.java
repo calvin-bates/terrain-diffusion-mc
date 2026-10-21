@@ -151,6 +151,8 @@ public final class TerrainDiffusionConfig {
      */
     public static float archipelagoSteerIn() { return readFloat("oceans.archipelago_steer_in", 0f); }
     public static float archipelagoSteerOut() { return readFloat("oceans.archipelago_steer_out", 0f); }
+    /** The same push on the island pass's input (from sigma 1, so the model can redraw the texture around it). */
+    public static float archipelagoSteerIsland() { return readFloat("oceans.archipelago_steer_island", 0f); }
     /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
     public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */

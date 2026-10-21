@@ -287,6 +287,7 @@ public final class WorldPipeline implements AutoCloseable {
         if (stage == STAGE_ISLAND && "step".equals(archMode)) modelArch = false;
         float archFinalPull = "clear".equals(archMode) ? ARCH_FINAL_PULL : TerrainDiffusionConfig.archipelagoFinalPull();
         float steerIn = TerrainDiffusionConfig.archipelagoSteerIn(), steerOut = TerrainDiffusionConfig.archipelagoSteerOut();
+        float steerIsland = TerrainDiffusionConfig.archipelagoSteerIsland();
         int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
@@ -313,6 +314,7 @@ public final class WorldPipeline implements AutoCloseable {
                 boolean island = guide != null && guide.inTile();
                 if (!island && arch == null) continue;              // passes through unchanged
                 if (arch != null) prepareArchipelagoPass(sample, arch, S, "clear".equals(archMode));
+                if (arch != null && steerIsland != 0f) steerDetail(sample, arch, S, SIGMA_DATA, steerIsland, ctx[1], ctx[2]);
                 if (island) guide.prepareIslandPass(sample, S);
             } else if (stage == STAGE_STEP) {
                 if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, "clear".equals(archMode) ? ARCH_STEP_PULL : 1f);
