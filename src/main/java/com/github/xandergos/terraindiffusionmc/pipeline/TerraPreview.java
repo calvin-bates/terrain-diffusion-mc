@@ -1,6 +1,7 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -77,6 +78,7 @@ public final class TerraPreview {
                     dumpPatch(out.resolve("archipelago" + k + "_" + variant.replace("@", "_") + "_stages.bin"), win,
                             p.debugModel, p.debugShaped, e, tags);
                     String name = "archipelago" + k + "_" + variant.replace("@", "_");
+                    if (k < 2) dumpLatents(out.resolve(name + "_latent.bin"), p, i1, j1, win);
                     write(render(e, win, win), out.resolve(name + ".png"));
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
                             Math.round(m.i() * 6), stats(e, win, win), (System.nanoTime() - t0) / 1e9));
@@ -122,6 +124,32 @@ public final class TerraPreview {
         }
         for (String s : summary) System.out.println(s);
         System.exit(0);
+    }
+
+    /**
+     * The latent (channels 0-4, unweighted, as the model outputs them) and the decoder's residual (native pixels,
+     * signed-sqrt metres) over the window: to find how the detail channels map to the terrain at island scale.
+     * Layout: int lH, int lW, int H, int W (LE), then 5*lH*lW floats, then H*W floats.
+     */
+    private static void dumpLatents(Path file, WorldPipeline p, int i1, int j1, int win) throws Exception {
+        int lc = WorldPipeline.LATENT_COMPRESSION;
+        int li1 = Math.floorDiv(i1, lc), lj1 = Math.floorDiv(j1, lc), lH = win / lc, lW = win / lc;
+        int ri1 = li1 * lc, rj1 = lj1 * lc, H = lH * lc, W = lW * lc;
+        FloatTensor lat = p.latents.getSlice(new int[]{0, li1, lj1}, new int[]{6, li1 + lH, lj1 + lW});
+        FloatTensor res = p.residual.getSlice(new int[]{0, ri1, rj1}, new int[]{2, ri1 + H, rj1 + W});
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(16 + 4 * (5 * lH * lW + H * W)).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        buf.putInt(lH).putInt(lW).putInt(H).putInt(W);
+        int n = lH * lW;
+        for (int ch = 0; ch < 5; ch++) for (int q = 0; q < n; q++) {
+            float w = lat.data[5 * n + q];
+            buf.putFloat(w > 1e-6f ? lat.data[ch * n + q] / w : 0f);
+        }
+        int m = H * W;
+        for (int q = 0; q < m; q++) {
+            float w = res.data[m + q];
+            buf.putFloat((w > 1e-6f ? res.data[q] / w : 0f) * WorldPipeline.RESIDUAL_STD + WorldPipeline.RESIDUAL_MEAN);
+        }
+        Files.write(file, buf.array());
     }
 
     /** Writes a 256x256 patch (rows 150-405, columns 400-655 of the window) of each stage as float32 LE, then the tags. */
