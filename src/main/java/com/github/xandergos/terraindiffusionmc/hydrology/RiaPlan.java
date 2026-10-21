@@ -32,6 +32,17 @@ public final class RiaPlan {
      * the valley that makes a coast "hilly".
      */
     private static final float MIN_RELIEF = 50f;
+    /**
+     * Shortest inlet (pixels, 600 m): the valley floor this far up from the mouth must lie no higher than the drowning
+     * depth there, so the sea really runs up it. A steep valley would only get a notch at its mouth.
+     */
+    private static final float MIN_INLET_PX = 20f;
+    /**
+     * Over how many metres of valley floor above the drowning depth the lowering fades out. Above that the floor is not
+     * drowned at all: lowering it there only dug a dry gorge up the valley (the floor of a steep valley climbs far
+     * above the depth within a pixel or two).
+     */
+    private static final float DRY_FADE_M = 10f;
     /** How far (pixels) the drowning reaches sideways from the stem. */
     private static final float REACH_PX = 30f;
     /** Longest ria (pixels). */
@@ -117,11 +128,20 @@ public final class RiaPlan {
         float rel = e - floor;
         if (rel >= hv) return e;
         float w = (1 - smooth(0.55f * hv, hv, rel)) * (1 - smooth(0.65f * REACH_PX, REACH_PX, d))
-                * (1 - smooth(0f, 8f, beyond));
+                * (1 - smooth(0f, 8f, beyond)) * (1 - smooth(D, D + DRY_FADE_M, floor));
         if (w <= 0f) return e;
         // Never below the drowned floor itself unless it is already lower (the sea floor off the mouth).
         float lowered = Math.max(e - D * w, Math.min(e, floor - D));
         return Math.min(e, lowered);
+    }
+
+    /** How far (pixels) up the stem the valley floor stays at or below the drowning depth: the inlet's length. */
+    float inletLength() {
+        for (int i = 0; i < cum.length; i++) {
+            float t = Math.max(0f, Math.min(1f, cum[i] / length));
+            if (surf[i] > depth0 * (1 - (float) Math.pow(t, 1.6))) return cum[i];
+        }
+        return length;
     }
 
     private float surfAt(float s) {
@@ -215,15 +235,47 @@ public final class RiaPlan {
         return result;
     }
 
+    /** Names of the {@link #stats} entries: why river mouths did not become rias. */
+    public static final String[] REASONS = {"river mouths", "too cold (fjord country)", "skipped by chance",
+            "river too short", "coast not hilly", "valley too steep for an inlet", "rias"};
+
+    /**
+     * Counts, for the river mouths in region (ri, rj)'s own square, why each did or did not become a ria (indices into
+     * {@link #REASONS}), for the finder's report.
+     */
+    public static int[] stats(RiverService.Region reg, int ri, int rj, int regionSize) {
+        int[] out = new int[REASONS.length];
+        if (reg.elev == null || reg.temp == null) return out;
+        for (int i = ri * regionSize; i < (ri + 1) * regionSize; i++) {
+            for (int j = rj * regionSize; j < (rj + 1) * regionSize; j++) {
+                int k = reg.index(i, j);
+                if (k < 0) continue;
+                int[] why = new int[1];
+                tryMouth(reg, k, i, j, why);
+                if (why[0] < 0) continue;
+                out[0]++;
+                if (why[0] > 0) out[why[0]]++;
+                else out[REASONS.length - 1]++;
+            }
+        }
+        return out;
+    }
+
     private static RiaPlan tryMouth(RiverService.Region reg, int k, int i, int j) {
+        return tryMouth(reg, k, i, j, new int[1]);
+    }
+
+    /** As above; {@code why[0]} gets -1 if k is not a river mouth, 0 for a ria, else the reason (see {@link #REASONS}). */
+    private static RiaPlan tryMouth(RiverService.Region reg, int k, int i, int j, int[] why) {
+        why[0] = -1;
         byte c = reg.cls[k];
         if (c != RiverMap.RIVER && c != RiverMap.MAIN) return null;
         if (reg.elev[k] <= 0f) return null;
         int d = reg.downstream[k];
         if (d < 0 || reg.elev[d] > 0f) return null;                          // not the last land pixel
         long h = (long) i * 73856093L ^ (long) j * 19349663L ^ 0x41A5L;
-        if (u(h, 0) > RIA_CHANCE) return null;
-        if (reg.temp[k] < MIN_TEMP) return null;
+        if (reg.temp[k] < MIN_TEMP) { why[0] = 1; return null; }
+        if (u(h, 0) > RIA_CHANCE) { why[0] = 2; return null; }
         int target = 100 + (int) (83 * u(h, 3));
         List<int[]> stem = new ArrayList<>();
         stem.add(new int[]{k});
@@ -236,7 +288,7 @@ public final class RiaPlan {
             stem.add(new int[]{up});
             cur = up;
         }
-        if (len < 40) return null;
+        if (len < 40) { why[0] = 3; return null; }
         // Hilly: the valley sides stand well above the river along the lower valley.
         float relief = 0;
         int samples = 0;
@@ -254,8 +306,11 @@ public final class RiaPlan {
             relief += hi - reg.elev[q];
             samples++;
         }
-        if (samples == 0 || relief / samples < MIN_RELIEF) return null;
-        return new RiaPlan(reg, stem, h);
+        if (samples == 0 || relief / samples < MIN_RELIEF) { why[0] = 4; return null; }
+        RiaPlan plan = new RiaPlan(reg, stem, h);
+        if (plan.inletLength() < MIN_INLET_PX) { why[0] = 5; return null; }
+        why[0] = 0;
+        return plan;
     }
 
     /**

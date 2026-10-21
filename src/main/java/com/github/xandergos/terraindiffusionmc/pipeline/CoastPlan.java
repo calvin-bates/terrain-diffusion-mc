@@ -35,16 +35,25 @@ public final class CoastPlan {
     /** Share of coastal regions inside sand-landform zones (noise level; higher = rarer). */
     private static final float ZONE_LEVEL = 0.25f;
     /** Chances per candidate: spit (per headland cell), tombolo (per small island), cuspate foreland (per straight cell). */
-    private static final double SPIT_CHANCE = 0.3, TOMBOLO_CHANCE = 0.5, FORELAND_CHANCE = 0.2;
+    private static final double SPIT_CHANCE = 0.5, TOMBOLO_CHANCE = 0.5, FORELAND_CHANCE = 0.2;
     /** Cells (pixels, ~2.9 km) within which one spit or foreland may root. */
     private static final int CELL = 96;
-    /** Deepest water (metres) a bar is built over. */
+    /** Deepest water (metres) a tombolo or foreland is built over. */
     private static final float MAX_BAR_DEPTH = 15f;
+    /**
+     * Spits (Oct 21, after Calvin found none in game): deepest water (m) along the line a spit grows on, highest ground
+     * (m) within 120 m behind its root, how far out (blurred land fraction, lower = farther) the coast's line must run
+     * within ~1.2 km, and by how much more than it does updrift. The first values (15 m, 12 m, 0.15, 0.25) suited only
+     * a very gentle, very ragged test coast.
+     */
+    private static final float SPIT_MAX_DEPTH = 20f, SPIT_MAX_BEHIND = 20f, SPIT_FAR = 0.25f, SPIT_TURN = 0.2f;
+    /** Farthest (pixels, 2.4 km) along the coast's line that the turn test looks; at least 40 (1.2 km). */
+    private static final int SPIT_LOOK_PX = 80;
     /**
      * Ground (metres) a plan can change: nothing outside [RAISE_LOW, RAISE_HIGH] is ever touched, so a tile with no
      * ground in that range can skip the plans and still agree with its neighbours ({@link #touches}).
      */
-    public static final float RAISE_LOW = -MAX_BAR_DEPTH - 5.5f, RAISE_HIGH = 5.5f;
+    public static final float RAISE_LOW = -SPIT_MAX_DEPTH - 5.5f, RAISE_HIGH = 5.5f;
 
     public static final int SPIT = 0, TOMBOLO = 1, FORELAND = 2;
 
@@ -89,7 +98,7 @@ public final class CoastPlan {
             float tx = fx - c0, tz = fz - r0;
             float d = lerp2(gridD, r0, c0, tx, tz), w = lerp2(gridW, r0, c0, tx, tz), cr = lerp2(gridC, r0, c0, tx, tz);
             if (w <= 0 || d >= w) return e;
-            if (e < -MAX_BAR_DEPTH - 5) return e;
+            if (e < -SPIT_MAX_DEPTH - 5) return e;
             // A flat crest over the middle of the bar, its shoulders falling to the old ground at the edges.
             float shoulder = smooth(0.45f, 1f, d / w);
             float top = cr + (Math.min(e, cr) - cr) * shoulder;
@@ -185,12 +194,25 @@ public final class CoastPlan {
     public final List<Bar> bars;
     public final List<Foreland> forelands;
 
-    private CoastPlan(List<Bar> bars, List<Foreland> forelands) {
+    /**
+     * Why shore pixels in this region's own square did not grow a spit (counts; see {@link #SPIT_REASONS}), for the
+     * finder's report; all zero when the region has no coast.
+     */
+    public final int[] spitStats;
+
+    /** Names of the {@link #spitStats} entries. */
+    public static final String[] SPIT_REASONS = {
+            "shore pixels checked", "drift runs across the coast", "the coast's line runs onto land",
+            "water too deep along the line", "the coast doesn't turn away", "land behind too high or mangrove coast",
+            "spit sites", "sites skipped by chance", "spits too short (deep water or land ahead)", "spits built"};
+
+    private CoastPlan(List<Bar> bars, List<Foreland> forelands, int[] spitStats) {
         this.bars = bars;
         this.forelands = forelands;
+        this.spitStats = spitStats;
     }
 
-    static final CoastPlan EMPTY = new CoastPlan(List.of(), List.of());
+    static final CoastPlan EMPTY = new CoastPlan(List.of(), List.of(), new int[SPIT_REASONS.length]);
 
     public boolean isEmpty() {
         return bars.isEmpty() && forelands.isEmpty();
@@ -333,14 +355,19 @@ public final class CoastPlan {
          * and not a hot, wet mangrove coast.
          */
         public boolean gentleSandy(int k, float[] n) {
+            return gentleSandy(k, n, 12f, 12f);
+        }
+
+        /** As {@link #gentleSandy(int, float[])}, with the highest ground behind and deepest water in front given. */
+        public boolean gentleSandy(int k, float[] n, float maxBehind, float maxDepth) {
             if (temp != null && temp[k] >= 24f && precip[k] >= 1200f) return false;
             float x = j0 + k % W + 0.5f, z = i0 + k / W + 0.5f;
             for (int s = 1; s <= 4; s++) {
                 float e = elevAt(x - n[0] * s, z - n[1] * s);
-                if (Float.isNaN(e) || e > 12f) return false;
+                if (Float.isNaN(e) || e > maxBehind) return false;
             }
             float off = elevAt(x + n[0] * 8, z + n[1] * 8);
-            return !Float.isNaN(off) && off > -12f;
+            return !Float.isNaN(off) && off > -maxDepth;
         }
     }
 
@@ -364,6 +391,7 @@ public final class CoastPlan {
         List<Bar> bars = new ArrayList<>();
         List<Foreland> forelands = new ArrayList<>();
         int own0i = ri * SIZE, own0j = rj * SIZE;
+        int[] stats = new int[SPIT_REASONS.length];
 
         // Spits and forelands: at most one each per cell, from the shore pixels that suit them.
         for (int ci = 0; ci < SIZE / CELL + 1; ci++) {
@@ -377,16 +405,23 @@ public final class CoastPlan {
                         if (archipelago.apply((double) i, (double) j) > 0.3f) continue;
                         float far = an.landFar[k];
                         long h = mix(seed ^ ((long) i * 0x9E3779B97F4A7C15L) ^ ((long) j * 0xC2B2AE3D27D4EB4FL));
-                        if (h < bestSpitH && spitSite(an, k)) { bestSpitH = h; bestSpit = k; }             // coast turns away
+                        int why = spitSite(an, k);
+                        stats[0]++;
+                        if (why > 0) stats[why]++;
+                        else if (h < bestSpitH) { bestSpitH = h; bestSpit = k; }                          // coast turns away
                         if (Math.abs(far - 0.5f) < 0.04f && Math.abs(an.landNear[k] - 0.5f) < 0.12f && h < bestForeH) {
                             bestForeH = h; bestFore = k;                                                   // straight
                         }
                     }
                 }
                 long cellH = mix(seed ^ ((long) (own0i / CELL + ci) * 0x632BE59BD9B4E019L) ^ ((long) (own0j / CELL + cj) * 0x85EBCA77C2B2AE63L));
-                if (bestSpit >= 0 && unit(cellH) < SPIT_CHANCE) {
-                    Bar b = spit(an, bestSpit, cellH);
-                    if (b != null) bars.add(b);
+                if (bestSpit >= 0) {
+                    stats[6]++;
+                    if (unit(cellH) >= SPIT_CHANCE) stats[7]++;
+                    else {
+                        Bar b = spit(an, bestSpit, cellH);
+                        if (b != null) { bars.add(b); stats[9]++; } else stats[8]++;
+                    }
                 }
                 if (bestFore >= 0 && unit(mix(cellH + 1)) < FORELAND_CHANCE) {
                     Foreland f = foreland(an, bestFore, mix(cellH + 2));
@@ -396,8 +431,7 @@ public final class CoastPlan {
         }
         // Tombolos: small islands whose middle lies in this region's own square.
         tombolos(seed, an, own0i, own0j, archipelago, bars);
-        if (bars.isEmpty() && forelands.isEmpty()) return EMPTY;
-        return new CoastPlan(Collections.unmodifiableList(bars), Collections.unmodifiableList(forelands));
+        return new CoastPlan(Collections.unmodifiableList(bars), Collections.unmodifiableList(forelands), stats);
     }
 
     /** Unit vector along the coast's general line at pixel k, pointing the way the drift runs, or null if it runs across. */
@@ -411,21 +445,27 @@ public final class CoastPlan {
     /**
      * Whether shore pixel k is where a spit grows: carried on downdrift in a straight line, the coast's general line runs
      * out over shallow water, because the coast turns away landward there (the end of a headland, the mouth of a bay).
+     * Returns 0 if so, else the first reason it is not (an index into {@link #SPIT_REASONS}).
      */
-    private static boolean spitSite(Analysis an, int k) {
+    private static int spitSite(Analysis an, int k) {
         float[] n = an.normalFar(k);
-        if (n == null) return false;
+        if (n == null) return 1;
         float[] t = downdrift(an, n);
-        if (t == null) return false;
+        if (t == null) return 1;
         float x = an.j0 + k % an.W + 0.5f, z = an.i0 + k / an.W + 0.5f;
-        for (int s = 10; s <= 40; s += 10) {
+        // Along the line over shallow water until it is clearly away from the coast, within 1.2-2.4 km (a broad headland
+        // turns away more slowly than a sharp one; a coast that merely wobbles stays near its line). Asymmetric: carried
+        // back updrift the same distance, the line stays along the coast, so this is a bend, not a bump on a straight coast.
+        for (int s = 10; s <= SPIT_LOOK_PX; s += 10) {
             float e = an.elevAt(x + t[0] * s, z + t[1] * s);
-            if (Float.isNaN(e) || e >= 0f || e < -MAX_BAR_DEPTH) return false;
+            if (Float.isNaN(e) || e >= 0f) return 2;
+            if (e < -SPIT_MAX_DEPTH) return 3;
+            if (s < 40) continue;
+            float far = an.landFarAt(x + t[0] * s, z + t[1] * s), back = an.landFarAt(x - t[0] * s, z - t[1] * s);
+            if (Float.isNaN(far) || Float.isNaN(back)) return 4;
+            if (far < SPIT_FAR && back - far > SPIT_TURN) return an.gentleSandy(k, n, SPIT_MAX_BEHIND, SPIT_MAX_DEPTH) ? 0 : 5;
         }
-        // Clearly away from the coast within ~1.2 km (a coast that merely wobbles stays near its line).
-        // Asymmetric: carried back updrift the line stays along the coast, so this is a bend, not a bump on a straight coast.
-        float far = an.landFarAt(x + t[0] * 40, z + t[1] * 40), back = an.landFarAt(x - t[0] * 40, z - t[1] * 40);
-        return !Float.isNaN(far) && !Float.isNaN(back) && far < 0.15f && back - far > 0.25f && an.gentleSandy(k, n);
+        return 4;
     }
 
     /**
@@ -454,7 +494,7 @@ public final class CoastPlan {
             x += (float) Math.cos(heading);
             z += (float) Math.sin(heading);
             float e = an.elevAt(x, z);
-            if (Float.isNaN(e) || e < -MAX_BAR_DEPTH) break;               // only over shallow water
+            if (Float.isNaN(e) || e < -SPIT_MAX_DEPTH) break;              // only over shallow water
             float taper = 1 - 0.4f * f;
             pts.add(new float[]{x, z, halfW * taper, crest * (1 - 0.35f * f)});
             built++;

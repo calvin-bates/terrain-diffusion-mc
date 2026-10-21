@@ -217,7 +217,12 @@ public final class FeatureFinder {
                     LocalTerrainProvider.Ria r = res.nearest();
                     if (r == null) {
                         source.sendFailure(Component.literal("No ria within about " + searchedKm + " km. Rias form where a river "
-                                + "reaches the sea on a warm (above about 8 °C), hilly coast; about a third of those mouths are drowned."));
+                                + "reaches the sea on a warm (above about 8 °C), hilly coast with a valley gentle enough for the sea to run up; about a third of those mouths are drowned."));
+                        StringBuilder why = new StringBuilder("Searched river mouths:");
+                        int[] st = res.stats();
+                        for (int q = 0; q < st.length; q++) why.append(q == 0 ? " " : "; ").append(com.github.xandergos.terraindiffusionmc.hydrology.RiaPlan.REASONS[q]).append(": ").append(st[q]);
+                        LOG.info("[Terra] terra-find ria: {}", why);
+                        source.sendSystemMessage(Component.literal(why.toString()).withStyle(ChatFormatting.GRAY));
                         return;
                     }
                     long hx = Math.round(r.headJ() * scale), hz = Math.round(r.headI() * scale);
@@ -250,6 +255,15 @@ public final class FeatureFinder {
                     if (res.nearest() == null) {
                         source.sendFailure(Component.literal("No " + name + " within about " + searchedKm + " km. These form on low, "
                                 + "sandy coasts with shallow water, in zones a few hundred km across; try another lowland coast."));
+                        // Why: regions in zones, then why their shore did not grow spits (also in the log, to send back).
+                        StringBuilder why = new StringBuilder("Searched " + res.regions() + " coastal regions: " + res.zoneRegions()
+                                + " in sand zones, " + res.shoreRegions() + " of those with shore.");
+                        if (k == CoastPlan.SPIT) {
+                            int[] st = res.spitStats();
+                            for (int q = 0; q < st.length; q++) why.append(q == 0 ? " " : "; ").append(CoastPlan.SPIT_REASONS[q]).append(": ").append(st[q]);
+                        }
+                        LOG.info("[Terra] terra-find {}: {}", name, why);
+                        source.sendSystemMessage(Component.literal(why.toString()).withStyle(ChatFormatting.GRAY));
                         return;
                     }
                     report(source, name, new OceanFeatures.Landmark(name, res.nearest().i(), res.nearest().j(), 0f), pi, pj, scale);

@@ -339,7 +339,7 @@ public final class LocalTerrainProvider {
     public record Ria(float mouthI, float mouthJ, float headI, float headJ) {}
 
     /** Result of a ria search: the nearest ria (or null), how many were seen, and how far the search reached. */
-    public record RiaSearch(Ria nearest, int count, int searchedRadiusPx) {}
+    public record RiaSearch(Ria nearest, int count, int searchedRadiusPx, int[] stats) {}
 
     /**
      * The nearest ria (see {@link RiaPlan}) to native pixel (pi, pj), searching the hydrology regions ring by ring out to
@@ -352,13 +352,18 @@ public final class LocalTerrainProvider {
         Ria best = null;
         double bestD = Double.MAX_VALUE;
         int count = 0, reached = 0;
+        int[] stats = new int[RiaPlan.REASONS.length];
         for (int ring = 0; ring <= maxRings; ring++) {
             for (int ri = ci - ring; ri <= ci + ring; ri++) {
                 for (int rj = cj - ring; rj <= cj + ring; rj++) {
                     if (Math.max(Math.abs(ri - ci), Math.abs(rj - cj)) != ring) continue;
                     final int fri = ri, frj = rj;
-                    List<RiaPlan> plans = submitToInferenceThread(() -> RiaPlan.of(rivers().region(fri, frj,
-                            (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true)), fri, frj, size));
+                    List<RiaPlan> plans = submitToInferenceThread(() -> {
+                        RiverService.Region reg = rivers().region(fri, frj, (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true));
+                        int[] st = RiaPlan.stats(reg, fri, frj, size);
+                        for (int q = 0; q < stats.length; q++) stats[q] += st[q];
+                        return RiaPlan.of(reg, fri, frj, size);
+                    });
                     for (RiaPlan p : plans) {
                         count++;
                         double d = Math.hypot(p.mouthZ - pi, p.mouthX - pj);
@@ -370,7 +375,7 @@ public final class LocalTerrainProvider {
             progress.accept(reached);
             if (best != null && bestD <= ring * size) break;
         }
-        return new RiaSearch(best, count, reached);
+        return new RiaSearch(best, count, reached, stats);
     }
 
     /** Change to a random new seed; returns the new seed value. */
@@ -631,8 +636,13 @@ public final class LocalTerrainProvider {
     /** A sand landform found near a point: kind (CoastPlan.SPIT, TOMBOLO, FORELAND) and where (native pixels). */
     public record CoastFeature(int kind, float i, float j) {}
 
-    /** Result of a sand landform search: the nearest one of the kind (or null), how many seen, how far it reached. */
-    public record CoastSearch(CoastFeature nearest, int count, int searchedRadiusPx) {}
+    /**
+     * Result of a sand landform search: the nearest one of the kind (or null), how many seen, how far it reached, how many
+     * regions were searched, how many of them lie in sand-landform zones and how many of those have shore, and the spit
+     * rejection counts summed over them ({@link CoastPlan#SPIT_REASONS}).
+     */
+    public record CoastSearch(CoastFeature nearest, int count, int searchedRadiusPx, int regions, int zoneRegions,
+                              int shoreRegions, int[] spitStats) {}
 
     /**
      * The nearest spit, tombolo or cuspate foreland ({@code kind} as in {@link CoastPlan}) to native pixel (pi, pj),
@@ -645,13 +655,18 @@ public final class LocalTerrainProvider {
         int ci = Math.floorDiv((int) Math.floor(pi), S), cj = Math.floorDiv((int) Math.floor(pj), S);
         CoastFeature best = null;
         double bestD = Double.MAX_VALUE;
-        int count = 0, reached = 0;
+        int count = 0, reached = 0, regions = 0, zoneRegions = 0, shoreRegions = 0;
+        int[] stats = new int[CoastPlan.SPIT_REASONS.length];
         for (int ring = 0; ring <= maxRings; ring++) {
             for (int ri = ci - ring; ri <= ci + ring; ri++) {
                 for (int rj = cj - ring; rj <= cj + ring; rj++) {
                     if (Math.max(Math.abs(ri - ci), Math.abs(rj - cj)) != ring) continue;
                     final int fri = ri, frj = rj;
                     CoastPlan plan = submitToInferenceThread(() -> getInstance().coastPlan(fri, frj));
+                    regions++;
+                    if (CoastPlan.zoneActive(instanceSeed, fri, frj)) zoneRegions++;
+                    if (plan.spitStats[0] > 0) shoreRegions++;
+                    for (int q = 0; q < stats.length; q++) stats[q] += plan.spitStats[q];
                     List<float[]> spots = new ArrayList<>();
                     for (CoastPlan.Bar b : plan.bars) if (b.kind == kind) spots.add(new float[]{b.midZ(), b.midX()});
                     if (kind == CoastPlan.FORELAND) for (CoastPlan.Foreland f : plan.forelands) spots.add(new float[]{f.apexZ(), f.apexX()});
@@ -666,7 +681,7 @@ public final class LocalTerrainProvider {
             progress.accept(reached);
             if (best != null && bestD <= ring * S) break;
         }
-        return new CoastSearch(best, count, reached);
+        return new CoastSearch(best, count, reached, regions, zoneRegions, shoreRegions, stats);
     }
 
     /** Native pixels around a river mouth within which the coast keeps no cliff (fading out to RIVER_MOUTH_FADE_PX). */
