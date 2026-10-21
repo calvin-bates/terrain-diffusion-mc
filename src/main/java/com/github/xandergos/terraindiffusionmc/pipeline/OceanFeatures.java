@@ -83,6 +83,12 @@ public final class OceanFeatures {
     public static final byte TAG_RED_CLAY = 15;
     /** Young crust near a mid-ocean ridge axis: pillow lava (basalt and blackstone). */
     public static final byte TAG_PILLOW = 16;
+    /** Rim and walls of a tuff ring or maar on a young island's coast: tuff, with some smooth basalt. */
+    public static final byte TAG_TUFF = 17;
+    /** Fresh lava on an active island (a lava delta and the flow feeding it): basalt and blackstone, magma in hollows. */
+    public static final byte TAG_LAVA = 18;
+    /** The active lava channel down the middle of a flow: as {@link #TAG_LAVA}, with pools of live lava where level. */
+    public static final byte TAG_LAVA_CHANNEL = 19;
 
     /** Whether a surface tag is a coral reef of any kind. */
     public static boolean isReef(byte tag) {
@@ -257,15 +263,22 @@ public final class OceanFeatures {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
                 float raw = elev[k];
-                if (modelIslands && raw > -ISLAND_COAST_DEEP && coarse.elevation(i1 + r, j1 + c) < -500f) {
+                byte coastTag = TAG_NONE;
+                if (modelIslands && raw > -ISLAND_EDIT_DEEP && coarse.elevation(i1 + r, j1 + c) < -500f) {
                     // Model-drawn islands: a summit crater and a ragged coast (both too small for the model to draw),
-                    // and on land their island rock (forearc islands' limestone).
+                    // tuff rings and lava deltas on young islands' coasts, and on land their island rock (forearc
+                    // islands' limestone).
                     islandGuide(i1 + r, j1 + c, coarse, ctx);
                     if (ctx.guideTop > -1500) {
                         raw -= (float) ctx.guideCrater;
                         if (raw < ISLAND_COAST_HIGH) raw = (float) islandCoast(raw, i1 + r, j1 + c, smoothstep(-1500, -500, ctx.guideTop));
+                        if (hasCoastEdit(ctx)) {
+                            raw = (float) coastEdit(raw, ctx);
+                            coastTag = ctx.coastTag;
+                        }
                         elev[k] = raw;
                         if (raw >= 0f && tags != null && ctx.surfaceTag != TAG_NONE && ctx.guideTop > -30) tags[k] = ctx.surfaceTag;
+                        if (raw >= 0f && tags != null && coastTag != TAG_NONE) tags[k] = coastTag;
                     }
                 }
                 if (raw >= 0f) continue;
@@ -273,9 +286,9 @@ public final class OceanFeatures {
                 ctx.reefOp = false;
                 double v = raw < -30f ? shape(raw, i1 + r, j1 + c, coarse, ctx) : raw;
                 // Reefs and banks in warm shallow water, away from the atolls and barrier reefs drawn above.
-                if (!ctx.reefOp && v < 0 && v > -SHALLOW_MAX_M) v = shallowSeas(v, i1 + r, j1 + c, coarse, ctx);
+                if (!ctx.reefOp && v < 0 && v > -SHALLOW_MAX_M && coastTag == TAG_NONE) v = shallowSeas(v, i1 + r, j1 + c, coarse, ctx);
                 elev[k] = (float) v;
-                if (tags != null) tags[k] = ctx.tag;
+                if (tags != null) tags[k] = coastTag != TAG_NONE ? coastTag : ctx.tag;
             }
         }
     }
@@ -324,6 +337,21 @@ public final class OceanFeatures {
         double guideCrater;
         /** Only the island guide is wanted: skip everything else in {@link #shape}. */
         boolean guideOnly;
+        // Coastal cones and lava deltas on young islands (round 4), recorded by the island code; see #coastEdit.
+        /** Distance from the nearest tuff ring's centre over its radius (wobbly), or infinity if none is near. */
+        double tuffU;
+        /** That ring's radius (metres), rim height (m), floor (absolute m), gap half-width (radians), kind. */
+        double tuffR, tuffRim, tuffFloor, tuffGapW;
+        int tuffKind;
+        /** Angle (radians) from that ring's seaward direction to this pixel, seen from the ring's centre. */
+        double tuffDa;
+        /** Lava delta here: weight (0..1), surface it builds to (absolute m), deepest water it fills (m). */
+        double lavaW, lavaTop, lavaFill;
+        /** Young lava flow here: how much its levees raise the ground (m), and 1 on the flow, 2 on its channel. */
+        double lavaRaise;
+        int lavaFlow;
+        /** Surface tag left by {@link #coastEdit}. */
+        byte coastTag;
         /** The hotspot chains within two cells of the last hotspot cell asked for (rows of pixels share a cell). */
         final Chain[] nearChains = new Chain[25];
         int nearCellX = Integer.MIN_VALUE, nearCellZ = Integer.MIN_VALUE;
@@ -343,6 +371,10 @@ public final class OceanFeatures {
         ctx.guideTop = Double.NEGATIVE_INFINITY;
         ctx.guideC = 0;
         ctx.guideCrater = 0;
+        ctx.tuffU = Double.POSITIVE_INFINITY;
+        ctx.lavaW = 0;
+        ctx.lavaRaise = 0;
+        ctx.lavaFlow = 0;
         if (!ctx.guideOnly) {
             if (raw < -SHELF_TOP_M && raw > -SHELF_BASE_M) raw = shelf(raw, x, z, coarse, ctx);
             if (raw < -CANYON_TOP_M) raw = margin(raw, x, z, coarse, ctx);
@@ -472,9 +504,16 @@ public final class OceanFeatures {
         } else {
             total = floorOnly;
         }
+        // Tuff rings and lava deltas on the procedural islands' coasts (model-drawn islands get them in apply()).
+        byte coastTag = TAG_NONE;
+        if (!modelIslands && hasCoastEdit(ctx)) {
+            total = coastEdit(total, ctx);
+            coastTag = ctx.coastTag;
+        }
         for (int o = 0; o < ctx.nOps; o++) {
             total = applyOp(total, o, x, z, ctx);
         }
+        if (coastTag != TAG_NONE) ctx.tag = coastTag;
         // Island rock from the landform that stands highest here (forearc islands).
         if (ctx.surfaceTag != TAG_NONE && total > -30 && ctx.surfaceC >= ctx.top1 - 1 && !ctx.reefOp) ctx.tag = ctx.surfaceTag;
         // Sea floor materials on open-ocean floors that nothing else has claimed.
@@ -1200,6 +1239,10 @@ public final class OceanFeatures {
                         double si = ch.cz[k] + Math.sin(a) * landR, sj = ch.cx[k] + Math.cos(a) * landR;
                         if (inside(si, sj, i0, j0, i1, j1)) out.add(new Landmark("landslide_scar", si, sj, (float) ch.peak[k]));
                     }
+                    if (stage.equals("volcanic_island") && k <= 1) {
+                        coneLandmarks(ch.hk[k], ch.peak[k], ch.radius[k], islandLandU(stage, ch.hk[k]), k == 0, ch.cx[k], ch.cz[k],
+                                IDENTITY, i0, j0, i1, j1, out);
+                    }
                     if (!inside(ch.cz[k], ch.cx[k], i0, j0, i1, j1)) continue;
                     float value = stage.equals("raised_coral_island") ? (float) raisedLift(ch.hk[k]) : (float) ch.peak[k];
                     out.add(new Landmark(stage, ch.cz[k], ch.cx[k], value));
@@ -1287,11 +1330,19 @@ public final class OceanFeatures {
                     if (peak <= 0) continue;
                     double across = arcAcross(h);
                     double[] c = unwarp(mx + tx * ak + ox * across, mz + tz * ak + oz * across);
-                    if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
+                    // Coastal cones can lie a little outside the window when the island does not.
+                    double reach = arcRadius(h) + 3 * KM;
+                    if (!inside(c[1], c[0], i0 - reach, j0 - reach, i1 + reach, j1 + reach)) continue;
                     if (coarse.elevation(c[1], c[0]) > -VOLCANO_MIN_DEPTH) continue;
                     if (!clearOfLand(c[0], c[1], arcRadius(h), coarse)) continue;
                     boolean warm = coarse.temperature(c[1], c[0]) >= REEF_TEMP;
                     int extra = arcExtra(peak, warm, h);
+                    if (extra == ARC_PLAIN) {
+                        // In the arc's frame (along, across), as the island is shaped.
+                        coneLandmarks(h, peak, arcRadius(h), arcLandU(h), false, ak, across, arcFrame(mx, mz, tx, tz, ox, oz),
+                                i0, j0, i1, j1, out);
+                    }
+                    if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
                     String type = extra == ARC_CALDERA ? "flooded_caldera" : (extra == ARC_REEF ? "barrier_reef_island" : "arc_island");
                     out.add(new Landmark(type, c[1], c[0], (float) peak));
                 }
@@ -1346,6 +1397,42 @@ public final class OceanFeatures {
                 }
             }
         }
+    }
+
+    /**
+     * Markers for a young island's tuff rings ({@code tuff_ring}; value is the rim height, negative for a flooded
+     * ring, rim + 1000 for a maar) and lava deltas ({@code lava_delta}, at the middle of the delta; value is its height),
+     * placed by the same rules as the terrain. {@code (cx, cz)} is the island centre in its own frame and {@code toWorld}
+     * maps that frame to native pixels (x, z).
+     */
+    private void coneLandmarks(long h, double peak, double radius, double landU, boolean active, double cx, double cz,
+                               java.util.function.BiFunction<Double, Double, double[]> toWorld,
+                               double i0, double j0, double i1, double j1, java.util.List<Landmark> out) {
+        if (peak < 100) return;
+        for (int n = 0; n < tuffCount(h); n++) {
+            TuffRing t = tuffRing(h, n);
+            double[] c = ringCentre(t, n, cx, cz, radius, landU, h, toWorld);
+            double[] w = toWorld.apply(c[0], c[1]);
+            if (!inside(w[1], w[0], i0, j0, i1, j1)) continue;
+            float v = (float) (t.kind == TUFF_MAAR ? 1000 + t.rim : (t.kind == TUFF_FLOODED ? -t.rim : t.rim));
+            out.add(new Landmark("tuff_ring", w[1], w[0], v));
+        }
+        if (!active) return;
+        for (int n = 0; n < lavaLobeCount(h); n++) {
+            LavaLobe L = lavaLobe(h, n);
+            double d = coastRadius(L.a, cx, cz, radius, landU, h, toWorld) + 0.5 * L.len;
+            double[] w = toWorld.apply(cx + Math.cos(L.a) * d, cz + Math.sin(L.a) * d);
+            if (inside(w[1], w[0], i0, j0, i1, j1)) out.add(new Landmark("lava_delta", w[1], w[0], (float) L.height));
+        }
+    }
+
+    /** The identity frame (hotspot islands are shaped in world space). */
+    private static final java.util.function.BiFunction<Double, Double, double[]> IDENTITY = (a, b) -> new double[]{a, b};
+
+    /** An island arc's frame (along, across into the overriding plate) to world pixels. */
+    private java.util.function.BiFunction<Double, Double, double[]> arcFrame(double mx, double mz, double tx, double tz,
+                                                                          double ox, double oz) {
+        return (a, b) -> unwarp(mx + tx * a + ox * b, mz + tz * a + oz * b);
     }
 
     /** One marker per hydrothermal vent field on a mid-ocean ridge (see {@link #vents}). */
@@ -1661,7 +1748,7 @@ public final class OceanFeatures {
             if (peak > 0 && !clearOfLand(c[0], c[1], radius, coarse)) continue;
             // r is measured in warped space; close enough for the shape.
             if (peak > 0) {
-                double landU = 0.25 + 0.2 * unit(mix(h + 4));
+                double landU = arcLandU(h);
                 double ang = Math.atan2(xo - across, along - ak);
                 boolean warm = coarse.temperature(c[1], c[0]) >= REEF_TEMP;
                 int extra = arcExtra(peak, warm, h);
@@ -1671,6 +1758,7 @@ public final class OceanFeatures {
                 if (extra == ARC_PLAIN && peak > 150) {
                     crater(ctx, r, ang, (0.3 + 0.5 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 50 + 80 * unit(mix(h + 121))), h);
                 }
+                if (extra == ARC_PLAIN) coastalCones(ctx, along, xo, ak, across, x, z, radius, landU, h, false, peak, arcFrame(mx, mz, tx, tz, ox, oz));
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
@@ -1704,7 +1792,7 @@ public final class OceanFeatures {
                     if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
                     boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
                     String stage = volcanoStage(ch.peak[k], warm, k, ch.hk[k], ch.lift[k]);
-                    addVolcano(x, z, ch.cx[k], ch.cz[k], r, ch.radius[k], ch.peak[k], floor, stage, ch.hk[k], ctx);
+                    addVolcano(x, z, ch.cx[k], ch.cz[k], r, ch.radius[k], ch.peak[k], floor, stage, ch.hk[k], k, ctx);
                 }
             }
         }
@@ -1926,7 +2014,7 @@ public final class OceanFeatures {
 
     /** A hotspot volcano at a stage of its life set by how far it has sunk (its peak height). */
     private void addVolcano(double x, double z, double vcx, double vcz, double r, double radius,
-                            double peak, double floor, String stage, long h, Ctx ctx) {
+                            double peak, double floor, String stage, long h, int k, Ctx ctx) {
         switch (stage) {
             case "volcanic_island", "flooded_caldera", "barrier_reef_island" -> {
                 double landU = islandLandU(stage, h);
@@ -1936,6 +2024,11 @@ public final class OceanFeatures {
                 island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
                 if (stage.equals("volcanic_island") && peak > 150) {
                     crater(ctx, r, ang, (0.5 + 0.8 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 70 + 110 * unit(mix(h + 121))), h);
+                }
+                // Young islands (the head and the one behind it) have tuff rings on their coasts; the head is still
+                // erupting and builds lava deltas.
+                if (stage.equals("volcanic_island") && k <= 1) {
+                    coastalCones(ctx, x, z, vcx, vcz, x, z, radius, landU, h, k == 0, peak, IDENTITY);
                 }
                 if (stage.equals("barrier_reef_island")) {
                     // The island is sinking and its fringing reef grew up into a ring offshore, with a lagoon between.
@@ -2007,6 +2100,7 @@ public final class OceanFeatures {
     private static double arcAcross(long h) { return ARC_DISTANCE + (unit(mix(h + 1)) - 0.5) * 16 * KM; }
     private static double arcRadius(long h) { return (7 + 7 * unit(mix(h + 2))) * KM; }
     private static double arcPeak(double strength, long h) { return lerp(-2500, -350 + 2500 * unit(mix(h + 3)), strength); }
+    private static double arcLandU(long h) { return 0.25 + 0.2 * unit(mix(h + 4)); }
 
     /**
      * What a hotspot volcano has become by now, from its peak height (how far it has sunk), the water temperature,
@@ -2083,19 +2177,7 @@ public final class OceanFeatures {
      */
     private double islandCone(double r, double radius, double sea, double landU, double ang,
                               double x, double z, long h, int style, double relief) {
-        double u = roughRadius(r, radius, x, z, h) / radius / riftStretch(ang, h);
-        // Ragged coastline: headlands and coves from ~150 m to ~3 km, up to ~1 km deep. The noise is sampled by direction around the
-        // summit (on a circle sized to the coast, so its wavelengths are in km) and only slowly with distance, and
-        // it fades in toward the coast, so along any line down from the summit the ground still only falls: no
-        // closed hollows.
-        {
-            double coastKm = landU * radius / KM;
-            double rc = coastKm / (2 * Math.PI);
-            float cfa = (float) Math.cos(ang), sfa = (float) Math.sin(ang);
-            double n = coastFine.GetNoise((float) rc * cfa + 37, (float) rc * sfa - 211, (float) (r / KM * 0.12) + (h & 0xFF));
-            double du = 0.9 * KM / radius * n;
-            u += du * smoothstep(0.3 * landU, landU, u);
-        }
+        double u = islandU(r, radius, landU, ang, x, z, h);
         if (u >= 1) return 0;
         double s;
         if (u < landU) {
@@ -2121,6 +2203,44 @@ public final class OceanFeatures {
         if ((style & STYLE_CALDERA) != 0) s = floodedCaldera(s, u, r, radius, sea, landU, relief, ang, x, z, h);
         if ((style & STYLE_SCAR) != 0) s = landslideScar(s, r, radius, sea, landU, relief, ang, x, z, h);
         return s;
+    }
+
+    /**
+     * Distance from an island's centre over its footprint radius, roughened as its outline is: the coast lies where this
+     * equals {@code landU}. Ragged coastline: headlands and coves from ~150 m to ~3 km, up to ~1 km deep. The noise is
+     * sampled by direction around the summit (on a circle sized to the coast, so its wavelengths are in km) and only
+     * slowly with distance, and it fades in toward the coast, so along any line down from the summit the ground still
+     * only falls: no closed hollows. {@code (x, z)} is the pixel in world space (for the outline noise).
+     */
+    private double islandU(double r, double radius, double landU, double ang, double x, double z, long h) {
+        double u = roughRadius(r, radius, x, z, h) / radius / riftStretch(ang, h);
+        return u + coastWobble(r, radius, landU, ang, h) * smoothstep(0.3 * landU, landU, u);
+    }
+
+    private double coastWobble(double r, double radius, double landU, double ang, long h) {
+        double rc = landU * radius / KM / (2 * Math.PI);
+        float cfa = (float) Math.cos(ang), sfa = (float) Math.sin(ang);
+        double n = coastFine.GetNoise((float) rc * cfa + 37, (float) rc * sfa - 211, (float) (r / KM * 0.12) + (h & 0xFF));
+        return 0.9 * KM / radius * n;
+    }
+
+    /**
+     * Distance (native pixels, in the island's own frame) from an island's centre to its coast in direction {@code ang}:
+     * where {@link #islandU} reaches {@code landU}, found by a few fixed-point steps. {@code toWorld} maps the frame to
+     * world pixels (x, z), for the outline noise.
+     */
+    private double coastRadius(double ang, double cx, double cz, double radius, double landU, long h,
+                               java.util.function.BiFunction<Double, Double, double[]> toWorld) {
+        double rift = riftStretch(ang, h), ca = Math.cos(ang), sa = Math.sin(ang);
+        double r = landU * radius * rift;
+        double scale = KM * 4 / radius;
+        for (int it = 0; it < 5; it++) {
+            double[] w = toWorld.apply(cx + ca * r, cz + sa * r);
+            float kx = (float) (w[0] / KM * scale) + (h & 0xFF), kz = (float) (w[1] / KM * scale) + ((h >>> 8) & 0xFF);
+            double n = coastShape.GetNoise(kx, kz);
+            r = (landU - coastWobble(r, radius, landU, ang, h)) * radius * rift / (1 + 0.14 * n);
+        }
+        return r;
     }
 
     /**
@@ -2268,6 +2388,8 @@ public final class OceanFeatures {
 
     /** Model-drawn island coasts: detail amplitude (m), and the heights (m) it fades out by below and above the sea. */
     private static final float ISLAND_COAST_M = 40f, ISLAND_COAST_DEEP = 260f, ISLAND_COAST_HIGH = 110f;
+    /** Deepest model ground (m) that model-island edits reach: the coast detail, tuff rings and lava delta fronts. */
+    private static final float ISLAND_EDIT_DEEP = 420f;
 
     /**
      * A model-drawn island's coast, roughened into coves, points and stacks from ~150 m to ~2 km (the model's own
@@ -2317,6 +2439,213 @@ public final class OceanFeatures {
         if (u > 2) return;
         double cut = depth * (1 - smoothstep(0.7, 1.0, u)) - 0.15 * depth * Math.exp(-sq((u - 1.15) / 0.3));
         if (Math.abs(cut) > Math.abs(ctx.guideCrater)) ctx.guideCrater = cut;
+    }
+
+    // =========================================================================
+    // Round 4: coastal cones and lava deltas
+    // =========================================================================
+
+    /** Share of young islands (hotspot heads, the island behind them, plain arc islands) with tuff rings on the coast. */
+    private static final double TUFF_CHANCE = 0.45;
+    /** Share of active hotspot heads building lava deltas into the sea (each gets 1 or 2). */
+    private static final double LAVA_DELTA_CHANCE = 0.5;
+    /** Kinds of coastal cone: a tuff ring breached toward the sea, a flooded one (a bay), a maar (holds a lake). */
+    static final int TUFF_RING = 0, TUFF_FLOODED = 1, TUFF_MAAR = 2;
+
+    /** One tuff ring or maar, from the island's hash: where it sits and its shape. */
+    record TuffRing(double a, double offset, double radius, double rim, double floor, double gapW, int kind, long h) {}
+
+    /** One lava delta lobe: direction, half-width (radians), length past the coast (px), height (m), fill depth (m). */
+    record LavaLobe(double a, double hw, double len, double height, double fill, double flowW, long h) {}
+
+    /** How many tuff rings or maars a young island has on its coast (0 to 3). */
+    static int tuffCount(long h) {
+        if (unit(mix(h + 130)) > TUFF_CHANCE) return 0;
+        double u = unit(mix(h + 131));
+        return 1 + (u < 0.4 ? 1 : 0) + (u < 0.15 ? 1 : 0);
+    }
+
+    /**
+     * Tuff ring {@code n} of an island: its direction from the centre, offset from the coast (within half a km either
+     * way), radius (250-600 m), rim height (25-60 m), floor (absolute metres) and gap.
+     */
+    static TuffRing tuffRing(long h, int n) {
+        long t = mix(h + 133 + 7L * n);
+        double a = unit(t) * 2 * Math.PI;
+        double offset = (unit(mix(t + 1)) - 0.5) * 1.0 * KM;
+        double radius = (0.25 + 0.35 * unit(mix(t + 2))) * KM;
+        double rim = 25 + 35 * unit(mix(t + 3));
+        double k = unit(mix(t + 4));
+        int kind = k < 0.25 ? TUFF_MAAR : (k < 0.55 ? TUFF_FLOODED : TUFF_RING);
+        double floor = switch (kind) {
+            case TUFF_MAAR -> -(2 + 10 * unit(mix(t + 5)));
+            case TUFF_FLOODED -> -(4 + 8 * unit(mix(t + 5)));
+            default -> 3 + 5 * unit(mix(t + 5));
+        };
+        double gapW = 0.35 + 0.3 * unit(mix(t + 6));
+        return new TuffRing(a, offset, radius, rim, floor, gapW, kind, t);
+    }
+
+    /** How many lava deltas an active island is building (0 to 2). */
+    static int lavaLobeCount(long h) {
+        if (unit(mix(h + 150)) > LAVA_DELTA_CHANCE) return 0;
+        return unit(mix(h + 151)) < 0.35 ? 2 : 1;
+    }
+
+    /** Lava delta lobe {@code n} of an active island. */
+    static LavaLobe lavaLobe(long h, int n) {
+        long t = mix(h + 153 + 7L * n);
+        double a = unit(t) * 2 * Math.PI;
+        double hw = 0.12 + 0.18 * unit(mix(t + 1));
+        double len = (0.5 + 1.5 * unit(mix(t + 2))) * KM;
+        double height = 3 + 12 * unit(mix(t + 3));
+        double fill = 160 + 100 * unit(mix(t + 4));
+        double flowW = (0.09 + 0.09 * unit(mix(t + 5))) * KM;
+        return new LavaLobe(a, hw, len, height, fill, flowW, t);
+    }
+
+    /** Tuff ring centres (in their island's frame), keyed by island hash and ring number. */
+    private final java.util.concurrent.ConcurrentHashMap<Long, double[]> ringCentres = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Centre (frame coordinates) of tuff ring {@code t} (number {@code n}) of an island; cached. */
+    private double[] ringCentre(TuffRing t, int n, double cx, double cz, double radius, double landU, long h,
+                                java.util.function.BiFunction<Double, Double, double[]> toWorld) {
+        return ringCentres.computeIfAbsent(mix(h ^ (0x7EF0L + n)), key -> {
+            double d = coastRadius(t.a, cx, cz, radius, landU, h, toWorld) + t.offset;
+            return new double[]{cx + Math.cos(t.a) * d, cz + Math.sin(t.a) * d};
+        });
+    }
+
+    /**
+     * Records the tuff rings and lava deltas of a young island at pixel (px, pz), in the frame the island is shaped in
+     * (world space for hotspot islands, along/across the arc for island-arc ones), with its centre at (cx, cz);
+     * {@code (wx, wz)} is the pixel in world space and {@code toWorld} maps the frame to world space. Everything is
+     * placed against the island's real (roughened) coast, which the model follows. {@code active}: the hotspot head,
+     * which also builds lava deltas.
+     */
+    private void coastalCones(Ctx ctx, double px, double pz, double cx, double cz, double wx, double wz,
+                              double radius, double landU, long h, boolean active, double peak,
+                              java.util.function.BiFunction<Double, Double, double[]> toWorld) {
+        if (peak < 100) return;
+        double dx = px - cx, dz = pz - cz, r = Math.hypot(dx, dz);
+        double landR = landU * radius;
+        if (r > landR * 1.6 + 2.5 * KM) return;
+        int n = tuffCount(h);
+        for (int i = 0; i < n; i++) {
+            TuffRing t = tuffRing(h, i);
+            double[] c = ringCentre(t, i, cx, cz, radius, landU, h, toWorld);
+            double ex = px - c[0], ez = pz - c[1];
+            double d = Math.hypot(ex, ez);
+            if (d > 2.3 * t.radius) continue;
+            // A wobbly, slightly lobed ring: sampled by direction around its centre, so there is no seam.
+            double pa = Math.atan2(ez, ex);
+            float ca = (float) Math.cos(pa), sa = (float) Math.sin(pa);
+            double wob = 0.1 * coastShape.GetNoise(ca * 1.4f + (t.h & 0xFF), sa * 1.4f - 31)
+                    + 0.05 * coastShape.GetNoise(ca * 4f - 7, sa * 4f + (t.h & 0x7F));
+            double u = d / (t.radius * (1 + wob));
+            if (u >= ctx.tuffU) continue;
+            ctx.tuffU = u;
+            ctx.tuffR = t.radius * 30;
+            ctx.tuffRim = t.rim;
+            ctx.tuffFloor = t.floor;
+            ctx.tuffGapW = t.gapW;
+            ctx.tuffKind = t.kind;
+            ctx.tuffDa = Math.atan2(Math.sin(pa - t.a), Math.cos(pa - t.a));
+        }
+        if (!active) return;
+        int nl = lavaLobeCount(h);
+        if (nl == 0) return;
+        double ang = Math.atan2(dz, dx);
+        // Where this pixel sits relative to the coast: 1 on it, below 1 inland.
+        double t = islandU(r, radius, landU, ang, wx, wz, h) / landU;
+        double rc = landR * riftStretch(ang, h);                  // about how far the coast is, to turn lengths into t
+        float kx = (float) (wx / KM), kz = (float) (wz / KM);
+        double edgeN = coastFine.GetNoise(kx * 1.6f + 300, kz * 1.6f - 90);
+        for (int i = 0; i < nl; i++) {
+            LavaLobe L = lavaLobe(h, i);
+            double da = Math.atan2(Math.sin(ang - L.a), Math.cos(ang - L.a));
+            if (Math.abs(da) > 2 * L.hw) continue;
+            // The delta: a fan of flat new land past the coast, with a ragged front and sides.
+            double hw = L.hw * (1 + 0.25 * edgeN);
+            double across = Math.min(1, Math.abs(da) / L.hw);
+            double dLen = L.len / rc;
+            double tF = 1 + dLen * (1 - 0.45 * across * across) * (1 + 0.25 * coastFine.GetNoise(kx * 3f - 50, kz * 3f + 11));
+            double w = (1 - smoothstep(0.7 * hw, hw, Math.abs(da))) * (1 - smoothstep(tF - 1.5 / rc, tF + 0.7 / rc, t))
+                    * smoothstep(0.45, 0.7, t);
+            if (w > ctx.lavaW) {
+                ctx.lavaW = w;
+                // Gently rising inland (0.35 of its height at the front), then up the flank at 3%.
+                ctx.lavaTop = L.height * (0.35 + 0.65 * clamp01((tF - t) / dLen)) + Math.max(0, 1 - t) * rc * 0.9;
+                ctx.lavaFill = L.fill;
+            }
+            // The flow feeding it, down the flank from high up: a ribbon of fresh rock between low levees, wandering a
+            // little, with the live channel in its middle.
+            double wander = 0.07 * coastFine.GetNoise((float) (r / KM * 0.45) + (L.h & 0xFF), 17f);
+            double dist = Math.abs(Math.atan2(Math.sin(ang - L.a - wander), Math.cos(ang - L.a - wander))) * r;
+            double fw = L.flowW * (1 + 0.25 * edgeN);
+            if (dist < fw && t > 0.3 && t < tF) {
+                double sFlow = dist / fw;
+                ctx.lavaRaise = Math.max(ctx.lavaRaise, 4 * Math.sin(Math.PI * sFlow) * smoothstep(0.3, 0.45, t));
+                ctx.lavaFlow = Math.max(ctx.lavaFlow, sFlow < 0.32 ? 2 : 1);
+            }
+        }
+    }
+
+    private static boolean hasCoastEdit(Ctx ctx) {
+        return ctx.tuffU < 2.3 || ctx.lavaW > 0 || ctx.lavaFlow > 0;
+    }
+
+    /**
+     * Cuts the recorded tuff ring and builds the recorded lava delta into ground {@code v} (absolute metres); leaves a
+     * surface tag in {@code ctx.coastTag}.
+     * <ul>
+     *   <li><b>Tuff rings and maars</b> (Diamond Head, Koko Crater, Hanauma Bay): a steep-walled crater with a flat floor
+     *       and a low ring of tuff around it, built up from the shore. The rim stands 25-60 m above the ground (or the
+     *       sea), with outer slopes of ~20 degrees. Tuff rings are breached on their seaward side: the dry ones drain
+     *       through the gap, the flooded ones are bays open to the sea. Maars have no gap and hold a lake.</li>
+     *   <li><b>Lava deltas</b> (Kilauea's 2018 Kapoho delta): flat new land a few metres above the sea, built out from
+     *       the coast as far as the water is shallow enough, ending in a steep front; fed by a flow down the flank.</li>
+     * </ul>
+     */
+    double coastEdit(double v, Ctx ctx) {
+        ctx.coastTag = TAG_NONE;
+        double out = v;
+        if (ctx.tuffU < 2.3) {
+            double u = ctx.tuffU, R = ctx.tuffR, F = ctx.tuffFloor;
+            double crest = Math.max(v, 0) + ctx.tuffRim;
+            double res;
+            if (u >= 1) {
+                // The outer flank, faded back to the old ground before the ring's reach ends (no step there).
+                double flank = crest - (u - 1) * R * 0.38;
+                if (flank < 0) flank *= 3;                    // below the sea the waves have cut it back steeply
+                res = flank > v ? v + (flank - v) * (1 - smoothstep(1.15, 2.2, u)) : v;
+            } else {
+                res = F + (crest - F) * smoothstep(0.75, 1.0, u);
+            }
+            if (ctx.tuffKind != TUFF_MAAR && u > 0.6 && u < 2.2) {
+                double g = Math.exp(-sq(ctx.tuffDa / ctx.tuffGapW));
+                if (g > 0.01) {
+                    double gap = ctx.tuffKind == TUFF_FLOODED ? F - 1 : F - 0.5 - (u - 0.62) * (F + 4) / 0.9;
+                    double lower = u >= 1 ? Math.max(gap, v) : gap;   // outside the ring, never below the old ground
+                    if (res > lower) res -= (res - lower) * g;
+                }
+            }
+            if (u > 0.6 && u < 1.9 && (res > v + 1.5 || u < 1.0) && res > -14) ctx.coastTag = TAG_TUFF;
+            out = res;
+        }
+        if (ctx.lavaW > 0) {
+            double w = ctx.lavaW * smoothstep(-1.35 * ctx.lavaFill, -ctx.lavaFill, v);
+            if (ctx.lavaTop > out) out += (ctx.lavaTop - out) * w;
+            // Fresh rock only where the lava really built the ground (not on the old flank standing above it).
+            if (w > 0.5 && ctx.lavaTop > v - 1 && out > -4) ctx.coastTag = TAG_LAVA;
+        }
+        if (ctx.lavaFlow > 0 && out > 0) {
+            out += ctx.lavaRaise;
+            ctx.coastTag = ctx.lavaFlow == 2 ? TAG_LAVA_CHANNEL : TAG_LAVA;
+        }
+        // Model-drawn islands are only edited down to ISLAND_EDIT_DEEP: fade out before it, so there is no step there.
+        if (modelIslands) out = v + (out - v) * smoothstep(-ISLAND_EDIT_DEEP, -ISLAND_EDIT_DEEP + 60, v);
+        return out;
     }
 
     /**
