@@ -45,9 +45,9 @@ public final class TectonicConditioning {
     /** Farthest (coarse pixels) the coast is searched for, and inland / offshore reach of the edits. */
     private static final int COAST_SEARCH = 24;
     /** Coastal range: peak distance inland (coarse pixels) and width; height range (m). */
-    private static final float RANGE_AT = 5.5f, RANGE_WIDTH = 3f, RANGE_MIN = 1800f, RANGE_MAX = 3300f;
+    private static final float RANGE_AT = 6f, RANGE_WIDTH = 4f, RANGE_MIN = 2500f, RANGE_MAX = 4000f;
     /** Trench: distance offshore (coarse pixels) range, depth below the slope's foot (m), outer rise (m). */
-    private static final float TRENCH_AT_MIN = 6f, TRENCH_AT_MAX = 8.5f, TRENCH_DEPTH = 3800f, OUTER_RISE = 350f;
+    private static final float TRENCH_AT_MIN = 7f, TRENCH_AT_MAX = 9.5f, TRENCH_DEPTH = 5000f, OUTER_RISE = 400f;
 
     private final long seed;
     private final FastNoiseLite marginMask, marginVary, riftWobble;
@@ -324,11 +324,12 @@ public final class TectonicConditioning {
         float at = TRENCH_AT_MIN + (TRENCH_AT_MAX - TRENCH_AT_MIN) * v;
         // A shelf of a few km, a steep slope to ~3 km, then the trench (steeper on its landward wall) and the outer rise.
         float slope = -20f - 130f * smoothstep(0f, 0.5f, ds) - 3000f * smoothstep(0.5f, 3.5f, ds);
-        float wall = ds < at ? sq((ds - at) / 2f) : sq((ds - at) / 3f);
+        // Wide enough (~35 km) for the coarse model (7.7 km pixels) to draw it: at 2-3 px it only deepened ~300 m.
+        float wall = ds < at ? sq((ds - at) / 3f) : sq((ds - at) / 4.5f);
         float trench = -TRENCH_DEPTH * (float) Math.exp(-wall);
-        float rise = OUTER_RISE * (float) Math.exp(-sq((ds - at - 6f) / 3f));
+        float rise = OUTER_RISE * (float) Math.exp(-sq((ds - at - 8f) / 3.5f));
         float target = slope + trench + rise;
-        float fade = 1f - smoothstep(at + 5f, at + 11f, ds);
+        float fade = 1f - smoothstep(at + 8f, at + 14f, ds);
         // Never raise the sea floor above the slope profile's own depth (the trench and slope only deepen it),
         // except for the gentle outer rise.
         float shaped = Math.min(elev, slope + trench) + rise;

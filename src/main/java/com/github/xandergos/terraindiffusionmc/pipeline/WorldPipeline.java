@@ -285,6 +285,7 @@ public final class WorldPipeline implements AutoCloseable {
         // "step": no extra pass for archipelagos, the refinement step gets the drowned terrain with the model's detail.
         String archMode = TerrainDiffusionConfig.archipelagoMode();
         if (stage == STAGE_ISLAND && "step".equals(archMode)) modelArch = false;
+        float archFinalPull = "clear".equals(archMode) ? ARCH_FINAL_PULL : TerrainDiffusionConfig.archipelagoFinalPull();
         int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
@@ -313,7 +314,7 @@ public final class WorldPipeline implements AutoCloseable {
                 if (arch != null) prepareArchipelagoPass(sample, arch, S, "clear".equals(archMode));
                 if (island) guide.prepareIslandPass(sample, S);
             } else if (stage == STAGE_STEP) {
-                if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, "step".equals(archMode) ? 1f : ARCH_STEP_PULL);
+                if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, "clear".equals(archMode) ? ARCH_STEP_PULL : 1f);
                 if (guide != null) guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
             }
 
@@ -370,7 +371,7 @@ public final class WorldPipeline implements AutoCloseable {
                 }
                 // The refinement is the last word on the latent: make sure every island is there and its bays and
                 // calderas reach the sea (the model's own mountains are left alone).
-                if (stage == STAGE_STEP && archs[b] != null) pullTowards(newSample, archs[b], S, 1f, ARCH_FINAL_PULL);
+                if (stage == STAGE_STEP && archs[b] != null) pullTowards(newSample, archs[b], S, 1f, archFinalPull);
                 if (stage == STAGE_STEP && guides[b] != null) guides[b].pullLowfreq(newSample, S, 1f, ISLAND_FINAL_UP, ISLAND_FINAL_DOWN, true);
             }
 

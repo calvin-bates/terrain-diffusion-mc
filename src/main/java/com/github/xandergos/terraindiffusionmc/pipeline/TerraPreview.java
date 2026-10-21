@@ -54,16 +54,22 @@ public final class TerraPreview {
                 + count(marks, "rift_sea") + " rift seas, " + count(marks, "active_margin") + " active-margin markers");
 
         // Archipelagos: the old pass, and model-drawn in each mode being tuned.
-        for (String variant : new String[]{"old", "step", "keep", "clear"}) {
+        // Variants: old, or mode@finalPull.
+        String[] variants = System.getProperty("terra.archVariants", "old,keep@1.0,keep@0.8,step@1.0").split(",");
+        for (String variant : variants) {
             TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", variant.equals("old") ? "false" : "true");
-            if (!variant.equals("old")) TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", variant);
+            if (!variant.equals("old")) {
+                String[] mv = variant.split("@");
+                TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", mv[0]);
+                TerrainDiffusionConfig.setForTools("oceans.archipelago_final_pull", mv.length > 1 ? mv[1] : "1.0");
+            }
             try (WorldPipeline p = new WorldPipeline(seed)) {
                 for (int k = 0; k < arch.size(); k++) {
                     OceanFeatures.Landmark m = arch.get(k);
                     int i1 = (int) m.i() - win / 2, j1 = (int) m.j() - win / 2;
                     long t0 = System.nanoTime();
                     float[] e = p.get(i1, j1, i1 + win, j1 + win, false)[0];
-                    String name = "archipelago" + k + "_" + variant;
+                    String name = "archipelago" + k + "_" + variant.replace("@", "_");
                     write(render(e, win, win), out.resolve(name + ".png"));
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
                             Math.round(m.i() * 6), stats(e, win, win), (System.nanoTime() - t0) / 1e9));
@@ -71,7 +77,8 @@ public final class TerraPreview {
             }
         }
         TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", "true");
-        TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", "step");
+        TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", "keep");
+        TerrainDiffusionConfig.setForTools("oceans.archipelago_final_pull", "1.0");
 
         // Rift seas and active margins at coarse resolution, with and without.
         for (String variant : new String[]{"on", "off"}) {
