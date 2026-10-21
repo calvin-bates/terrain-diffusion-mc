@@ -908,6 +908,22 @@ public final class WorldPipeline implements AutoCloseable {
         };
     }
 
+    /**
+     * The coarse model's elevation (metres) over coarse pixels [ci0, ci1) x [cj0, cj1), row-major: what it drew from the
+     * conditioning, before any latent detail (for previews of the large landforms).
+     */
+    public float[] coarseElevation(int ci0, int cj0, int ci1, int cj1) {
+        FloatTensor slice = coarse.getSlice(new int[]{0, ci0, cj0}, new int[]{7, ci1, cj1});
+        int n = (ci1 - ci0) * (cj1 - cj0);
+        float[] out = new float[n];
+        for (int px = 0; px < n; px++) {
+            float w = slice.data[6 * n + px];
+            float e = w > 1e-6f ? slice.data[px] / w : 0f;
+            out[px] = Math.signum(e) * e * e;
+        }
+        return out;
+    }
+
     /** Archipelago zone strength (0..1) at native pixel (i, j), as ArchipelagoShaper and the ocean features see it. */
     public float archipelagoAt(double i, double j) {
         int S = 32 * LATENT_COMPRESSION;

@@ -29,6 +29,11 @@ public final class TerrainDiffusionConfig {
     private TerrainDiffusionConfig() {
     }
 
+    /** Overrides a setting in this JVM only (tools outside the game, such as TerraPreview). */
+    public static void setForTools(String key, String value) {
+        PROPERTIES.setProperty(key, value);
+    }
+
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */
     public static String inferenceDevice() {
         String device = readString("inference.device", "gpu");

@@ -164,6 +164,18 @@ task pipelineTest(type: JavaExec, dependsOn: compileJava) {
     jvmArgs '-Xmx8g'
 }
 
+// Terrain previews outside the game (pipeline/TerraPreview): .\gradlew.bat terraPreview [-Pseed=12345] [-Pcount=4] [-Pwin=1024]
+// Images and summary.txt go to run/terra-preview; models are read from run/terrain-diffusion-models.
+task terraPreview(type: JavaExec, dependsOn: compileJava) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.github.xandergos.terraindiffusionmc.pipeline.TerraPreview'
+    workingDir = file('run')
+    jvmArgs '-Xmx8g'
+    systemProperty 'terra.modelDir', file('run/terrain-diffusion-models').absolutePath
+    systemProperty 'terra.previewDir', file('run/terra-preview').absolutePath
+    args = [project.findProperty('seed') ?: '12345', project.findProperty('count') ?: '4', project.findProperty('win') ?: '1024']
+}
+
 tasks.register('generateModelAssetManifest') {
     inputs.property('modelRepositorySlug', modelRepositorySlug)
     inputs.property('modelRepositoryRevision', modelRepositoryRevision)

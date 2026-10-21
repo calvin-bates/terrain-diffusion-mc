@@ -41,9 +41,14 @@ public final class ModelAssetManager {
     private static final Logger LOG = LoggerFactory.getLogger(ModelAssetManager.class);
     private static final String MANIFEST_RESOURCE_PATH = "/model-assets-manifest.json";
     private static final long PROGRESS_LOG_THRESHOLD_BYTES = 100L * 1024L * 1024L;
-    private static final Path MODEL_DIRECTORY = FabricLoader.getInstance()
-            .getGameDir()
-            .resolve("terrain-diffusion-models");
+    /** Where the models live: the game directory's terrain-diffusion-models, or -Dterra.modelDir (tools outside the game). */
+    private static final Path MODEL_DIRECTORY = modelDirectory();
+
+    private static Path modelDirectory() {
+        String override = System.getProperty("terra.modelDir");
+        if (override != null && !override.isBlank()) return Path.of(override);
+        return FabricLoader.getInstance().getGameDir().resolve("terrain-diffusion-models");
+    }
     private static final AtomicBoolean READY = new AtomicBoolean(false);
     private static final Gson GSON = new Gson();
     private static final Type MANIFEST_TYPE = new TypeToken<ModelAssetManifest>() {}.getType();
