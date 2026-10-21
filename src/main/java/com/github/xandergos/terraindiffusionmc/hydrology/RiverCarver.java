@@ -349,7 +349,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v29 (delta lobes and branching distributaries)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v30 (river water level from the cross-section, no gorges on steep slopes)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -534,18 +534,29 @@ public final class RiverCarver {
                 // Water never sits higher than the lowest ground beside the channel, otherwise it
                 // would need an embankment (a ridge along the stream) to stay in place.
                 int rad = Math.min(8, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
-                int low = top, seaLow = Integer.MAX_VALUE;
+                // "Beside" means across the channel: ground in the same cross-section (nearest centre-line points within a
+                // block and a half, as in the one-level pass below). Counting the ground up and down the channel too put
+                // the water of a river running down a steep slope at the level of the ground a few blocks downstream:
+                // 5-13 blocks below its own banks, a gorge of stepped pools down the mountainside (v30, Calvin's
+                // X -73622 Z 4091). Near the sea every direction still counts, so river mouths stay level with the sea.
+                int low = top, lowAcross = top, seaLow = Integer.MAX_VALUE;
                 for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
                     for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
                         // The ground of a lake's basin is not a bank: counting it cut a stream down to the lake floor where
                         // it meets the lake, several blocks below the lake's water.
-                        if (lakeDist[rr * W + cc] == 0) continue;
-                        int yt = ytop[rr * W + cc];
+                        int j = rr * W + cc;
+                        if (lakeDist[j] == 0) continue;
+                        int yt = ytop[j];
                         if (yt < low) low = yt;
                         if (yt < SEA_SURFACE_Y && yt < seaLow) seaLow = yt;
+                        if (yt < lowAcross && score[j] != Float.POSITIVE_INFINITY) {
+                            float ddx = cpx[j] - cpx[idx], ddz = cpz[j] - cpz[idx];
+                            if (ddx * ddx + ddz * ddz <= 2.25f) lowAcross = yt;
+                        }
                     }
                 }
                 if (seaLow != Integer.MAX_VALUE) bedFloor[idx] = seaLow - 1;
+                else low = lowAcross;
                 // The water's top block is level with the lowest ground beside the channel, so the stream sits flush with its
                 // banks. (The hydrology surface is a coarse estimate; letting the water sag below the ground with it left a
                 // one-block bank along almost every stream.) ys is unused now but kept for reference.
