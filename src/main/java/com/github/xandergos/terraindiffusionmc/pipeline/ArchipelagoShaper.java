@@ -121,6 +121,7 @@ public final class ArchipelagoShaper {
             }
         }
         if (!any) return;
+        final float detailScale = detailOnly ? com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig.archipelagoDetail() : 1f;
         for (int r = 0; r < H; r++) {
             float fa = (float) r / STEP;
             int a0 = (int) fa;
@@ -150,7 +151,7 @@ public final class ArchipelagoShaper {
                     }
                     float gx = (padded[p + d] - padded[p - d]) / (2f * d), gz = (padded[p + d * pW] - padded[p - d * pW]) / (2f * d);
                     float rough = smoothstep(SLOPE_SMOOTH, SLOPE_ROUGH, (float) Math.sqrt(gx * gx + gz * gz));
-                    elev[k] = detailOnly(e, i, j, z, rough);
+                    elev[k] = detailOnly(e, i, j, z, rough * detailScale);
                     continue;
                 }
                 float bh = base(e, i, j, z);

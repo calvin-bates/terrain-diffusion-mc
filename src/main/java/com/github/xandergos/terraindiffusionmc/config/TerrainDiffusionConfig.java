@@ -135,6 +135,13 @@ public final class TerrainDiffusionConfig {
     public static float archipelagoFinalPull() {
         return Math.max(0f, Math.min(1f, readFloat("oceans.archipelago_final_pull", 1f)));
     }
+    /**
+     * Scale of the fine coastline roughness added to model-drawn archipelagos (1 = as much as the old pasted-in pass;
+     * the model draws its own coast detail, so less may look better; being tuned).
+     */
+    public static float archipelagoDetail() {
+        return Math.max(0f, Math.min(2f, readFloat("oceans.archipelago_detail", 1f)));
+    }
     /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
     public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */
