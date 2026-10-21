@@ -89,6 +89,8 @@ public final class OceanFeatures {
     public static final byte TAG_LAVA = 18;
     /** The active lava channel down the middle of a flow: as {@link #TAG_LAVA}, with pools of live lava where level. */
     public static final byte TAG_LAVA_CHANNEL = 19;
+    /** Floor of a glacial trough across a cold shelf (no special blocks; lets the finder see troughs). */
+    public static final byte TAG_TROUGH = 20;
 
     /** Whether a surface tag is a coral reef of any kind. */
     public static boolean isReef(byte tag) {
@@ -115,6 +117,8 @@ public final class OceanFeatures {
     private static final double TRENCH_OUTER_WIDTH = 13 * KM, TRENCH_INNER_WIDTH = 6 * KM;
     private static final double OUTER_RISE = 250, OUTER_RISE_AT = 60 * KM, OUTER_RISE_WIDTH = 28 * KM;
     private static final double ARC_DISTANCE = 90 * KM, ARC_SPACING = 32 * KM;
+    /** How far across the arc (native pixels) its volcanoes reach, debris fields below landslide scars included. */
+    private static final double ARC_REACH = 50 * KM;
 
     // Hotspots and seamounts
     private static final double HOTSPOT_CELL = 450 * KM, HOTSPOT_CHANCE = 0.8;
@@ -182,6 +186,7 @@ public final class OceanFeatures {
     private final FastNoiseLite canyonZone, canyonNoise, tributaryNoise, fanNoise, meander;
     private final FastNoiseLite shelfZone, currentDir, sandWaves, drowned, saltLumps;
     private final FastNoiseLite islandCoast, islandCoastWarpX, islandCoastWarpZ;
+    private final FastNoiseLite troughNoise, troughZone;
 
     public OceanFeatures(long seed) {
         this.seed = seed;
@@ -217,6 +222,8 @@ public final class OceanFeatures {
         islandCoast.SetFractalOctaves(4);
         islandCoastWarpX = noise(s + 127, 1f / 1.5f);
         islandCoastWarpZ = noise(s + 128, 1f / 1.5f);
+        troughNoise = single(s + 129);
+        troughZone = noise(s + 130, 1f / 350f);
     }
 
     /** Single-octave noise at frequency 1 (callers scale their coordinates). */
@@ -319,6 +326,8 @@ public final class OceanFeatures {
         double absTop;
         /** This pixel in warped space. */
         double qx, qz;
+        /** How much of the deep-floor relief applies here (0 shallower than 1500 m, 1 deeper than 3000 m). */
+        double deepFade;
         /** Abyssal plain strength (0..1) and closeness to a continent (0..1) at this pixel, from {@link #margin}. */
         double plain, continent;
         /** Distance (native pixels) to the nearest mid-ocean ridge axis, or MAX_VALUE. */
@@ -381,6 +390,7 @@ public final class OceanFeatures {
         }
         double depth = -raw;
         double deepFade = smoothstep(1500, 3000, depth);
+        ctx.deepFade = deepFade;
 
         double total = raw;
 
@@ -442,7 +452,7 @@ public final class OceanFeatures {
                     double trenchFade = smoothstep(500, 2500, depth);
                     trenchDown = Math.min(trenchDown, trench(xs) * strength * trenchFade);
                     double xo = -xs;                           // positive into the overriding plate
-                    if (Math.abs(xo - ARC_DISTANCE) < 30 * KM) {
+                    if (Math.abs(xo - ARC_DISTANCE) < ARC_REACH) {
                         arcVolcanoes(x, z, xo, along, pair, subHi, mx, mz, nx, nz, tx, tz, w, coarse, ctx);
                     }
                     // Forearc wedge between the trench and the arc; back-arc basin behind the arc.
@@ -646,6 +656,11 @@ public final class OceanFeatures {
     /** The ice-age shoreline: a step this high (m) at this depth (m), on shelves where {@link #PALEO_ZONE} allows. */
     private static final double PALEO_STEP_M = 9, PALEO_DEPTH_M = 121;
     private static final float PALEO_ZONE = -0.2f;
+    /** Glacial troughs: coarse sea temperature (deg C) below which they appear (fully below the first). */
+    private static final float TROUGH_TEMP_FULL = 1f, TROUGH_TEMP = 3f;
+    /** Share of cold shelves with troughs (noise level; lower = more), spacing (km), deepest cut (m). */
+    private static final float TROUGH_ZONE = -0.1f;
+    private static final double TROUGH_SPACING_KM = 45, TROUGH_DEPTH = 300;
     /** Pockmarks: fields (noise level), grid (km), chance per cell, crater depth (m). */
     private static final float POCK_ZONE = 0.35f;
     private static final double POCK_CELL_KM = 0.45, POCK_CHANCE = 0.35, POCK_DEPTH = 16;
@@ -662,6 +677,9 @@ public final class OceanFeatures {
      *   <li><b>The ice-age shoreline</b>: a low step about 120 m down, where the coast stood 20,000 years ago, with a
      *       slightly flatter terrace above it.</li>
      *   <li><b>Pockmarks</b>: fields of round craters ~100-300 m across where gas has bubbled out of the mud.</li>
+     *   <li><b>Glacial troughs</b> on cold shelves (the Norwegian Channel, the troughs off Antarctica and Greenland):
+     *       broad U-shaped valleys 5-15 km wide, gouged across the shelf by ice streams in the ice ages, up to 300 m
+     *       deeper than the shelf around them, deepest on the inner shelf and shoaling to a low sill at its edge.</li>
      * </ul>
      */
     double shelf(double raw, double x, double z, CoarseField coarse, Ctx ctx) {
@@ -704,6 +722,13 @@ public final class OceanFeatures {
             }
         }
 
+        // Glacial troughs across cold shelves.
+        double trough = troughCut(depth, x, z, coarse);
+        if (trough > 0) {
+            out -= trough * band;
+            if (trough * band > 40) ctx.tag = TAG_TROUGH;
+        }
+
         // Pockmarks.
         double pz = smoothstep(POCK_ZONE, POCK_ZONE + 0.15, shelfZone.GetNoise(kx * 3f + 77, kz * 3f)) * smoothstep(60, 90, depth) * band;
         if (pz > 0) {
@@ -730,6 +755,32 @@ public final class OceanFeatures {
             }
         }
         return out;
+    }
+
+    /**
+     * How much (metres) a glacial trough deepens the shelf at native pixel (x, z), where it lies {@code depth} metres
+     * down: a U-shaped valley (flat floor, steep walls) running down the shelf, fading in on the inner shelf and
+     * shoaling toward the shelf edge, so its mouth is a low sill.
+     */
+    private double troughCut(double depth, double x, double z, CoarseField coarse) {
+        float temp = coarse.temperature(z, x);
+        if (temp >= TROUGH_TEMP || depth < 30) return 0;
+        float kx = (float) (x / KM), kz = (float) (z / KM);
+        double zone = (1 - smoothstep(TROUGH_TEMP_FULL, TROUGH_TEMP, temp))
+                * smoothstep(TROUGH_ZONE, TROUGH_ZONE + 0.2, troughZone.GetNoise(kx, kz));
+        if (zone <= 0) return 0;
+        double gx = coarse.elevation(z, x + SLOPE_SPAN) - coarse.elevation(z, x - SLOPE_SPAN);
+        double gz = coarse.elevation(z + SLOPE_SPAN, x) - coarse.elevation(z - SLOPE_SPAN, x);
+        if (Math.abs(gx) + Math.abs(gz) < 1) return 0;
+        double down = Math.atan2(-gz, -gx);
+        // Half-width 2.5-7.5 km, varying slowly along the coast.
+        double halfKm = 2.5 + 5 * (0.5 + 0.5 * troughZone.GetNoise(kx * 3f + 711, kz * 3f));
+        double s = lineDistance(troughNoise, kx, kz, down, TROUGH_SPACING_KM, 400, 0.8) / halfKm;
+        if (s >= 1) return 0;
+        double u = 1 - smoothstep(0.55, 1.0, s);                     // flat floor, steep walls
+        double along = smoothstep(30, 90, depth) * (1 - 0.85 * smoothstep(110, 200, depth));
+        double deep = TROUGH_DEPTH * (0.55 + 0.45 * (0.5 + 0.5 * troughZone.GetNoise(kx * 2f - 90, kz * 2f + 13)));
+        return deep * u * along * zone;
     }
 
     // ---- Slope: salt domes, mud volcanoes ----
@@ -1121,6 +1172,10 @@ public final class OceanFeatures {
             case "salt_domes" -> {
                 return e > -2700 && e < -700 && canyonZone.GetNoise(kx * 0.6f - 500, kz * 0.6f + 77) > SALT_ZONE + 0.08f;
             }
+            case "glacial_trough" -> {
+                return e > -200 && e < -40 && coarse.temperature(i, j) < TROUGH_TEMP - 0.5f
+                        && troughZone.GetNoise(kx, kz) > TROUGH_ZONE + 0.15f;
+            }
             default -> { }
         }
         if (coarse.temperature(i, j) < REEF_TEMP_HI - 0.5f) return false;
@@ -1154,6 +1209,7 @@ public final class OceanFeatures {
             case "sand_waves" -> TAG_SAND_WAVES;
             case "pockmarks" -> TAG_POCKMARK;
             case "salt_domes" -> TAG_SALT;
+            case "glacial_trough" -> TAG_TROUGH;
             default -> -1;
         };
     }
@@ -1337,6 +1393,13 @@ public final class OceanFeatures {
                     if (!clearOfLand(c[0], c[1], arcRadius(h), coarse)) continue;
                     boolean warm = coarse.temperature(c[1], c[0]) >= REEF_TEMP;
                     int extra = arcExtra(peak, warm, h);
+                    if (hasScar(peak, h)) {
+                        // Marker at the mouth of the scar, on the old coast (in the arc's frame, like the island).
+                        double landR = arcLandU(h) * arcRadius(h), sa = scarAngle(h);
+                        double[] sw = unwarp(mx + tx * (ak + Math.cos(sa) * landR) + ox * (across + Math.sin(sa) * landR),
+                                mz + tz * (ak + Math.cos(sa) * landR) + oz * (across + Math.sin(sa) * landR));
+                        if (inside(sw[1], sw[0], i0, j0, i1, j1)) out.add(new Landmark("landslide_scar", sw[1], sw[0], (float) peak));
+                    }
                     if (extra == ARC_PLAIN) {
                         // In the arc's frame (along, across), as the island is shaped.
                         coneLandmarks(h, peak, arcRadius(h), arcLandU(h), false, ak, across, arcFrame(mx, mz, tx, tz, ox, oz),
@@ -1736,16 +1799,23 @@ public final class OceanFeatures {
             if (!arcExists(h)) continue;
             double ak = arcAlong(k, h), across = arcAcross(h), radius = arcRadius(h);
             double r = Math.hypot(along - ak, xo - across);
-            if (r > radius * 1.3) continue;
+            if (r > radius * 2.8) continue;
             double strength = trenchStrength(ak, pair) * edgeWeight;
             if (strength <= 0.05) continue;
             double peak = arcPeak(strength, h);
+            if (r > radius * 1.3 && !(peak > 0 && hasScar(peak, h))) continue;
             // Centre in world space, for the coarse depth check.
             double cqx = mx + tx * ak + ox * across, cqz = mz + tz * ak + oz * across;
             double[] c = unwarp(cqx, cqz);
             float floor = coarse.elevation(c[1], c[0]);
             if (floor > -VOLCANO_MIN_DEPTH) continue;
             if (peak > 0 && !clearOfLand(c[0], c[1], radius, coarse)) continue;
+            double ang0 = Math.atan2(xo - across, along - ak);
+            if (peak > 0 && hasScar(peak, h)) {
+                // Debris field on the deep floor below the landslide scar, as for hotspot islands.
+                ctx.flex += scarDebris(r / radius, ang0, x, z, h) * ctx.deepFade;
+            }
+            if (r > radius * 1.3) continue;
             // r is measured in warped space; close enough for the shape.
             if (peak > 0) {
                 double landU = arcLandU(h);
@@ -1753,7 +1823,7 @@ public final class OceanFeatures {
                 boolean warm = coarse.temperature(c[1], c[0]) >= REEF_TEMP;
                 int extra = arcExtra(peak, warm, h);
                 double relief = peak - floor;
-                int style = extra == ARC_CALDERA ? STYLE_CALDERA : 0;
+                int style = (extra == ARC_CALDERA ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
                 island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
                 if (extra == ARC_PLAIN && peak > 150) {
                     crater(ctx, r, ang, (0.3 + 0.5 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 50 + 80 * unit(mix(h + 121))), h);
@@ -1850,14 +1920,8 @@ public final class OceanFeatures {
                     double bend = -Math.exp(-sq((u0 - 1.15) / 0.35)) + 0.25 * Math.exp(-sq((u0 - 2.2) / 0.45));
                     ctx.flex += MOAT_DEPTH * load * bend * smoothstep(0.55, 0.85, u0) * (1 - smoothstep(2.5, 2.9, u0)) * deepFade;
                     // Debris field below a landslide scar.
-                    if (peak > 40 && hasScar(peak, ch.hk[k]) && u0 > 0.7 && u0 < 2.8) {
-                        double ang = Math.atan2(z - ch.cz[k], x - ch.cx[k]), sAng = scarAngle(ch.hk[k]);
-                        double da = Math.atan2(Math.sin(ang - sAng), Math.cos(ang - sAng));
-                        double env = Math.exp(-sq(da / 0.3)) * smoothstep(0.7, 1.0, u0) * (1 - smoothstep(2.1, 2.8, u0));
-                        if (env > 0.01) {
-                            float n = gullies.GetNoise((float) (x / KM * 1.5), (float) (z / KM * 1.5), (ch.hk[k] & 0xFF) * 3.1f);
-                            ctx.flex += 380 * env * smoothstep(0.1, 0.55, n) * deepFade;
-                        }
+                    if (peak > 40 && hasScar(peak, ch.hk[k])) {
+                        ctx.flex += scarDebris(u0, Math.atan2(z - ch.cz[k], x - ch.cx[k]), x, z, ch.hk[k]) * deepFade;
                     }
                 }
                 if (ch.ridge && ridgeGate > 0) {
@@ -1882,6 +1946,20 @@ public final class OceanFeatures {
                 }
             }
         }
+    }
+
+    /**
+     * Height (m) of the debris field below a landslide scar at {@code u0} radii from the island's centre in direction
+     * {@code ang}: hummocky blocks (~1 km, up to 380 m) in a fan 0.7 to 2.8 radii out.
+     */
+    private double scarDebris(double u0, double ang, double x, double z, long h) {
+        if (u0 <= 0.7 || u0 >= 2.8) return 0;
+        double sAng = scarAngle(h);
+        double da = Math.atan2(Math.sin(ang - sAng), Math.cos(ang - sAng));
+        double env = Math.exp(-sq(da / 0.3)) * smoothstep(0.7, 1.0, u0) * (1 - smoothstep(2.1, 2.8, u0));
+        if (env <= 0.01) return 0;
+        float n = gullies.GetNoise((float) (x / KM * 1.5), (float) (z / KM * 1.5), (h & 0xFF) * 3.1f);
+        return 380 * env * smoothstep(0.1, 0.55, n);
     }
 
     /** Crest height (m) of an aseismic ridge at fractional chain position kf: deeper with age, with saddles between volcanoes. */
