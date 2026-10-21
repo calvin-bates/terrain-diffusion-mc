@@ -57,6 +57,7 @@ public final class FeatureFinder {
         KINDS.put("archipelago", new String[]{"archipelago", "archipelago sea"});
         KINDS.put("vent_field", new String[]{"vent_field", "hydrothermal vent field"});
         KINDS.put("delta", new String[]{"delta", "river delta"});
+        KINDS.put("ria", new String[]{"ria", "ria (drowned river valley)"});
         KINDS.put("fringing_reef", new String[]{"fringing_reef", "fringing reef"});
         KINDS.put("barrier_reef", new String[]{"barrier_reef", "offshore barrier reef"});
         KINDS.put("carbonate_bank", new String[]{"carbonate_bank", "carbonate bank"});
@@ -98,6 +99,10 @@ public final class FeatureFinder {
 
         if (word.equals("delta")) {
             findDelta(source, server, pi, pj, scale);
+            return 1;
+        }
+        if (word.equals("ria")) {
+            findRia(source, server, pi, pj, scale);
             return 1;
         }
         if (OceanFeatures.shallowTag(word) >= 0) {
@@ -183,6 +188,37 @@ public final class FeatureFinder {
                 server.execute(() -> reportDelta(source, res, pi, pj, scale));
             } catch (Exception e) {
                 LOG.error("terra-find delta failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** Rias come from the river hydrology, like deltas, so they are searched for region by region near the player. */
+    private static void findRia(CommandSourceStack source, MinecraftServer server, double pi, double pj, int scale) {
+        Thread worker = new Thread(() -> {
+            try {
+                LocalTerrainProvider.RiaSearch res = LocalTerrainProvider.findNearestRia(pi, pj, DELTA_RINGS, reachedPx -> {
+                    int km = Math.round(reachedPx * 30 / 1000f);
+                    server.execute(() -> source.sendSuccess(() -> Component.literal("…searched about " + km + " km around you")
+                            .withStyle(ChatFormatting.GRAY), false));
+                });
+                server.execute(() -> {
+                    int searchedKm = Math.round(res.searchedRadiusPx() * 30 / 1000f);
+                    LocalTerrainProvider.Ria r = res.nearest();
+                    if (r == null) {
+                        source.sendFailure(Component.literal("No ria within about " + searchedKm + " km. Rias form where a river "
+                                + "reaches the sea on a warm (above about 8 °C), hilly coast; about a third of those mouths are drowned."));
+                        return;
+                    }
+                    long hx = Math.round(r.headJ() * scale), hz = Math.round(r.headI() * scale);
+                    int found = res.count();
+                    report(source, "ria (mouth; the inlet runs up the valley toward " + hx + ", " + hz + "; " + found + " within about "
+                            + searchedKm + " km)", new OceanFeatures.Landmark("ria", r.mouthI(), r.mouthJ(), 0f), pi, pj, scale);
+                });
+            } catch (Exception e) {
+                LOG.error("terra-find ria failed", e);
                 server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
             }
         }, "terra-find");

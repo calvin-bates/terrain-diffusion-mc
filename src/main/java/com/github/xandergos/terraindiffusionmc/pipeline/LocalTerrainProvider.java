@@ -2,6 +2,7 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.hydrology.DeltaPlan;
+import com.github.xandergos.terraindiffusionmc.hydrology.RiaPlan;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverMap;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverService;
@@ -331,6 +332,44 @@ public final class LocalTerrainProvider {
         return new DeltaSearch(best, count, reached);
     }
 
+    /** A ria: its mouth and where its traced valley ends, in native pixels. */
+    public record Ria(float mouthI, float mouthJ, float headI, float headJ) {}
+
+    /** Result of a ria search: the nearest ria (or null), how many were seen, and how far the search reached. */
+    public record RiaSearch(Ria nearest, int count, int searchedRadiusPx) {}
+
+    /**
+     * The nearest ria (see {@link RiaPlan}) to native pixel (pi, pj), searching the hydrology regions ring by ring out to
+     * {@code maxRings} regions, like {@link #findNearestDelta}. Never call this on the server thread.
+     */
+    public static RiaSearch findNearestRia(double pi, double pj, int maxRings, java.util.function.IntConsumer progress)
+            throws Exception {
+        int size = rivers().regionSize();
+        int ci = Math.floorDiv((int) Math.floor(pi), size), cj = Math.floorDiv((int) Math.floor(pj), size);
+        Ria best = null;
+        double bestD = Double.MAX_VALUE;
+        int count = 0, reached = 0;
+        for (int ring = 0; ring <= maxRings; ring++) {
+            for (int ri = ci - ring; ri <= ci + ring; ri++) {
+                for (int rj = cj - ring; rj <= cj + ring; rj++) {
+                    if (Math.max(Math.abs(ri - ci), Math.abs(rj - cj)) != ring) continue;
+                    final int fri = ri, frj = rj;
+                    List<RiaPlan> plans = submitToInferenceThread(() -> RiaPlan.of(rivers().region(fri, frj,
+                            (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true)), fri, frj, size));
+                    for (RiaPlan p : plans) {
+                        count++;
+                        double d = Math.hypot(p.mouthZ - pi, p.mouthX - pj);
+                        if (d < bestD) { bestD = d; best = new Ria(p.mouthZ, p.mouthX, p.headZ(), p.headX()); }
+                    }
+                }
+            }
+            reached = ring * size + size / 2;
+            progress.accept(reached);
+            if (best != null && bestD <= ring * size) break;
+        }
+        return new RiaSearch(best, count, reached);
+    }
+
     /** Change to a random new seed; returns the new seed value. */
     public static long generateRandomSeedFromExplorer() throws Exception {
         long newSeed = new Random().nextLong();
@@ -483,6 +522,53 @@ public final class LocalTerrainProvider {
         }
     }
 
+    /**
+     * Rias (drowned river valleys, see {@link RiaPlan}) that may reach the native window [pi0, pi1) x [pj0, pj1), from
+     * the hydrology regions that own their mouths; empty if rivers or ocean features are off, the window has no ground
+     * near sea level, or the hydrology is unavailable. Runs on the inference thread.
+     */
+    private List<RiaPlan> riaPlansNear(float[] elevNative, int pi0, int pj0, int pi1, int pj1) {
+        if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.oceanFeatures()) return List.of();
+        boolean low = false;
+        for (float e : elevNative) if (e < 45f) { low = true; break; }
+        if (!low) return List.of();
+        try {
+            RiverService svc = rivers();
+            int size = svc.regionSize();
+            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            int pad = RiaPlan.MAX_REACH_PX;
+            List<RiaPlan> out = new ArrayList<>();
+            float cx = (pj0 + pj1) / 2f, cz = (pi0 + pi1) / 2f, half = Math.max(pi1 - pi0, pj1 - pj0) / 2f;
+            for (int ri = Math.floorDiv(pi0 - pad, size); ri <= Math.floorDiv(pi1 + pad, size); ri++) {
+                for (int rj = Math.floorDiv(pj0 - pad, size); rj <= Math.floorDiv(pj1 + pad, size); rj++) {
+                    for (RiaPlan p : RiaPlan.of(svc.region(ri, rj, source), ri, rj, size)) {
+                        if (p.near(cx, cz, half + 2)) out.add(p);
+                    }
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: rias unavailable for ({}, {}): {}", pj0, pi0, e.toString());
+            return List.of();
+        }
+    }
+
+    /**
+     * Drowns the rias into a grid of ground heights (metres) at block resolution, in place: {@code grid[r][c]} is world
+     * block (bi0 + r, bj0 + c). Before biomes and the coast pass, so the inlets get ocean biomes and shores.
+     */
+    private static void applyRias(List<RiaPlan> plans, float[][] grid, int bi0, int bj0, int scale) {
+        if (plans.isEmpty()) return;
+        for (int r = 0; r < grid.length; r++) {
+            float z = (bi0 + r + 0.5f) / scale;
+            float[] row = grid[r];
+            for (int c = 0; c < row.length; c++) {
+                float x = (bj0 + c + 0.5f) / scale;
+                for (RiaPlan p : plans) row[c] = p.drown(x, z, row[c]);
+            }
+        }
+    }
+
     /** Native pixels around a river mouth within which the coast keeps no cliff (fading out to RIVER_MOUTH_FADE_PX). */
     private static final float RIVER_MOUTH_CLEAR_PX = 1.5f, RIVER_MOUTH_FADE_PX = 3.5f;
 
@@ -620,11 +706,16 @@ public final class LocalTerrainProvider {
         final int M = CoastShaper.PLATFORM_LOOK_PX;
         float[] elevMargin = pipeline.get(i1 - M, j1 - M, i2 + M, j2 + M, false)[0];
         float[][] elevMargin2D = to2D(elevMargin, H + 2 * M, W + 2 * M);
+        List<RiaPlan> rias = riaPlansNear(elevMargin, i1 - M, j1 - M, i2 + M, j2 + M);
+        applyRias(rias, elevMargin2D, i1 - M, j1 - M, 1);
         float[] elevPadded = cropFlat(elevMargin2D, M - 1, M - 1, H + 2, W + 2, H + 2 * M, W + 2 * M);
         byte[] tags = new byte[H * W];
         float[][] out = pipeline.get(i1, j1, i2, j2, true, tags);
         float[] elevFlat = out[0];
         float[] climate  = out[1];
+        if (!rias.isEmpty()) {
+            for (int r = 0; r < H; r++) System.arraycopy(elevMargin2D[r + M], M, elevFlat, r * W, W);
+        }
 
         short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION);
         CoastShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
@@ -670,6 +761,7 @@ public final class LocalTerrainProvider {
         // Bicubic, not bilinear: bilinear leaves creases along the 30 m pixel grid, which shows as square shores and terraces.
         float[][] elevUp = LaplacianUtils.bicubicResize(elevNative2D, nH * scale, nW * scale);
         settleShoreline(elevUp, i1p * scale, j1p * scale, scale);
+        applyRias(riaPlansNear(elevNativeFlat, i1p, j1p, i2p, j2p), elevUp, i1p * scale, j1p * scale, scale);
 
         // Crop offsets in the upsampled array
         int padUp   = PAD_PX * scale;
