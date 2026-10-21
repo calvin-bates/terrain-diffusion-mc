@@ -165,6 +165,11 @@ public final class OceanFeatures {
     private static final float MAX_DEPTH = -10900f;
 
     private final long seed;
+    /**
+     * Whether the diffusion model draws the big islands (hotspot islands, island-arc islands, forearc islands) from
+     * {@link #islandGuide}: then their cones are left out here and only the reef rings around them stay procedural.
+     */
+    volatile boolean modelIslands;
     private final FastNoiseLite warpLargeX, warpLargeZ, warpSmallX, warpSmallZ;
     private final FastNoiseLite hills, trenchStrength, coastShape, gullies, motus;
     private final FastNoiseLite reefZone, reefPatch, bankZone, bankLevel, shoals, coastFine;
@@ -246,7 +251,14 @@ public final class OceanFeatures {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
                 float raw = elev[k];
-                if (raw >= 0f) continue;
+                if (raw >= 0f) {
+                    // A model-drawn island's land still takes its island rock (forearc islands' limestone).
+                    if (modelIslands && tags != null && coarse.elevation(i1 + r, j1 + c) < -500f) {
+                        islandGuide(i1 + r, j1 + c, coarse, ctx);
+                        if (ctx.surfaceTag != TAG_NONE && ctx.guideTop > -30) tags[k] = ctx.surfaceTag;
+                    }
+                    continue;
+                }
                 ctx.tag = TAG_NONE;
                 ctx.reefOp = false;
                 double v = raw < -30f ? shape(raw, i1 + r, j1 + c, coarse, ctx) : raw;
@@ -294,6 +306,10 @@ public final class OceanFeatures {
         /** Surface tag for this pixel, and whether a reef ring (atoll, barrier reef, raised reef) covers it. */
         byte tag;
         boolean reefOp;
+        /** Model-drawn islands' combined surface (absolute metres) here, or -infinity; see {@link #islandGuide}. */
+        double guideTop;
+        /** Only the island guide is wanted: skip everything else in {@link #shape}. */
+        boolean guideOnly;
         /** The hotspot chains within two cells of the last hotspot cell asked for (rows of pixels share a cell). */
         final Chain[] nearChains = new Chain[25];
         int nearCellX = Integer.MIN_VALUE, nearCellZ = Integer.MIN_VALUE;
@@ -310,8 +326,11 @@ public final class OceanFeatures {
         // ---- Continental margins: canyons, fans and channels, abyssal plains (round 3) ----
         ctx.plain = 0;
         ctx.continent = 0;
-        if (raw < -SHELF_TOP_M && raw > -SHELF_BASE_M) raw = shelf(raw, x, z, coarse, ctx);
-        if (raw < -CANYON_TOP_M) raw = margin(raw, x, z, coarse, ctx);
+        ctx.guideTop = Double.NEGATIVE_INFINITY;
+        if (!ctx.guideOnly) {
+            if (raw < -SHELF_TOP_M && raw > -SHELF_BASE_M) raw = shelf(raw, x, z, coarse, ctx);
+            if (raw < -CANYON_TOP_M) raw = margin(raw, x, z, coarse, ctx);
+        }
         double depth = -raw;
         double deepFade = smoothstep(1500, 3000, depth);
 
@@ -399,7 +418,7 @@ public final class OceanFeatures {
             }
         }
         // Big stamps on the deep floor: oceanic plateaus.
-        plateaus(x, z, coarse, ctx);
+        if (!ctx.guideOnly) plateaus(x, z, coarse, ctx);
         double tectonic = trenchDown;
         if (ridgeUp > Double.NEGATIVE_INFINITY) tectonic += ridgeUp * deepFade;
         if (deepFade > 0) {
@@ -409,6 +428,7 @@ public final class OceanFeatures {
 
         // ---- Volcanoes ----
         hotspots(x, z, coarse, ctx);
+        if (ctx.guideOnly) return ctx.guideTop;
         seamounts(x, z, coarse, ctx);
         // Swell, moat, arch, debris fields and aseismic ridges around the hotspot chains.
         if (deepFade > 0) hotspotFlex(x, z, raw, deepFade, coarse, ctx);
@@ -871,7 +891,7 @@ public final class OceanFeatures {
             double landU = 0.42, sea = -floor / (peak - floor);
             double s = u < landU ? sea + (1 - sea) * (1 - Math.pow(u / landU, 1.8)) : sea * Math.pow((1 - u) / (1 - landU), 1.5);
             double cc = (peak - floor) * s;
-            volcano(ctx, cc, floor);
+            island(ctx, cc, floor);
             if (cc > ctx.surfaceC) { ctx.surfaceC = cc; ctx.surfaceTag = TAG_LIMESTONE_SOIL; }
         }
     }
@@ -1628,7 +1648,7 @@ public final class OceanFeatures {
                 int extra = arcExtra(peak, warm, h);
                 double relief = peak - floor;
                 int style = extra == ARC_CALDERA ? STYLE_CALDERA : 0;
-                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
+                island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
@@ -1891,7 +1911,7 @@ public final class OceanFeatures {
                 double ang = Math.atan2(z - vcz, x - vcx);
                 double relief = peak - floor;
                 int style = (stage.equals("flooded_caldera") ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
-                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
+                island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
                 if (stage.equals("barrier_reef_island")) {
                     // The island is sinking and its fringing reef grew up into a ring offshore, with a lagoon between.
                     double landR = landU * radius;
@@ -2200,6 +2220,35 @@ public final class OceanFeatures {
             double k = Math.min(300, 0.5 * Math.min(c, prevTop));
             double diff = Math.abs(a - ctx.absTop), m = Math.max(a, ctx.absTop);
             ctx.absTop = (k <= 0 || diff >= k) ? m : m + sq((k - diff) / k) * k * 0.25;
+        }
+    }
+
+    /**
+     * An island's cone ({@code c} metres above its floor): a volcano like any other, or, when the model draws the
+     * islands, its share of the island guide instead (combined the same way).
+     */
+    private void island(Ctx ctx, double c, double floor) {
+        if (!modelIslands && !ctx.guideOnly) { volcano(ctx, c, floor); return; }
+        ctx.lastC = c;
+        if (c <= 0) return;
+        double a = floor + c;
+        if (ctx.guideTop == Double.NEGATIVE_INFINITY) { ctx.guideTop = a; return; }
+        double k = 300, diff = Math.abs(a - ctx.guideTop), m = Math.max(a, ctx.guideTop);
+        ctx.guideTop = diff >= k ? m : m + sq((k - diff) / k) * k * 0.25;
+    }
+
+    /**
+     * The surface (absolute metres) of the model-drawn islands at native pixel (pi, pj), or -infinity where there are
+     * none: the same cones the islands would have here, which the pipeline blends into the model's coarse
+     * conditioning and its low-frequency latent so the model draws each island itself, with its own ridges, valleys
+     * and coasts. Placement uses the same rules as the terrain, so the reef rings land around the islands.
+     */
+    public double islandGuide(int pi, int pj, CoarseField coarse, Ctx ctx) {
+        ctx.guideOnly = true;
+        try {
+            return shape(coarse.elevation(pi, pj), pi, pj, coarse, ctx);
+        } finally {
+            ctx.guideOnly = false;
         }
     }
 

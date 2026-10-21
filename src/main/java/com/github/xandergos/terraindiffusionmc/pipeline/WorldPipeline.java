@@ -90,7 +90,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.decoderModel = models.getDecoderModel();
         this.ownModels = false;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
-        this.oceanFeatures = new OceanFeatures(this.seed);
+        this.oceanFeatures = newOceanFeatures(this.seed);
         this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
@@ -107,7 +107,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.decoderModel = new OnnxModel(ModelAssetManager.resolveAssetPath("decoder_model.onnx"), "decoder");
         this.ownModels = true;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
-        this.oceanFeatures = new OceanFeatures(this.seed);
+        this.oceanFeatures = newOceanFeatures(this.seed);
         this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
@@ -121,9 +121,15 @@ public final class WorldPipeline implements AutoCloseable {
         if (s == this.seed) return;
         this.seed = s;
         this.syntheticMapFactory = new SyntheticMapFactory(s);
-        this.oceanFeatures = new OceanFeatures(s);
+        this.oceanFeatures = newOceanFeatures(s);
         this.archipelagoShaper = new ArchipelagoShaper(s);
         tileStore.clearAllCaches();
+    }
+
+    private static OceanFeatures newOceanFeatures(long seed) {
+        OceanFeatures of = new OceanFeatures(seed);
+        of.modelIslands = TerrainDiffusionConfig.oceanFeatures() && TerrainDiffusionConfig.modelIslands();
+        return of;
     }
 
     // =========================================================================
@@ -265,8 +271,12 @@ public final class WorldPipeline implements AutoCloseable {
             int[] ctx = wis.get(b);
             int i1 = ctx[1] * ST, j1 = ctx[2] * ST;
 
+            // Islands for the model to draw (refinement step only; see islandGuide).
+            OceanFeatures of = oceanFeatures;
+            IslandGuide guide = prevSamples != null && of.modelIslands ? islandGuide(of, ctx[1], ctx[2]) : null;
+
             // Build conditioning from coarse slice (7, 4, 4)
-            float[] cond58 = buildLatentConditioning(coarseSlices.get(b));
+            float[] cond58 = buildLatentConditioning(coarseSlices.get(b), guide);
             System.arraycopy(cond58, 0, condInputBatch, b * 58, 58);
 
             // Build sample (unnormalized prev output or zeros)
@@ -278,6 +288,7 @@ public final class WorldPipeline implements AutoCloseable {
                         float w = ps.data[5 * S * S + px];
                         sample[ch * S * S + px] = (w > 1e-6f) ? ps.data[ch * S * S + px] / w * SIGMA_DATA : 0f;
                     }
+                if (guide != null) guide.blendLowfreq(sample, S);
             }
 
             // z = noise * sigma_data; x_t = cos(t)*sample + sin(t)*z
@@ -324,8 +335,108 @@ public final class WorldPipeline implements AutoCloseable {
         return results;
     }
 
+    // ---- Model-drawn islands ----
+
+    /** How far apart (sqrt-metres) the model's low-frequency floor and an island guide blend smoothly. */
+    private static final float ISLAND_BLEND = 1.5f;
+    /** Guide samples per side of each coarse pixel, for the conditioning. */
+    private static final int ISLAND_COARSE_SAMPLES = 8;
+
+    /**
+     * The islands {@link OceanFeatures#islandGuide} wants drawn in one latent tile: their surface in signed-sqrt
+     * metres at each latent pixel of the tile ({@code tile}, NaN where there is none) and at a grid of points in each
+     * of the 16 coarse pixels its conditioning covers ({@code coarse}).
+     */
+    private static final class IslandGuide {
+        final float[] tile;
+        final float[][] coarse;
+
+        IslandGuide(float[] tile, float[][] coarse) { this.tile = tile; this.coarse = coarse; }
+
+        /** Raises the low-frequency channel (4) of a latent sample (scaled by SIGMA_DATA) to the islands, smoothly. */
+        void blendLowfreq(float[] sample, int S) {
+            int off = 4 * S * S;
+            for (int px = 0; px < S * S; px++) {
+                float g = tile[px];
+                if (Float.isNaN(g)) continue;
+                float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
+                sample[off + px] = (smoothMax(l, g, ISLAND_BLEND) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
+            }
+        }
+
+        /** Lifts the conditioning's mean and 5th-percentile elevation (signed sqrt, unweighted) to the islands. */
+        void liftConditioning(float[] condFlat, int N) {
+            for (int px = 0; px < N; px++) {
+                float[] g = coarse[px];
+                float mean = condFlat[px], p5 = condFlat[N + px];
+                double lift = 0;
+                float[] lows = new float[g.length];
+                for (int k = 0; k < g.length; k++) {
+                    boolean none = Float.isNaN(g[k]);
+                    lift += none ? 0 : Math.max(0f, g[k] - mean);
+                    lows[k] = none ? p5 : Math.max(p5, g[k]);
+                }
+                if (lift <= 0) continue;
+                java.util.Arrays.sort(lows);
+                condFlat[px] = (float) (mean + lift / g.length);
+                condFlat[N + px] = Math.min(lows[(int) (0.05f * lows.length)], condFlat[px]);
+            }
+        }
+    }
+
+    /**
+     * Where the islands of {@link OceanFeatures} go in latent tile (ti, tj), or null if there are none near it.
+     * Instead of stamping procedural cones onto the finished terrain, the refinement step of the latent model is
+     * told about each island (its conditioning says the coarse pixel holds land, and its low-frequency input already
+     * rises to the island), so the model draws the island itself in its own style.
+     */
+    private IslandGuide islandGuide(OceanFeatures of, int ti, int tj) {
+        int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE, lc = LATENT_COMPRESSION, CS = 32 * lc, G = ISLAND_COARSE_SAMPLES;
+        // The tile's conditioning covers coarse pixels (ti - 1 .. ti + 2, tj - 1 .. tj + 2).
+        int ni0 = (ti - 1) * CS, nj0 = (tj - 1) * CS;
+        int pad = (int) Math.ceil(Math.max(2 * OceanFeatures.MAX_VOLCANO_REACH, OceanFeatures.MAX_FEATURE_REACH));
+        OceanFeatures.CoarseField field = coarseField(ni0 - pad, nj0 - pad, ni0 + 4 * CS + pad, nj0 + 4 * CS + pad);
+        OceanFeatures.Ctx octx = new OceanFeatures.Ctx();
+        float[][] coarseG = new float[16][G * G];
+        boolean any = false;
+        for (int a = 0; a < 4; a++)
+            for (int b = 0; b < 4; b++)
+                for (int u = 0; u < G; u++)
+                    for (int v = 0; v < G; v++) {
+                        int i = ni0 + a * CS + (2 * u + 1) * CS / (2 * G), j = nj0 + b * CS + (2 * v + 1) * CS / (2 * G);
+                        float g = signedSqrtOrNaN(of.islandGuide(i, j, field, octx));
+                        coarseG[a * 4 + b][u * G + v] = g;
+                        any |= !Float.isNaN(g);
+                    }
+        if (!any) return null;
+        float[] tile = new float[S * S];
+        int li = ti * ST, lj = tj * ST;
+        for (int r = 0; r < S; r++)
+            for (int c = 0; c < S; c++)
+                tile[r * S + c] = signedSqrtOrNaN(of.islandGuide((li + r) * lc + lc / 2, (lj + c) * lc + lc / 2, field, octx));
+        return new IslandGuide(tile, coarseG);
+    }
+
+    private static float signedSqrtOrNaN(double e) {
+        if (e == Double.NEGATIVE_INFINITY) return Float.NaN;
+        return (float) (Math.signum(e) * Math.sqrt(Math.abs(e)));
+    }
+
+    /** max(a, b), rounded over {@code k} where they are close. */
+    private static float smoothMax(float a, float b, float k) {
+        float d = Math.abs(a - b);
+        if (d >= k) return Math.max(a, b);
+        float t = (k - d) / k;
+        return Math.max(a, b) + t * t * k * 0.25f;
+    }
+
     /** Build 58-dim conditioning vector from a (7,4,4) coarse tile slice. */
     private float[] buildLatentConditioning(FloatTensor coarseSlice) {
+        return buildLatentConditioning(coarseSlice, null);
+    }
+
+    /** {@link #buildLatentConditioning(FloatTensor)}, with the coarse elevation lifted to the islands of {@code guide}. */
+    private float[] buildLatentConditioning(FloatTensor coarseSlice, IslandGuide guide) {
         int N = 4 * 4;
         // Unnormalize: cond[:-1] / cond[-1] for each pixel
         float[] condFlat = new float[6 * N];
@@ -334,6 +445,7 @@ public final class WorldPipeline implements AutoCloseable {
                 float w = coarseSlice.data[6 * N + px];
                 condFlat[ch * N + px] = (w > 1e-6f) ? coarseSlice.data[ch * N + px] / w : 0f;
             }
+        if (guide != null) guide.liftConditioning(condFlat, N);
 
         // Append mask channel (all ones = (1 - mean) / std normalized)
         float[] condImg7 = new float[7 * N];
