@@ -242,44 +242,45 @@ public final class WorldPipeline implements AutoCloseable {
 
         InfiniteTensor initLatent = tileStore.getOrCreateBatched(
                 "init_latent_map", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, null, args.get(0), tInit, 5819, ww),
+                (wis, args) -> latentBatch(wis, null, args.get(0), tInit, 5819, ww, STAGE_INIT),
                 outWin, new InfiniteTensor[]{coarse}, new TensorWindow[]{coarseWin},
+                cacheLimitBytes, 4);
+
+        // Islands: tiles with a model-drawn island get an extra, noisier pass (see islandGuide); others pass through.
+        float islandT = (float) Math.atan(ISLAND_SIGMA / SIGMA_DATA);
+        InfiniteTensor islandLatent = tileStore.getOrCreateBatched(
+                "island_latent_map", new Integer[]{6, null, null},
+                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), islandT, 5821, ww, STAGE_ISLAND),
+                outWin, new InfiniteTensor[]{initLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
                 cacheLimitBytes, 4);
 
         float interT = (float) Math.atan(0.35f / SIGMA_DATA);
         return tileStore.getOrCreateBatched(
                 "step_latent_map_0", new Integer[]{6, null, null},
-                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), interT, 5820, ww),
-                outWin, new InfiniteTensor[]{initLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
+                (wis, args) -> latentBatch(wis, args.get(0), args.get(1), interT, 5820, ww, STAGE_STEP),
+                outWin, new InfiniteTensor[]{islandLatent, coarse}, new TensorWindow[]{outWin, coarseWin},
                 cacheLimitBytes, 4);
     }
 
+    private static final int STAGE_INIT = 0, STAGE_ISLAND = 1, STAGE_STEP = 2;
+
     private List<FloatTensor> latentBatch(List<int[]> wis, List<FloatTensor> prevSamples,
                                            List<FloatTensor> coarseSlices, float t,
-                                           int seedOffset, float[] ww) {
+                                           int seedOffset, float[] ww, int stage) {
         int S = LATENT_TILE_SIZE, ST = LATENT_TILE_STRIDE;
         int batch = wis.size();
         float cosT = (float) Math.cos(t), sinT = (float) Math.sin(t);
+        OceanFeatures of = oceanFeatures;
 
-        // Intermediate storage: xT per batch element (needed for output step)
-        float[][] xTArr = new float[batch][5 * S * S];
-
-        float[] modelInBatch   = new float[batch * 5 * S * S];
-        float[] condInputBatch = new float[batch * 58];
-
+        // Each tile's input sample (unnormalized prev output, or zeros) and, for tiles the model runs on, its x_t.
+        float[][] samples = new float[batch][];
+        float[][] xTArr = new float[batch][];
+        float[][] conds = new float[batch][];
+        int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
             int i1 = ctx[1] * ST, j1 = ctx[2] * ST;
 
-            // Islands for the model to draw (refinement step only; see islandGuide).
-            OceanFeatures of = oceanFeatures;
-            IslandGuide guide = prevSamples != null && of.modelIslands ? islandGuide(of, ctx[1], ctx[2]) : null;
-
-            // Build conditioning from coarse slice (7, 4, 4)
-            float[] cond58 = buildLatentConditioning(coarseSlices.get(b), guide);
-            System.arraycopy(cond58, 0, condInputBatch, b * 58, 58);
-
-            // Build sample (unnormalized prev output or zeros)
             float[] sample = new float[5 * S * S];
             if (prevSamples != null) {
                 FloatTensor ps = prevSamples.get(b);
@@ -288,8 +289,20 @@ public final class WorldPipeline implements AutoCloseable {
                         float w = ps.data[5 * S * S + px];
                         sample[ch * S * S + px] = (w > 1e-6f) ? ps.data[ch * S * S + px] / w * SIGMA_DATA : 0f;
                     }
-                if (guide != null) guide.blendLowfreq(sample, S);
             }
+            samples[b] = sample;
+
+            // Islands for the model to draw (see islandGuide).
+            IslandGuide guide = stage != STAGE_INIT && of.modelIslands ? islandGuide(of, ctx[1], ctx[2]) : null;
+            if (stage == STAGE_ISLAND) {
+                if (guide == null || !guide.inTile()) continue;     // passes through unchanged
+                guide.prepareIslandPass(sample, S);
+            } else if (stage == STAGE_STEP && guide != null) {
+                guide.pullLowfreq(sample, S, ISLAND_STEP_PULL);
+            }
+
+            // Build conditioning from coarse slice (7, 4, 4)
+            conds[b] = buildLatentConditioning(coarseSlices.get(b), guide);
 
             // z = noise * sigma_data; x_t = cos(t)*sample + sin(t)*z
             float[] noise = flatten3D(GaussianNoisePatch.generate(seed + seedOffset, i1, j1, S, S, 5, S, S));
@@ -299,30 +312,45 @@ public final class WorldPipeline implements AutoCloseable {
                 xT[k] = cosT * sample[k] + sinT * z;
             }
             xTArr[b] = xT;
-
-            // model_in = xT / sigma_data
-            for (int k = 0; k < 5 * S * S; k++)
-                modelInBatch[b * 5 * S * S + k] = xT[k] / SIGMA_DATA;
+            run++;
         }
 
-        String chunkList = wis.stream().map(w -> "(" + w[1] + "," + w[2] + ")").collect(Collectors.joining(", "));
-        LOG.debug("Base model called for {} chunks: {}", batch, chunkList);
+        float[] predBatch = null;
+        int[] slot = new int[batch];
+        if (run > 0) {
+            float[] modelInBatch   = new float[run * 5 * S * S];
+            float[] condInputBatch = new float[run * 58];
+            int n = 0;
+            for (int b = 0; b < batch; b++) {
+                if (xTArr[b] == null) continue;
+                slot[b] = n;
+                for (int k = 0; k < 5 * S * S; k++) modelInBatch[n * 5 * S * S + k] = xTArr[b][k] / SIGMA_DATA;
+                System.arraycopy(conds[b], 0, condInputBatch, n * 58, 58);
+                n++;
+            }
+            String chunkList = wis.stream().map(w -> "(" + w[1] + "," + w[2] + ")").collect(Collectors.joining(", "));
+            LOG.debug("Base model called for {} of {} chunks: {}", run, batch, chunkList);
 
-        float[] noiseLabels = new float[batch];
-        for (int b = 0; b < batch; b++) noiseLabels[b] = t;
-
-        float[] predBatch = baseModel.runModel(
-                modelInBatch, new long[]{batch, 5, S, S},
-                noiseLabels, new float[][]{condInputBatch}, new long[][]{{batch, 58}});
+            float[] noiseLabels = new float[run];
+            java.util.Arrays.fill(noiseLabels, t);
+            predBatch = baseModel.runModel(
+                    modelInBatch, new long[]{run, 5, S, S},
+                    noiseLabels, new float[][]{condInputBatch}, new long[][]{{run, 58}});
+        }
 
         // Build outputs: pred = -raw_model_out; sample = cos(t)*xT - sin(t)*sigma_data*pred
         List<FloatTensor> results = new ArrayList<>(batch);
         for (int b = 0; b < batch; b++) {
-            float[] xT = xTArr[b];
             float[] newSample = new float[5 * S * S];
-            for (int k = 0; k < 5 * S * S; k++) {
-                float pred = -predBatch[b * 5 * S * S + k];  // base model output is negated
-                newSample[k] = (cosT * xT[k] - sinT * SIGMA_DATA * pred) / SIGMA_DATA;
+            float[] xT = xTArr[b];
+            if (xT == null) {
+                for (int k = 0; k < 5 * S * S; k++) newSample[k] = samples[b][k] / SIGMA_DATA;   // passed through
+            } else {
+                int base = slot[b] * 5 * S * S;
+                for (int k = 0; k < 5 * S * S; k++) {
+                    float pred = -predBatch[base + k];  // base model output is negated
+                    newSample[k] = (cosT * xT[k] - sinT * SIGMA_DATA * pred) / SIGMA_DATA;
+                }
             }
 
             FloatTensor out = new FloatTensor(new int[]{6, S, S});
@@ -339,6 +367,12 @@ public final class WorldPipeline implements AutoCloseable {
 
     /** How far apart (sqrt-metres) the model's low-frequency floor and an island guide blend smoothly. */
     private static final float ISLAND_BLEND = 1.5f;
+    /** Noise level of the island pass: high enough that the model redraws the terrain under the island. */
+    private static final float ISLAND_SIGMA = 1.0f;
+    /** How far (sqrt-metres) above the floor an island must stand to clear the old floor detail fully. */
+    private static final float ISLAND_CLEAR = 4f;
+    /** Share of the way the refinement step's input is pulled back up to an island the island pass lowered. */
+    private static final float ISLAND_STEP_PULL = 0.5f;
     /** Guide samples per side of each coarse pixel, for the conditioning. */
     private static final int ISLAND_COARSE_SAMPLES = 8;
 
@@ -353,14 +387,41 @@ public final class WorldPipeline implements AutoCloseable {
 
         IslandGuide(float[] tile, float[][] coarse) { this.tile = tile; this.coarse = coarse; }
 
-        /** Raises the low-frequency channel (4) of a latent sample (scaled by SIGMA_DATA) to the islands, smoothly. */
-        void blendLowfreq(float[] sample, int S) {
+        /** Whether any island reaches into the tile itself (not just its conditioning's surroundings). */
+        boolean inTile() {
+            for (float g : tile) if (!Float.isNaN(g)) return true;
+            return false;
+        }
+
+        /**
+         * Input for the island pass: the low-frequency channel (4) is raised to the islands (smooth max), and where an
+         * island stands clear of the floor the detail channels (0-3), which still describe open ocean floor there,
+         * fade to zero, so the model makes up its own island terrain from the noise.
+         */
+        void prepareIslandPass(float[] sample, int S) {
             int off = 4 * S * S;
             for (int px = 0; px < S * S; px++) {
                 float g = tile[px];
                 if (Float.isNaN(g)) continue;
                 float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
+                float w = smoothstep(0f, ISLAND_CLEAR, g - l);
+                for (int ch = 0; ch < 4; ch++) sample[ch * S * S + px] *= 1f - w;
                 sample[off + px] = (smoothMax(l, g, ISLAND_BLEND) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
+            }
+        }
+
+        /**
+         * Refinement input: pulls the low-frequency channel {@code pull} of the way up to the islands where the island
+         * pass left it lower, so a small island is not lost, while the model keeps its own shape for the rest.
+         */
+        void pullLowfreq(float[] sample, int S, float pull) {
+            int off = 4 * S * S;
+            for (int px = 0; px < S * S; px++) {
+                float g = tile[px];
+                if (Float.isNaN(g)) continue;
+                float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
+                float target = smoothMax(l, g, ISLAND_BLEND);
+                sample[off + px] = (l + pull * (target - l) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
             }
         }
 
@@ -420,6 +481,11 @@ public final class WorldPipeline implements AutoCloseable {
     private static float signedSqrtOrNaN(double e) {
         if (e == Double.NEGATIVE_INFINITY) return Float.NaN;
         return (float) (Math.signum(e) * Math.sqrt(Math.abs(e)));
+    }
+
+    private static float smoothstep(float e0, float e1, float x) {
+        float t = Math.max(0f, Math.min(1f, (x - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
     }
 
     /** max(a, b), rounded over {@code k} where they are close. */

@@ -1652,7 +1652,7 @@ public final class OceanFeatures {
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
-                    double rim = Math.min(barrierRim(landR, h), 0.95 * radius);
+                    double rim = Math.min(barrierRim(landR * 1.25, h), 0.95 * radius);
                     pushOp(ctx, OP_ATOLL, rim, REEF_BARRIER, radius, landR, h, cqx, cqz);
                     ctx.opWarped[ctx.nOps - 1] = true;
                 }
@@ -1915,7 +1915,7 @@ public final class OceanFeatures {
                 if (stage.equals("barrier_reef_island")) {
                     // The island is sinking and its fringing reef grew up into a ring offshore, with a lagoon between.
                     double landR = landU * radius;
-                    pushOp(ctx, OP_ATOLL, barrierRim(landR, h), REEF_BARRIER, radius, landR, h, vcx, vcz);
+                    pushOp(ctx, OP_ATOLL, barrierRim(landR * 1.25, h), REEF_BARRIER, radius, landR, h, vcx, vcz);
                 }
             }
             case "atoll", "raised_coral_island" -> {
@@ -2058,7 +2058,7 @@ public final class OceanFeatures {
      */
     private double islandCone(double r, double radius, double sea, double landU, double ang,
                               double x, double z, long h, int style, double relief) {
-        double u = roughRadius(r, radius, x, z, h) / radius;
+        double u = roughRadius(r, radius, x, z, h) / radius / riftStretch(ang, h);
         // Ragged coastline: headlands and coves from ~150 m to ~3 km, up to ~1 km deep. The noise is sampled by direction around the
         // summit (on a circle sized to the coast, so its wavelengths are in km) and only slowly with distance, and
         // it fades in toward the coast, so along any line down from the summit the ground still only falls: no
@@ -2096,6 +2096,24 @@ public final class OceanFeatures {
         if ((style & STYLE_CALDERA) != 0) s = floodedCaldera(s, u, r, radius, sea, landU, relief, ang, x, z, h);
         if ((style & STYLE_SCAR) != 0) s = landslideScar(s, r, radius, sea, landU, relief, ang, x, z, h);
         return s;
+    }
+
+    /**
+     * Rift zones: a shield volcano grows along two or three ridges running out from its summit (Hawaii's Puna and
+     * Kona rifts), so an island reaches out in lobes and capes instead of being a round cone. Returns how far the
+     * profile is stretched in direction {@code ang} (0.8 to 1.25); it depends on the direction only, so the ground
+     * still falls all the way down every line from the summit.
+     */
+    private static double riftStretch(double ang, long h) {
+        int n = unit(mix(h + 90)) < 0.45 ? 2 : 3;
+        double a0 = unit(mix(h + 91)) * 2 * Math.PI, f = 0;
+        for (int k = 0; k < n; k++) {
+            double ak = a0 + k * 2 * Math.PI / n + (unit(mix(h + 92 + k)) - 0.5) * 0.9;
+            double amp = 0.25 + 0.2 * unit(mix(h + 96 + k)), width = 0.3 + 0.25 * unit(mix(h + 99 + k));
+            double da = Math.atan2(Math.sin(ang - ak), Math.cos(ang - ak));
+            f = Math.max(f, amp * Math.exp(-sq(da / width)));
+        }
+        return 0.8 + f;
     }
 
     /**
