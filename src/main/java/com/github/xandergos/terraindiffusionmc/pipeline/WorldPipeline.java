@@ -372,7 +372,7 @@ public final class WorldPipeline implements AutoCloseable {
     /** How far (sqrt-metres) above the floor an island must stand to clear the old floor detail fully. */
     private static final float ISLAND_CLEAR = 4f;
     /** Share of the way the refinement step's input is pulled back up to an island the island pass lowered. */
-    private static final float ISLAND_STEP_PULL = 0.5f;
+    private static final float ISLAND_STEP_PULL = 0.65f;
     /** Guide samples per side of each coarse pixel, for the conditioning. */
     private static final int ISLAND_COARSE_SAMPLES = 8;
 
@@ -406,7 +406,7 @@ public final class WorldPipeline implements AutoCloseable {
                 float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
                 float w = smoothstep(0f, ISLAND_CLEAR, g - l);
                 for (int ch = 0; ch < 4; ch++) sample[ch * S * S + px] *= 1f - w;
-                sample[off + px] = (smoothMax(l, g, ISLAND_BLEND) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
+                sample[off + px] = (target(l, g) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
             }
         }
 
@@ -420,9 +420,19 @@ public final class WorldPipeline implements AutoCloseable {
                 float g = tile[px];
                 if (Float.isNaN(g)) continue;
                 float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
-                float target = smoothMax(l, g, ISLAND_BLEND);
-                sample[off + px] = (l + pull * (target - l) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
+                sample[off + px] = (l + pull * (target(l, g) - l) - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
             }
+        }
+
+        /**
+         * Where low-frequency height {@code l} should go for island surface {@code g} (both signed sqrt): up to the
+         * island (smooth max), and on the island's upper part (above ~600 m deep) also down to it, so calderas,
+         * bays and landslide scars the model filled in are cut back out.
+         */
+        static float target(float l, float g) {
+            float up = smoothMax(l, g, ISLAND_BLEND);
+            float down = smoothstep(-30f, -20f, g);
+            return up + (Math.min(up, g) - up) * down;
         }
 
         /** Lifts the conditioning's mean and 5th-percentile elevation (signed sqrt, unweighted) to the islands. */

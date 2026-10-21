@@ -175,6 +175,7 @@ public final class OceanFeatures {
     private final FastNoiseLite reefZone, reefPatch, bankZone, bankLevel, shoals, coastFine;
     private final FastNoiseLite canyonZone, canyonNoise, tributaryNoise, fanNoise, meander;
     private final FastNoiseLite shelfZone, currentDir, sandWaves, drowned, saltLumps;
+    private final FastNoiseLite islandCoast, islandCoastWarpX, islandCoastWarpZ;
 
     public OceanFeatures(long seed) {
         this.seed = seed;
@@ -206,6 +207,10 @@ public final class OceanFeatures {
         meander = single(s + 119);
         coastFine.SetFractalOctaves(3);
         coastFine.SetFractalGain(0.5f);
+        islandCoast = noise(s + 126, 1f / 2.2f);
+        islandCoast.SetFractalOctaves(4);
+        islandCoastWarpX = noise(s + 127, 1f / 1.5f);
+        islandCoastWarpZ = noise(s + 128, 1f / 1.5f);
     }
 
     /** Single-octave noise at frequency 1 (callers scale their coordinates). */
@@ -251,14 +256,17 @@ public final class OceanFeatures {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
                 float raw = elev[k];
-                if (raw >= 0f) {
-                    // A model-drawn island's land still takes its island rock (forearc islands' limestone).
-                    if (modelIslands && tags != null && coarse.elevation(i1 + r, j1 + c) < -500f) {
-                        islandGuide(i1 + r, j1 + c, coarse, ctx);
-                        if (ctx.surfaceTag != TAG_NONE && ctx.guideTop > -30) tags[k] = ctx.surfaceTag;
+                if (modelIslands && raw > -ISLAND_COAST_DEEP && raw < ISLAND_COAST_HIGH && coarse.elevation(i1 + r, j1 + c) < -500f) {
+                    // Model-drawn islands: a ragged coast (the model's own coast is smooth at this scale), and on land
+                    // their island rock (forearc islands' limestone).
+                    islandGuide(i1 + r, j1 + c, coarse, ctx);
+                    if (ctx.guideTop > -1500) {
+                        raw = (float) islandCoast(raw, i1 + r, j1 + c, smoothstep(-1500, -500, ctx.guideTop));
+                        elev[k] = raw;
+                        if (raw >= 0f && tags != null && ctx.surfaceTag != TAG_NONE && ctx.guideTop > -30) tags[k] = ctx.surfaceTag;
                     }
-                    continue;
                 }
+                if (raw >= 0f) continue;
                 ctx.tag = TAG_NONE;
                 ctx.reefOp = false;
                 double v = raw < -30f ? shape(raw, i1 + r, j1 + c, coarse, ctx) : raw;
@@ -2239,6 +2247,22 @@ public final class OceanFeatures {
             double diff = Math.abs(a - ctx.absTop), m = Math.max(a, ctx.absTop);
             ctx.absTop = (k <= 0 || diff >= k) ? m : m + sq((k - diff) / k) * k * 0.25;
         }
+    }
+
+    /** Model-drawn island coasts: detail amplitude (m), and the heights (m) it fades out by below and above the sea. */
+    private static final float ISLAND_COAST_M = 40f, ISLAND_COAST_DEEP = 260f, ISLAND_COAST_HIGH = 110f;
+
+    /**
+     * A model-drawn island's coast, roughened into coves, points and stacks from ~150 m to ~2 km (the model's own
+     * coastline is smooth below ~1 km). Like the archipelago coasts: centred on the shoreline, fading out by
+     * {@link #ISLAND_COAST_HIGH} on land and {@link #ISLAND_COAST_DEEP} under the sea, gently enough that the ground
+     * still rises with the model's height. {@code w} fades it out toward the island's footprint edge.
+     */
+    private double islandCoast(double raw, int pi, int pj, double w) {
+        float xk = pj / (float) KM, zk = pi / (float) KM;
+        float x = xk + 0.45f * islandCoastWarpX.GetNoise(xk, zk), z = zk + 0.45f * islandCoastWarpZ.GetNoise(xk, zk);
+        double near = raw >= 5 ? 1 - smoothstep(5, ISLAND_COAST_HIGH, raw) : smoothstep(-ISLAND_COAST_DEEP, -160, raw);
+        return raw - ISLAND_COAST_M * w * near * islandCoast.GetNoise(x, z);
     }
 
     /**
