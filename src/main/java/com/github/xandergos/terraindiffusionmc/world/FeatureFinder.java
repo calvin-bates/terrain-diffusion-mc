@@ -46,7 +46,6 @@ public final class FeatureFinder {
         KINDS.put("landslide_scar", new String[]{"landslide_scar", "island landslide scar"});
         KINDS.put("aseismic_ridge", new String[]{"aseismic_ridge", "aseismic ridge"});
         KINDS.put("oceanic_plateau", new String[]{"oceanic_plateau", "oceanic plateau"});
-        KINDS.put("microcontinent", new String[]{"microcontinent", "microcontinent (granite island)"});
         KINDS.put("forearc_island", new String[]{"forearc_island", "forearc island"});
         KINDS.put("back_arc_basin", new String[]{"back_arc_basin", "back-arc basin spreading axis"});
         KINDS.put("mud_volcano", new String[]{"mud_volcano", "mud volcano"});
@@ -247,7 +246,6 @@ public final class FeatureFinder {
             case "raised_coral_island" -> "old reef rim about " + v + " m up";
             case "aseismic_ridge" -> "crest about " + (-v) + " m down";
             case "oceanic_plateau" -> "top about " + (-v) + " m down";
-            case "microcontinent" -> "granite island, peak " + v + " m";
             case "forearc_island" -> "low limestone island, peak " + v + " m";
             case "back_arc_basin" -> "axis about " + (-v) + " m down";
             case "mud_volcano" -> "cone about " + v + " m high, on the slope; it only forms 400-3000 m down";

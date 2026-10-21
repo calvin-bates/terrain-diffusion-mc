@@ -28,7 +28,6 @@ import org.slf4j.LoggerFactory;
  *   <li><b>Raised coral islands</b> and <b>forearc islands</b>: the rock is limestone, in layers of calcite and
  *       diorite (vanilla has no limestone). On the rim and cliffs it is bare at the surface, with soil only in pockets
  *       on flat ground; inside the old lagoon basin it lies under the soil.</li>
- *   <li><b>Microcontinent islands</b>: granite, bare on steep ground.</li>
  *   <li><b>Deep floors</b> (round 3): pale ooze (calcite and diorite) above ~4.3 km, red-brown clay (terracotta mix)
  *       below, pillow lava (basalt, smooth basalt, blackstone) by spreading ridges, mud around mud volcanoes.</li>
  * </ul>
@@ -92,7 +91,7 @@ public final class OceanSurfaces {
         if (data == null || data.oceanTags == null) return;
         if (!loggedFirst) {
             loggedFirst = true;
-            LOG.info("Terra: first chunk with ocean surfaces (reef, lagoon, bank, limestone, granite or deep floor) at {}", cp);
+            LOG.info("Terra: first chunk with ocean surfaces (reef, lagoon, bank, limestone or deep floor) at {}", cp);
         }
         int scale = WorldScaleManager.clampScale(WorldScaleManager.getCurrentScale());
         float blockSize = 30f / scale;
@@ -112,9 +111,7 @@ public final class OceanSurfaces {
                     case OceanFeatures.TAG_LAGOON -> lagoon(chunk, pos, x, z, h, seaLevel, lightLimit, minY, false);
                     case OceanFeatures.TAG_BANK -> lagoon(chunk, pos, x, z, h, seaLevel, lightLimit, minY, true);
                     case OceanFeatures.TAG_LIMESTONE, OceanFeatures.TAG_LIMESTONE_SOIL ->
-                            limestone(chunk, data, pos, x, z, lx, lz, h, tag == OceanFeatures.TAG_LIMESTONE, minY, blockSize, false);
-                    case OceanFeatures.TAG_GRANITE ->
-                            limestone(chunk, data, pos, x, z, lx, lz, h, true, minY, blockSize, true);
+                            limestone(chunk, data, pos, x, z, lx, lz, h, tag == OceanFeatures.TAG_LIMESTONE, minY, blockSize);
                     case OceanFeatures.TAG_OOZE, OceanFeatures.TAG_RED_CLAY, OceanFeatures.TAG_PILLOW, OceanFeatures.TAG_MUD ->
                             deepFloor(chunk, pos, x, z, tag, seaLevel, minY);
                     default -> {
@@ -192,7 +189,7 @@ public final class OceanSurfaces {
     // ---- Raised coral islands ----
 
     private static void limestone(ChunkAccess chunk, HeightmapData data, BlockPos.MutableBlockPos pos, int x, int z,
-                                  int lx, int lz, long h, boolean bareRock, int minY, float blockSize, boolean granite) {
+                                  int lx, int lz, long h, boolean bareRock, int minY, float blockSize) {
         int top = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG, x & 15, z & 15);
         // Down to the first solid block (the heightmap can be stale above a carved hole, and water is not ground).
         int y = top;
@@ -218,7 +215,7 @@ public final class OceanSurfaces {
             if (!isRock(st)) continue;                                  // air, water and caves pass through
             if (soil > 0 && isSoft(st)) { soil--; continue; }
             soil = 0;
-            chunk.setBlockState(pos, granite ? graniteAt(x, yy, z) : limestoneAt(x, yy, z), 0);
+            chunk.setBlockState(pos, limestoneAt(x, yy, z), 0);
         }
     }
 
@@ -242,11 +239,6 @@ public final class OceanSurfaces {
         boolean calcite = unit(mix(band * 0x632BE59BD9B4E019L + 17)) < 0.62;
         if (unit(mix(x * 0x9E3779B97F4A7C15L ^ y * 0x85EBCA77C2B2AE63L ^ z * 0xC2B2AE3D27D4EB4FL)) < 0.08) calcite = !calcite;
         return calcite ? Blocks.CALCITE.defaultBlockState() : Blocks.DIORITE.defaultBlockState();
-    }
-
-    /** Granite (the microcontinents' islands), with the odd vein of diorite. */
-    private static BlockState graniteAt(int x, int y, int z) {
-        return STRATA.GetNoise(x * 2.3f + 400, y * 3f, z * 2.3f) > 0.62f ? Blocks.DIORITE.defaultBlockState() : Blocks.GRANITE.defaultBlockState();
     }
 
     // ---- Deep floors: ooze, red clay, pillow lava, mud ----

@@ -83,8 +83,6 @@ public final class OceanFeatures {
     public static final byte TAG_RED_CLAY = 15;
     /** Young crust near a mid-ocean ridge axis: pillow lava (basalt and blackstone). */
     public static final byte TAG_PILLOW = 16;
-    /** Granite island (microcontinents): granite rock. */
-    public static final byte TAG_GRANITE = 17;
 
     /** Whether a surface tag is a coral reef of any kind. */
     public static boolean isReef(byte tag) {
@@ -288,7 +286,7 @@ public final class OceanFeatures {
         double plain, continent;
         /** Distance (native pixels) to the nearest mid-ocean ridge axis, or MAX_VALUE. */
         double ridgeAxis;
-        /** Surface tag of the island landform contributing {@code surfaceC} metres here (granite domes, forearc islands). */
+        /** Surface tag of the island landform contributing {@code surfaceC} metres here (forearc islands). */
         byte surfaceTag;
         double surfaceC;
         /** Surface tag for this pixel, and whether a reef ring (atoll, barrier reef, raised reef) covers it. */
@@ -398,7 +396,7 @@ public final class OceanFeatures {
                 }
             }
         }
-        // Big stamps on the deep floor: oceanic plateaus and microcontinents (with their granite islands).
+        // Big stamps on the deep floor: oceanic plateaus.
         plateaus(x, z, coarse, ctx);
         double tectonic = trenchDown;
         if (ridgeUp > Double.NEGATIVE_INFINITY) tectonic += ridgeUp * deepFade;
@@ -432,7 +430,7 @@ public final class OceanFeatures {
         for (int o = 0; o < ctx.nOps; o++) {
             total = applyOp(total, o, x, z, ctx);
         }
-        // Island rock from the landform that stands highest here (granite domes, forearc islands).
+        // Island rock from the landform that stands highest here (forearc islands).
         if (ctx.surfaceTag != TAG_NONE && total > -30 && ctx.surfaceC >= ctx.top1 - 1 && !ctx.reefOp) ctx.tag = ctx.surfaceTag;
         // Sea floor materials on open-ocean floors that nothing else has claimed.
         if (ctx.tag == TAG_NONE && total < -900) ctx.tag = floorMaterial(total, x, z, ctx);
@@ -752,26 +750,24 @@ public final class OceanFeatures {
     }
 
     // =========================================================================
-    // Round 3: plateaus, microcontinents, arcs, floor materials
+    // Round 3: plateaus, arcs, floor materials
     // =========================================================================
 
-    /** Big stamps: one chance per cell (native pixels), and the share of them that are microcontinents. */
-    private static final double PLATEAU_CELL = 420 * KM, PLATEAU_CHANCE = 0.55, MICRO_SHARE = 0.45;
-    /** Coarse depth (metres) a plateau or microcontinent needs at its centre. */
+    /**
+     * Oceanic plateaus: one chance per cell (native pixels). (Microcontinents with granite islands were tried here in
+     * round 3 and removed at Calvin's request, Oct 20; plateaus kept the frequency they had then.)
+     */
+    private static final double PLATEAU_CELL = 420 * KM, PLATEAU_CHANCE = 0.3;
+    /** Coarse depth (metres) a plateau needs at its centre. */
     private static final float PLATEAU_MIN_DEPTH = 2500f;
-    /** Largest radius of a plateau or microcontinent (native pixels). */
-    private static final double PLATEAU_MAX_R = 60 * KM;
-    /** Granite islands on a microcontinent: count and size. */
-    private static final int MICRO_ISLANDS_MAX = 5;
 
-    /** An oceanic plateau or a microcontinent; all from the seed. */
-    record Plateau(boolean micro, double x, double z, double radius, double top, long h,
-                   double[] ix, double[] iz, double[] ir, double[] ipeak) {}
+    /** An oceanic plateau; all from the seed. */
+    record Plateau(double x, double z, double radius, double top, long h) {}
 
-    private static final Plateau NO_PLATEAU = new Plateau(false, 0, 0, 0, 0, 0, null, null, null, null);
+    private static final Plateau NO_PLATEAU = new Plateau(0, 0, 0, 0, 0);
     private final java.util.concurrent.ConcurrentHashMap<Long, Plateau> plateauCache = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** The plateau or microcontinent of cell (gx, gz), or null. Cached. */
+    /** The plateau of cell (gx, gz), or null. Cached. */
     Plateau plateau(int gx, int gz) {
         long key = ((long) gx << 32) ^ (gz & 0xFFFFFFFFL);
         Plateau p = plateauCache.computeIfAbsent(key, k -> buildPlateau(gx, gz));
@@ -781,29 +777,16 @@ public final class OceanFeatures {
     private Plateau buildPlateau(int gx, int gz) {
         long h = hash(0x91A7L, gx, gz);
         if (unit(h) > PLATEAU_CHANCE) return NO_PLATEAU;
-        boolean micro = unit(mix(h + 1)) < MICRO_SHARE;
         double px = (gx + 0.2 + 0.6 * unit(mix(h + 2))) * PLATEAU_CELL, pz = (gz + 0.2 + 0.6 * unit(mix(h + 3))) * PLATEAU_CELL;
-        double radius = (micro ? 22 + 26 * unit(mix(h + 4)) : 30 + 30 * unit(mix(h + 4))) * KM;
-        double top = micro ? -(55 + 110 * unit(mix(h + 5))) : -(1300 + 1100 * unit(mix(h + 5)));
-        int n = micro ? 2 + (int) (unit(mix(h + 6)) * (MICRO_ISLANDS_MAX - 1)) : 0;
-        double[] ix = new double[n], iz = new double[n], ir = new double[n], ip = new double[n];
-        for (int k = 0; k < n; k++) {
-            long hk = hash(h, k, 0x6A41L);
-            double a = unit(hk) * 2 * Math.PI, d = Math.sqrt(unit(mix(hk))) * 0.55 * radius;
-            ix[k] = px + Math.cos(a) * d;
-            iz[k] = pz + Math.sin(a) * d;
-            ir[k] = (2 + 3.5 * unit(mix(hk + 1))) * KM;
-            ip[k] = 120 + 650 * unit(mix(hk + 2)) * unit(mix(hk + 3));
-        }
-        return new Plateau(micro, px, pz, radius, top, h, ix, iz, ir, ip);
+        double radius = (30 + 30 * unit(mix(h + 4))) * KM;
+        double top = -(1300 + 1100 * unit(mix(h + 5)));
+        return new Plateau(px, pz, radius, top, h);
     }
 
     /**
      * <b>Oceanic plateaus</b> (Ontong Java, Kerguelen): huge, flat-topped volcanic plateaus 60-120 km across,
-     * rising from the abyss to 1.3-2.4 km below the sea, with lobed outlines and low knolls on top.
-     * <b>Microcontinents</b> (the Seychelles, Zealandia, Rockall): pieces of continent broken off far out at sea,
-     * 45-95 km across, with a shelf-depth top (55-165 m) and steep slopes, and 2-5 steep, rounded granite islands
-     * (inselbergs). Both need a deep floor (coarse 3 km) at their centre and combine with volcanoes like volcanoes do.
+     * rising from the abyss to 1.3-2.4 km below the sea, with lobed outlines and low knolls on top. They need a deep
+     * floor (coarse 2.5 km) at their centre and combine with volcanoes like volcanoes do.
      */
     private void plateaus(double x, double z, CoarseField coarse, Ctx ctx) {
         int cx = (int) Math.floor(x / PLATEAU_CELL), cz = (int) Math.floor(z / PLATEAU_CELL);
@@ -820,52 +803,12 @@ public final class OceanFeatures {
                 float kx = (float) (x / KM * scale) + (p.h & 0xFF), kz = (float) (z / KM * scale) + ((p.h >>> 8) & 0xFF);
                 double u = r * (1 + 0.22 * coastShape.GetNoise(kx, kz) + 0.08 * coastShape.GetNoise(kx * 3.1f + 40, kz * 3.1f)) / p.radius;
                 if (u >= 1) continue;
-                double prof = p.micro
-                        ? 1 - smoothstep(0.72, 1.0, u)                       // a shelf with a steep continental slope
-                        : Math.pow(1 - smoothstep(0.55, 1.0, u), 1.3);        // broad top, gentle flanks
-                double top = p.top;
-                if (!p.micro) {
-                    // Low volcanic knolls and swales on the plateau top.
-                    top += 180 * hills.GetNoise((float) (x / KM / 6) + 500, (float) (z / KM / 6));
-                }
+                double prof = Math.pow(1 - smoothstep(0.55, 1.0, u), 1.3);        // broad top, gentle flanks
+                // Low volcanic knolls and swales on the plateau top.
+                double top = p.top + 180 * hills.GetNoise((float) (x / KM / 6) + 500, (float) (z / KM / 6));
                 volcano(ctx, (top - floor) * prof);
-                if (p.micro) {
-                    for (int k = 0; k < p.ix.length; k++) granite(x, z, p, k, floor, (top - floor) * prof, ctx);
-                }
             }
         }
-    }
-
-    /**
-     * A granite island on a microcontinent: a steep, rounded dome (an inselberg) with a ragged coast. The coast's
-     * wobble depends on the direction from the summit and only slowly on distance, so the ground always falls away
-     * from the summit: no hollows.
-     */
-    private void granite(double x, double z, Plateau p, int k, float floor, double platform, Ctx ctx) {
-        double r = Math.hypot(x - p.ix[k], z - p.iz[k]);
-        double radius = p.ir[k];
-        if (r > radius * 1.5) return;
-        double ang = Math.atan2(z - p.iz[k], x - p.ix[k]);
-        long h = mix(p.h + 97L * k);
-        double coastKm = radius / KM;
-        double rc = coastKm / (2 * Math.PI);
-        float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
-        double n = coastFine.GetNoise((float) rc * ca + 91, (float) rc * sa - 17, (float) (r / KM * 0.12) + (h & 0xFF));
-        // The wobble fades in from the summit (no point where all directions meet) and is kept small enough that
-        // the ground still falls all the way down every line from the summit.
-        double wob = Math.min(1.3 * KM, 0.3 * radius) / radius * n * smoothstep(0, 1, r / radius);
-        double u = r / radius * (1 + 0.28 * coastShape.GetNoise(ca * 1.6f + (h & 0x7F), sa * 1.6f)) + wob;
-        if (u >= 1.15) return;
-        // Dome: steep sides, rounded top; then the platform below the sea.
-        double s = u < 1 ? Math.pow(1 - u * u, 0.8) : 0;
-        // Ribs and gullies on the flanks, by direction only.
-        double rib = gullies.GetNoise((float) rc * 3 * ca + 13, (float) rc * 3 * sa, (float) (h & 0xFF));
-        s *= 1 - 0.12 * Math.abs(rib) * smoothstep(0.2, 0.8, u);
-        // The dome stands on the platform (whose own height here is `platform` above the floor).
-        double c = platform + (p.ipeak[k] - p.top) * s;
-        if (s <= 0 || c <= 0) return;
-        volcano(ctx, c);
-        if (c > ctx.surfaceC) { ctx.surfaceC = c; ctx.surfaceTag = TAG_GRANITE; }
     }
 
     // ---- Forearc and back-arc ----
@@ -1166,15 +1109,7 @@ public final class OceanFeatures {
                 Plateau p = plateau(gx, gz);
                 if (p == null || !inside(p.z, p.x, i0, j0, i1, j1)) continue;
                 if (coarse.elevation(p.z, p.x) > -PLATEAU_MIN_DEPTH) continue;
-                if (!p.micro) {
-                    out.add(new Landmark("oceanic_plateau", p.z, p.x, (float) p.top));
-                } else {
-                    // Mark the tallest granite island (that is what people look for), or the centre.
-                    int best = -1;
-                    for (int k = 0; k < p.ix.length; k++) if (best < 0 || p.ipeak[k] > p.ipeak[best]) best = k;
-                    double mi = best >= 0 ? p.iz[best] : p.z, mj = best >= 0 ? p.ix[best] : p.x;
-                    out.add(new Landmark("microcontinent", mi, mj, (float) (best >= 0 ? p.ipeak[best] : p.top)));
-                }
+                out.add(new Landmark("oceanic_plateau", p.z, p.x, (float) p.top));
             }
         }
     }
