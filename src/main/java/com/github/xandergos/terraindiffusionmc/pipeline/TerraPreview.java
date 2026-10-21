@@ -55,7 +55,7 @@ public final class TerraPreview {
 
         // Archipelagos: the old pass, and model-drawn in each mode being tuned.
         // Variants: old, or mode@finalPull.
-        String[] variants = System.getProperty("terra.archVariants", "old,keep@1.0,keep@0.8,step@1.0").split(",");
+        String[] variants = System.getProperty("terra.archVariants", "old,keep@1.0").split(",");
         for (String variant : variants) {
             TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", variant.equals("old") ? "false" : "true");
             if (!variant.equals("old")) {

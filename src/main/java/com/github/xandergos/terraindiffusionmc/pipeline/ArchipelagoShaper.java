@@ -43,7 +43,17 @@ public final class ArchipelagoShaper {
      */
     private static final float SLOPE_SMOOTH = 0.8f, SLOPE_ROUGH = 3.5f;
     /** Native pixels of model elevation needed around a request to measure the slope ({@link #apply}). */
-    public static final int SLOPE_MARGIN = 3;
+    public static final int SLOPE_MARGIN = 5;
+    /** Half-span (pixels) of the slope measurement: over 180 m. */
+    private static final int SLOPE_PX = 3;
+    /**
+     * Model-drawn archipelagos: ground within {@link #SETTLE_M} metres of sea level (fading out by {@link #SETTLE_FADE_M})
+     * takes the average over a box {@link #SETTLE_R} pixels each way, plus a coherent ripple of {@link #SETTLE_RIPPLE_M}
+     * metres, so wide flats at sea level end in smooth, ragged shorelines instead of a speckle of one-pixel islands (the
+     * model's own fine noise decided land or sea pixel by pixel there).
+     */
+    private static final float SETTLE_M = 2f, SETTLE_FADE_M = 6f, SETTLE_RIPPLE_M = 1.5f;
+    private static final int SETTLE_R = 4;
 
     private final FastNoiseLite islands, warpX, warpZ, direction, detail, detailWarpX, detailWarpZ;
 
@@ -97,6 +107,7 @@ public final class ArchipelagoShaper {
     public void apply(float[] elev, float[] padded, int i1, int j1, int H, int W, SyntheticMapFactory syn, int coarsePx,
                       boolean detailOnly) {
         final int m = SLOPE_MARGIN, pW = W + 2 * m;
+        final int d = SLOPE_PX;
         // The zones are ~460 km across: sample the zone strength on a coarse lattice and interpolate.
         final int STEP = 64;
         int gh = H / STEP + 2, gw = W / STEP + 2;
@@ -128,7 +139,16 @@ public final class ArchipelagoShaper {
                 if (detailOnly) {
                     if (e >= DETAIL_FADE_M || e <= -260f) continue;
                     int p = (r + m) * pW + c + m;
-                    float gx = (padded[p + m] - padded[p - m]) / (2f * m), gz = (padded[p + m * pW] - padded[p - m * pW]) / (2f * m);
+                    float ae = Math.abs(e);
+                    if (ae < SETTLE_FADE_M) {
+                        double sum = 0;
+                        for (int dr = -SETTLE_R; dr <= SETTLE_R; dr++)
+                            for (int dc = -SETTLE_R; dc <= SETTLE_R; dc++) sum += padded[p + dr * pW + dc];
+                        float mean = (float) (sum / ((2 * SETTLE_R + 1) * (2 * SETTLE_R + 1))) + SETTLE_RIPPLE_M * detail(i, j);
+                        float w = z * (1f - smoothstep(SETTLE_M, SETTLE_FADE_M, ae));
+                        e += (mean - e) * w;
+                    }
+                    float gx = (padded[p + d] - padded[p - d]) / (2f * d), gz = (padded[p + d * pW] - padded[p - d * pW]) / (2f * d);
                     float rough = smoothstep(SLOPE_SMOOTH, SLOPE_ROUGH, (float) Math.sqrt(gx * gx + gz * gz));
                     elev[k] = detailOnly(e, i, j, z, rough);
                     continue;
@@ -138,8 +158,8 @@ public final class ArchipelagoShaper {
                 // Slope of the reshaped ground (flattened and drowned, before the detail), which is what decides whether
                 // the new coast is flat or steep.
                 int p = (r + m) * pW + c + m;
-                float gx = (base(padded[p + m], i, j + m, z) - base(padded[p - m], i, j - m, z)) / (2f * m);
-                float gz = (base(padded[p + m * pW], i + m, j, z) - base(padded[p - m * pW], i - m, j, z)) / (2f * m);
+                float gx = (base(padded[p + d], i, j + d, z) - base(padded[p - d], i, j - d, z)) / (2f * d);
+                float gz = (base(padded[p + d * pW], i + d, j, z) - base(padded[p - d * pW], i - d, j, z)) / (2f * d);
                 float rough = smoothstep(SLOPE_SMOOTH, SLOPE_ROUGH, (float) Math.sqrt(gx * gx + gz * gz));
                 elev[k] = shape(e, i, j, z, rough);
             }

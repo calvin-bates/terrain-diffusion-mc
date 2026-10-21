@@ -45,7 +45,7 @@ public final class TectonicConditioning {
     /** Farthest (coarse pixels) the coast is searched for, and inland / offshore reach of the edits. */
     private static final int COAST_SEARCH = 24;
     /** Coastal range: peak distance inland (coarse pixels) and width; height range (m). */
-    private static final float RANGE_AT = 6f, RANGE_WIDTH = 4f, RANGE_MIN = 2500f, RANGE_MAX = 4000f;
+    private static final float RANGE_AT = 6f, RANGE_WIDTH = 4f, RANGE_MIN = 3500f, RANGE_MAX = 5500f;
     /** Trench: distance offshore (coarse pixels) range, depth below the slope's foot (m), outer rise (m). */
     private static final float TRENCH_AT_MIN = 7f, TRENCH_AT_MAX = 9.5f, TRENCH_DEPTH = 5000f, OUTER_RISE = 400f;
 
