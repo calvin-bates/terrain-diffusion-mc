@@ -199,8 +199,8 @@ public final class OceanFeatures {
         saltLumps = noise(s + 125, 1f);
         fanNoise = single(s + 118);
         meander = single(s + 119);
-        coastFine.SetFractalOctaves(5);
-        coastFine.SetFractalGain(0.72f);
+        coastFine.SetFractalOctaves(3);
+        coastFine.SetFractalGain(0.5f);
     }
 
     /** Single-octave noise at frequency 1 (callers scale their coordinates). */
@@ -280,6 +280,8 @@ public final class OceanFeatures {
         final double[] opC = new double[8];
         /** The two largest single-volcano heights at this pixel, and the last one added. */
         double top1, top2, lastC;
+        /** The volcanoes' combined surface here as an absolute elevation (metres), or -infinity if none. */
+        double absTop;
         /** This pixel in warped space. */
         double qx, qz;
         /** Abyssal plain strength (0..1) and closeness to a continent (0..1) at this pixel, from {@link #margin}. */
@@ -311,7 +313,6 @@ public final class OceanFeatures {
         if (raw < -SHELF_TOP_M && raw > -SHELF_BASE_M) raw = shelf(raw, x, z, coarse, ctx);
         if (raw < -CANYON_TOP_M) raw = margin(raw, x, z, coarse, ctx);
         double depth = -raw;
-        double landFade = clamp01((depth - 30) / 300);
         double deepFade = smoothstep(1500, 3000, depth);
 
         double total = raw;
@@ -328,6 +329,7 @@ public final class OceanFeatures {
         ctx.add = 0;
         ctx.top1 = 0;
         ctx.top2 = 0;
+        ctx.absTop = Double.NEGATIVE_INFINITY;
         ctx.ridgeAxis = Double.MAX_VALUE;
         ctx.surfaceTag = TAG_NONE;
         ctx.surfaceC = 0;
@@ -415,15 +417,19 @@ public final class OceanFeatures {
         // flanks (on an island it left hundreds of closed hollows that filled as lakes). Troughs are added and faded;
         // rises are not added onto a volcano at all: the volcano stands on them (smooth max), since adding a ridge or
         // a swell to a flank pushed the flank back up above the sea partway down, in a ring around the island.
-        double add = ctx.add;
-        if (ctx.ridge > 0) add = smoothMax(add, ctx.ridge, Math.min(150, 0.5 * ctx.ridge));
         double relief = tectonic + ctx.flex;
         double floorOnly = raw + relief * smoothstep(-200, -1500, raw);
-        double lift = add * landFade;
-        if (lift > 0) {
-            double built = raw + lift;
-            double cone = built + Math.min(0, relief) * smoothstep(-200, -1500, built);
-            total = smoothMax(cone, floorOnly, Math.min(150, 0.3 * lift));
+        double surf = ctx.absTop;
+        if (ctx.ridge > 0) {
+            double rr = raw + ctx.ridge;   // the aseismic ridge's crest (absolute)
+            surf = surf == Double.NEGATIVE_INFINITY ? rr : smoothMax(surf, rr, Math.min(150, 0.5 * ctx.ridge));
+        }
+        if (surf > Double.NEGATIVE_INFINITY) {
+            // Volcanoes rise out of the model's terrain (a smooth max), so they never stack onto shallow ground.
+            double cone = surf + Math.min(0, relief) * smoothstep(-200, -1500, surf);
+            total = smoothMax(cone, floorOnly, Math.min(150, 0.3 * Math.max(ctx.top1, ctx.ridge)));
+            // Canyons, fan channels and the other margin floors are buried where a volcano stands on them.
+            if (cone > floorOnly + 30 && ctx.tag >= TAG_CANYON && ctx.tag <= TAG_SALT) ctx.tag = TAG_NONE;
         } else {
             total = floorOnly;
         }
@@ -797,7 +803,7 @@ public final class OceanFeatures {
                 double r = Math.hypot(x - p.x, z - p.z);
                 if (r > p.radius * 1.35) continue;
                 float floor = coarse.elevation(p.z, p.x);
-                if (floor > -PLATEAU_MIN_DEPTH) continue;
+                if (floor > -PLATEAU_MIN_DEPTH || !clearOfLand(p.x, p.z, p.radius, coarse)) continue;
                 // Lobed outline, at the plateau's own scale.
                 double scale = KM * 4 / p.radius;
                 float kx = (float) (x / KM * scale) + (p.h & 0xFF), kz = (float) (z / KM * scale) + ((p.h >>> 8) & 0xFF);
@@ -806,7 +812,7 @@ public final class OceanFeatures {
                 double prof = Math.pow(1 - smoothstep(0.55, 1.0, u), 1.3);        // broad top, gentle flanks
                 // Low volcanic knolls and swales on the plateau top.
                 double top = p.top + 180 * hills.GetNoise((float) (x / KM / 6) + 500, (float) (z / KM / 6));
-                volcano(ctx, (top - floor) * prof);
+                volcano(ctx, (top - floor) * prof, floor);
             }
         }
     }
@@ -852,7 +858,7 @@ public final class OceanFeatures {
             if (r > radius * 1.3) continue;
             double[] c = unwarp(mx + tx * ak + ox * across, mz + tz * ak + oz * across);
             float floor = coarse.elevation(c[1], c[0]);
-            if (floor > -VOLCANO_MIN_DEPTH) continue;
+            if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(c[0], c[1], radius, coarse)) continue;
             double peak = 50 + 260 * unit(mix(h + 3));
             double ang = Math.atan2(xo - across, along - ak);
             double rc = radius / KM / (2 * Math.PI);
@@ -865,7 +871,7 @@ public final class OceanFeatures {
             double landU = 0.42, sea = -floor / (peak - floor);
             double s = u < landU ? sea + (1 - sea) * (1 - Math.pow(u / landU, 1.8)) : sea * Math.pow((1 - u) / (1 - landU), 1.5);
             double cc = (peak - floor) * s;
-            volcano(ctx, cc);
+            volcano(ctx, cc, floor);
             if (cc > ctx.surfaceC) { ctx.surfaceC = cc; ctx.surfaceTag = TAG_LIMESTONE_SOIL; }
         }
     }
@@ -1108,7 +1114,7 @@ public final class OceanFeatures {
             for (int gx = gx0; gx <= gx1; gx++) {
                 Plateau p = plateau(gx, gz);
                 if (p == null || !inside(p.z, p.x, i0, j0, i1, j1)) continue;
-                if (coarse.elevation(p.z, p.x) > -PLATEAU_MIN_DEPTH) continue;
+                if (coarse.elevation(p.z, p.x) > -PLATEAU_MIN_DEPTH || !clearOfLand(p.x, p.z, p.radius, coarse)) continue;
                 out.add(new Landmark("oceanic_plateau", p.z, p.x, (float) p.top));
             }
         }
@@ -1145,7 +1151,7 @@ public final class OceanFeatures {
                 if (ch == null) continue;
                 for (int k = 0; k < ch.count; k++) {
                     float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
-                    if (floor > -VOLCANO_MIN_DEPTH) continue;
+                    if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
                     boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
                     String stage = volcanoStage(ch.peak[k], warm, k, ch.hk[k], ch.lift[k]);
                     boolean island = ch.peak[k] > 40;
@@ -1244,6 +1250,7 @@ public final class OceanFeatures {
                     double[] c = unwarp(mx + tx * ak + ox * across, mz + tz * ak + oz * across);
                     if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
                     if (coarse.elevation(c[1], c[0]) > -VOLCANO_MIN_DEPTH) continue;
+                    if (!clearOfLand(c[0], c[1], arcRadius(h), coarse)) continue;
                     boolean warm = coarse.temperature(c[1], c[0]) >= REEF_TEMP;
                     int extra = arcExtra(peak, warm, h);
                     String type = extra == ARC_CALDERA ? "flooded_caldera" : (extra == ARC_REEF ? "barrier_reef_island" : "arc_island");
@@ -1260,6 +1267,7 @@ public final class OceanFeatures {
                     double[] c = unwarp(mx + tx * ak + ox * across, mz + tz * ak + oz * across);
                     if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
                     if (coarse.elevation(c[1], c[0]) > -VOLCANO_MIN_DEPTH) continue;
+                    if (!clearOfLand(c[0], c[1], (6 + 8 * unit(mix(h + 2))) * KM, coarse)) continue;
                     out.add(new Landmark("forearc_island", c[1], c[0], (float) (50 + 260 * unit(mix(h + 3)))));
                 }
                 // Back-arc basins: one marker on the spreading axis where the trench is strongest.
@@ -1611,6 +1619,7 @@ public final class OceanFeatures {
             double[] c = unwarp(cqx, cqz);
             float floor = coarse.elevation(c[1], c[0]);
             if (floor > -VOLCANO_MIN_DEPTH) continue;
+            if (peak > 0 && !clearOfLand(c[0], c[1], radius, coarse)) continue;
             // r is measured in warped space; close enough for the shape.
             if (peak > 0) {
                 double landU = 0.25 + 0.2 * unit(mix(h + 4));
@@ -1619,7 +1628,7 @@ public final class OceanFeatures {
                 int extra = arcExtra(peak, warm, h);
                 double relief = peak - floor;
                 int style = extra == ARC_CALDERA ? STYLE_CALDERA : 0;
-                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief));
+                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
@@ -1628,7 +1637,7 @@ public final class OceanFeatures {
                     ctx.opWarped[ctx.nOps - 1] = true;
                 }
             } else {
-                volcano(ctx, (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false));
+                volcano(ctx, (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false), floor);
             }
         }
     }
@@ -1650,7 +1659,7 @@ public final class OceanFeatures {
                     double r = Math.hypot(x - ch.cx[k], z - ch.cz[k]);
                     if (r > ch.radius[k] * 1.3) continue;
                     float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
-                    if (floor > -VOLCANO_MIN_DEPTH) continue;
+                    if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
                     boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
                     String stage = volcanoStage(ch.peak[k], warm, k, ch.hk[k], ch.lift[k]);
                     addVolcano(x, z, ch.cx[k], ch.cz[k], r, ch.radius[k], ch.peak[k], floor, stage, ch.hk[k], ctx);
@@ -1704,7 +1713,7 @@ public final class OceanFeatures {
                     double u0 = r / ch.radius[k];
                     if (u0 > 2.9 || ch.peak[k] < -1500) continue;
                     float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
-                    if (floor > -VOLCANO_MIN_DEPTH) continue;
+                    if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
                     double peak = ch.peak[k];
                     // Moat and arch: the plate's bending under the island's weight, strongest under big young islands.
                     double load = smoothstep(-1500, 1500, peak) * Math.max(0.5, Math.min(1.2, (peak - floor) / 4500));
@@ -1864,10 +1873,10 @@ public final class OceanFeatures {
                 boolean guyot = isGuyot(peak, h);
                 if (guyot) {
                     // A guyot was planed flat at sea level, then sank: build it taller and cut the top off.
-                    volcano(ctx, (peak + 600 - floor) * tableCone(r, radius, x, z, h));
+                    volcano(ctx, (peak + 600 - floor) * tableCone(r, radius, x, z, h), floor);
                     pushOp(ctx, OP_GUYOT, peak, 0, radius, 0, h, sx, sz);
                 } else {
-                    volcano(ctx, (peak - floor) * cone(r, radius, x, z, h, false));
+                    volcano(ctx, (peak - floor) * cone(r, radius, x, z, h, false), floor);
                 }
             }
         }
@@ -1882,7 +1891,7 @@ public final class OceanFeatures {
                 double ang = Math.atan2(z - vcz, x - vcx);
                 double relief = peak - floor;
                 int style = (stage.equals("flooded_caldera") ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
-                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief));
+                volcano(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
                 if (stage.equals("barrier_reef_island")) {
                     // The island is sinking and its fringing reef grew up into a ring offshore, with a lagoon between.
                     double landR = landU * radius;
@@ -1892,7 +1901,7 @@ public final class OceanFeatures {
             case "atoll", "raised_coral_island" -> {
                 // The volcano has sunk out of sight and its fringing reef kept growing up into a ring.
                 double sub = Math.min(peak, -350);
-                volcano(ctx, (sub - floor) * tableCone(r, radius, x, z, h));
+                volcano(ctx, (sub - floor) * tableCone(r, radius, x, z, h), floor);
                 double rim = radius * (0.22 + 0.13 * unit(mix(h + 9)));
                 if (stage.equals("atoll")) {
                     pushOp(ctx, OP_ATOLL, rim, REEF_ATOLL, radius, 0, h, vcx, vcz);
@@ -1904,14 +1913,28 @@ public final class OceanFeatures {
             case "guyot" -> {
                 double top = Math.min(peak, -250);
                 double rs = radius * SUBMERGED_SHRINK;
-                volcano(ctx, (top + 600 - floor) * tableCone(r, rs, x, z, h));
+                volcano(ctx, (top + 600 - floor) * tableCone(r, rs, x, z, h), floor);
                 pushOp(ctx, OP_GUYOT, top, 0, rs, 0, h, vcx, vcz);
             }
-            default -> volcano(ctx, (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false));
+            default -> volcano(ctx, (peak - floor) * cone(r, radius * SUBMERGED_SHRINK, x, z, h, false), floor);
         }
     }
 
     // ---- Shared placement rules (the terrain and the feature finder must agree) ----
+
+    /**
+     * Whether a volcano or plateau centred at native pixel (cx, cz) with footprint {@code reach} stands clear of land:
+     * the coarse map is at least 800 m deep one footprint out in all four directions, and it is not in an archipelago
+     * sea. Volcanoes that overlapped continents, shelves or archipelagos merged into the land around them.
+     */
+    private static boolean clearOfLand(double cx, double cz, double reach, CoarseField coarse) {
+        if (coarse.archipelago(cz, cx) > 0.3f) return false;
+        for (int k = 0; k < 4; k++) {
+            double a = k * Math.PI / 2 + 0.4;
+            if (coarse.elevation(cz + Math.sin(a) * reach, cx + Math.cos(a) * reach) > -800f) return false;
+        }
+        return true;
+    }
 
     private static final float SEAMOUNT_MIN_DEPTH = 2500f;
 
@@ -2025,7 +2048,7 @@ public final class OceanFeatures {
             double rc = coastKm / (2 * Math.PI);
             float cfa = (float) Math.cos(ang), sfa = (float) Math.sin(ang);
             double n = coastFine.GetNoise((float) rc * cfa + 37, (float) rc * sfa - 211, (float) (r / KM * 0.12) + (h & 0xFF));
-            double du = 1.3 * KM / radius * n;
+            double du = 0.9 * KM / radius * n;
             u += du * smoothstep(0.3 * landU, landU, u);
         }
         if (u >= 1) return 0;
@@ -2041,7 +2064,8 @@ public final class OceanFeatures {
             float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang), rad = (float) (r / KM * 0.05) + (h & 0xFF);
             float broad = gullies.GetNoise((float) rc * ca, (float) rc * sa, rad);
             float fine = gullies.GetNoise((float) (4 * rc) * ca + 91, (float) (4 * rc) * sa, 3 * rad);
-            double g = (0.45 * Math.abs(broad) + 0.55 * Math.abs(fine)) * smoothstep(0.1, 0.5, t);
+            // Faded out well before the summit, where every direction meets (it drew a starburst there).
+            double g = (0.45 * Math.abs(broad) + 0.55 * Math.abs(fine)) * smoothstep(0.3, 0.7, t);
             s = sea + (s - sea) * (1 - 0.45 * g);
             if ((style & STYLE_CALDERA) == 0) {
                 s -= (1 - sea) * 0.12 * Math.exp(-sq(t / 0.08));   // summit caldera (holds a crater lake)
@@ -2160,11 +2184,23 @@ public final class OceanFeatures {
      * (Summing them put a seamount's whole 2-4 km cone on top of any island whose flank it sat on: tall, perfectly
      * conical spires.)
      */
-    private static void volcano(Ctx ctx, double c) {
+    private static void volcano(Ctx ctx, double c, double floor) {
         ctx.lastC = c;
         if (c <= 0) return;
+        double prevTop = ctx.top1;
         if (c > ctx.top1) { ctx.top2 = ctx.top1; ctx.top1 = c; } else if (c > ctx.top2) ctx.top2 = c;
         ctx.add = smoothUnion(ctx.add, c);
+        // The volcano's surface as an absolute height (it rises from its own floor). Combined with the model's terrain
+        // by a max in shape(), never added onto it: added, a volcano or plateau whose footprint reached a continental
+        // slope or an archipelago piled kilometres onto shallow ground (Calvin, Oct 20).
+        double a = floor + c;
+        if (ctx.absTop == Double.NEGATIVE_INFINITY) {
+            ctx.absTop = a;
+        } else {
+            double k = Math.min(300, 0.5 * Math.min(c, prevTop));
+            double diff = Math.abs(a - ctx.absTop), m = Math.max(a, ctx.absTop);
+            ctx.absTop = (k <= 0 || diff >= k) ? m : m + sq((k - diff) / k) * k * 0.25;
+        }
     }
 
     /** max(a, b) for non-negative heights, rounded where they are close; exactly the max when either is 0. */
