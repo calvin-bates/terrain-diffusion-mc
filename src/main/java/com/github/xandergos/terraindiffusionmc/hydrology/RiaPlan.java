@@ -51,7 +51,21 @@ public final class RiaPlan {
      * Farthest a ria reaches from its mouth (pixels): its length plus its sideways reach. Every tile near a coast looks
      * for rias in all hydrology regions within this distance, like deltas.
      */
-    public static final int MAX_REACH_PX = MAX_LENGTH_PX + (int) REACH_PX + 5;
+    public static final int MAX_REACH_PX = MAX_LENGTH_PX + (int) REACH_PX + 10;
+
+    /** How far (pixels) the edges of the drowned area wander in and out. */
+    private static final float EDGE_WOBBLE_PX = 5f;
+    /** Low banks and hollows on a drowned valley floor (native pixels; ~300 m features). */
+    private static final com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite FLOOR_NOISE = floorNoise();
+
+    private static com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite floorNoise() {
+        var n = new com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite(6211);
+        n.SetNoiseType(com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite.NoiseType.OpenSimplex2);
+        n.SetFrequency(1f / 10f);
+        n.SetFractalType(com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite.FractalType.FBm);
+        n.SetFractalOctaves(3);
+        return n;
+    }
 
     /** The mouth (last land pixel centre) and the stem upstream from it. */
     public final float mouthX, mouthZ;
@@ -97,7 +111,8 @@ public final class RiaPlan {
             x0 = Math.min(x0, px[i]); x1 = Math.max(x1, px[i]);
             z0 = Math.min(z0, pz[i]); z1 = Math.max(z1, pz[i]);
         }
-        bx0 = x0 - REACH_PX - 2; bz0 = z0 - REACH_PX - 2; bx1 = x1 + REACH_PX + 2; bz1 = z1 + REACH_PX + 2;
+        float pad = REACH_PX + EDGE_WOBBLE_PX + 2;      // the wobbled edge reaches EDGE_WOBBLE_PX past REACH_PX
+        bx0 = x0 - pad; bz0 = z0 - pad; bx1 = x1 + pad; bz1 = z1 + pad;
     }
 
     /** Whether (x, z) could be changed by this ria, with {@code margin} pixels to spare. */
@@ -116,10 +131,13 @@ public final class RiaPlan {
         int c0 = (int) Math.floor(fx), r0 = (int) Math.floor(fz);
         if (c0 < 0 || r0 < 0 || c0 + 1 >= gw || r0 + 1 >= gh) return e;
         float tx = fx - c0, tz = fz - r0;
-        float d = bilerp(gridD, r0, c0, tx, tz);
+        // Distances wobbled by noise, so the edges where the drowning fades out don't run in straight lines along a
+        // straight stem or straight across the mouth.
+        float d = bilerp(gridD, r0, c0, tx, tz) + EDGE_WOBBLE_PX * FLOOR_NOISE.GetNoise(x * 0.6f + 400, z * 0.6f - 170);
         if (d >= REACH_PX) return e;
+        d = Math.max(0f, d);
         float s = bilerp(gridS, r0, c0, tx, tz);
-        float beyond = bilerp(gridBeyond, r0, c0, tx, tz);
+        float beyond = Math.max(0f, bilerp(gridBeyond, r0, c0, tx, tz) + 3f * FLOOR_NOISE.GetNoise(x * 0.6f - 900, z * 0.6f + 35));
         float t = Math.max(0f, Math.min(1f, s / length));
         float floor = surfAt(s);
         // Deep most of the way up, shoaling toward the head.
@@ -130,8 +148,15 @@ public final class RiaPlan {
         float w = (1 - smooth(0.55f * hv, hv, rel)) * (1 - smooth(0.65f * REACH_PX, REACH_PX, d))
                 * (1 - smooth(0f, 8f, beyond)) * (1 - smooth(D, D + DRY_FADE_M, floor));
         if (w <= 0f) return e;
-        // Never below the drowned floor itself unless it is already lower (the sea floor off the mouth).
-        float lowered = Math.max(e - D * w, Math.min(e, floor - D));
+        // Never below the drowned valley floor unless it is already lower (the sea floor off the mouth). That floor is
+        // deepest along the old river and shoals toward the inlet's sides, with low mud banks and hollows: one level per
+        // distance along the river made a flat, tilted plate whose block steps ran in straight lines across the inlet
+        // (Calvin, Oct 21, X -3324 Z -6301).
+        float across = Math.min(1f, d / REACH_PX);
+        float bumps = FLOOR_NOISE.GetNoise(x, z);
+        float bed = floor - D * (1 - 0.6f * across * across) - 0.25f * D * Math.max(0f, 1 - d / 2.5f)
+                + (1.5f + 0.12f * D) * bumps;
+        float lowered = Math.max(e - D * w + 0.6f * w * (1.5f + 0.12f * D) * bumps, Math.min(e, bed));
         return Math.min(e, lowered);
     }
 
