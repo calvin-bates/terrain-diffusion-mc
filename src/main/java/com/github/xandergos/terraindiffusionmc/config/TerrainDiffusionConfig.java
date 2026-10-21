@@ -136,11 +136,12 @@ public final class TerrainDiffusionConfig {
         return Math.max(0f, Math.min(1f, readFloat("oceans.archipelago_final_pull", 1f)));
     }
     /**
-     * Scale of the fine coastline roughness added to model-drawn archipelagos (1 = as much as the old pasted-in pass;
-     * the model draws its own coast detail, so less may look better; being tuned).
+     * Scale of the fine coastline roughness added to model-drawn archipelagos (1 = as much as the old pasted-in pass).
+     * The model draws its own coast detail; at 1 the roughness broke it into slivers and single-pixel islets (preview,
+     * Oct 21: lone pixels 18/51 at 1, 7/15 at 0.4, 3/3 at 0, against 4/8 from the model alone); 0.4 keeps some coves.
      */
     public static float archipelagoDetail() {
-        return Math.max(0f, Math.min(2f, readFloat("oceans.archipelago_detail", 1f)));
+        return Math.max(0f, Math.min(2f, readFloat("oceans.archipelago_detail", 0.4f)));
     }
     /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
     public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
