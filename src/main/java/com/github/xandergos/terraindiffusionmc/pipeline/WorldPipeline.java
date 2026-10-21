@@ -708,7 +708,7 @@ public final class WorldPipeline implements AutoCloseable {
     private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2, byte[] tags) {
         boolean anyOcean = false;
         for (float v : elev) if (v < 0f) { anyOcean = true; break; }
-        if (!anyOcean) return;
+        if (!anyOcean && !oceanFeatures.modelIslands) return;   // island craters are cut into all-land tiles too
         // Volcano centres can lie a footprint away from the request (twice that through the plate warp), and a
         // hotspot volcano's moat and debris field reach MAX_FEATURE_REACH from it.
         int padPx = (int) Math.ceil(Math.max(2 * OceanFeatures.MAX_VOLCANO_REACH, OceanFeatures.MAX_FEATURE_REACH));

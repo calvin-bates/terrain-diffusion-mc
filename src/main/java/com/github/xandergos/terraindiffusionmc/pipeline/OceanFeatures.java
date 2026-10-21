@@ -249,19 +249,21 @@ public final class OceanFeatures {
         if (tags != null) java.util.Arrays.fill(tags, TAG_NONE);
         boolean anyOcean = false;
         for (float v : elev) if (v < 0f) { anyOcean = true; break; }
-        if (!anyOcean) return;
+        // A tile inside a model-drawn island has no sea but still needs the island's crater.
+        if (!anyOcean && !modelIslands) return;
 
         Ctx ctx = new Ctx();
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
                 float raw = elev[k];
-                if (modelIslands && raw > -ISLAND_COAST_DEEP && raw < ISLAND_COAST_HIGH && coarse.elevation(i1 + r, j1 + c) < -500f) {
-                    // Model-drawn islands: a ragged coast (the model's own coast is smooth at this scale), and on land
-                    // their island rock (forearc islands' limestone).
+                if (modelIslands && raw > -ISLAND_COAST_DEEP && coarse.elevation(i1 + r, j1 + c) < -500f) {
+                    // Model-drawn islands: a summit crater and a ragged coast (both too small for the model to draw),
+                    // and on land their island rock (forearc islands' limestone).
                     islandGuide(i1 + r, j1 + c, coarse, ctx);
                     if (ctx.guideTop > -1500) {
-                        raw = (float) islandCoast(raw, i1 + r, j1 + c, smoothstep(-1500, -500, ctx.guideTop));
+                        raw -= (float) ctx.guideCrater;
+                        if (raw < ISLAND_COAST_HIGH) raw = (float) islandCoast(raw, i1 + r, j1 + c, smoothstep(-1500, -500, ctx.guideTop));
                         elev[k] = raw;
                         if (raw >= 0f && tags != null && ctx.surfaceTag != TAG_NONE && ctx.guideTop > -30) tags[k] = ctx.surfaceTag;
                     }
@@ -318,6 +320,8 @@ public final class OceanFeatures {
         double guideTop;
         /** The tallest model-drawn island's height above its own floor here (metres), for fading its edge. */
         double guideC;
+        /** How far (metres) a model-drawn island's summit crater lowers the ground here (negative on its rim). */
+        double guideCrater;
         /** Only the island guide is wanted: skip everything else in {@link #shape}. */
         boolean guideOnly;
         /** The hotspot chains within two cells of the last hotspot cell asked for (rows of pixels share a cell). */
@@ -338,6 +342,7 @@ public final class OceanFeatures {
         ctx.continent = 0;
         ctx.guideTop = Double.NEGATIVE_INFINITY;
         ctx.guideC = 0;
+        ctx.guideCrater = 0;
         if (!ctx.guideOnly) {
             if (raw < -SHELF_TOP_M && raw > -SHELF_BASE_M) raw = shelf(raw, x, z, coarse, ctx);
             if (raw < -CANYON_TOP_M) raw = margin(raw, x, z, coarse, ctx);
@@ -1663,6 +1668,9 @@ public final class OceanFeatures {
                 double relief = peak - floor;
                 int style = extra == ARC_CALDERA ? STYLE_CALDERA : 0;
                 island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
+                if (extra == ARC_PLAIN && peak > 150) {
+                    crater(ctx, r, ang, (0.3 + 0.5 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 50 + 80 * unit(mix(h + 121))), h);
+                }
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
@@ -1926,6 +1934,9 @@ public final class OceanFeatures {
                 double relief = peak - floor;
                 int style = (stage.equals("flooded_caldera") ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
                 island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
+                if (stage.equals("volcanic_island") && peak > 150) {
+                    crater(ctx, r, ang, (0.5 + 0.8 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 70 + 110 * unit(mix(h + 121))), h);
+                }
                 if (stage.equals("barrier_reef_island")) {
                     // The island is sinking and its fringing reef grew up into a ring offshore, with a lagoon between.
                     double landR = landU * radius;
@@ -2284,6 +2295,28 @@ public final class OceanFeatures {
         if (ctx.guideTop == Double.NEGATIVE_INFINITY) { ctx.guideTop = a; return; }
         double k = 300, diff = Math.abs(a - ctx.guideTop), m = Math.max(a, ctx.guideTop);
         ctx.guideTop = diff >= k ? m : m + sq((k - diff) / k) * k * 0.25;
+    }
+
+    /**
+     * A model-drawn island's summit crater (Haleakala, Teide's Las Cañadas on a small scale): a flat-floored pit
+     * {@code depth} metres deep and {@code cr} pixels across the floor's edge, with steep walls and a low raised rim,
+     * cut into whatever summit the model drew (it is far too small for the model's low-frequency latent). Measured
+     * from the guide's summit at distance {@code r}; it holds a crater lake.
+     */
+    private void crater(Ctx ctx, double r, double ang, double cr, double depth, long h) {
+        if (!modelIslands && !ctx.guideOnly) return;      // the procedural cone has its own summit crater
+        if (r > 2.6 * cr) return;
+        // Oval (stretched along a rift), with a wobbly, scalloped wall: sampled by direction on a circle, no seam.
+        double axis = unit(mix(h + 122)) * Math.PI, stretch = 1 + 0.6 * unit(mix(h + 123));
+        double da = ang - axis;
+        double ell = Math.hypot(Math.cos(da) / stretch, Math.sin(da));
+        float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
+        double wob = 0.18 * coastShape.GetNoise(ca * 1.6f + (h & 0xFF), sa * 1.6f - 59)
+                + 0.08 * coastShape.GetNoise(ca * 5f - 17, sa * 5f + (h & 0x7F));
+        double u = r * ell / (cr * (1 + wob));
+        if (u > 2) return;
+        double cut = depth * (1 - smoothstep(0.7, 1.0, u)) - 0.15 * depth * Math.exp(-sq((u - 1.15) / 0.3));
+        if (Math.abs(cut) > Math.abs(ctx.guideCrater)) ctx.guideCrater = cut;
     }
 
     /**
