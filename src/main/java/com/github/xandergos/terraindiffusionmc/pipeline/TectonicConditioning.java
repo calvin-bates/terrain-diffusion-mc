@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * them itself (nothing is stamped onto its terrain afterwards).
  * <ul>
  *   <li><b>Young rift seas</b> (the Red Sea, the Gulf of California, the Gulf of Aden): a continent split along a
- *       gently curving line into a long, narrow sea, 45-110 km wide and 185-460 km long, open to the ocean at one or
+ *       gently curving line into a long, narrow sea, 25-55 km wide and 185-460 km long, open to the ocean at one or
  *       both ends and narrowing to a point at a closed end. The floor falls to an axial trough 1.6-2.6 km deep (a
  *       young spreading axis: pillow lava, see {@link #riftAxis}); the coasts have only a narrow shelf, and behind
  *       them the rift shoulders stand 0.6-1.5 km high (the Red Sea Hills, the Yemen highlands).</li>
@@ -34,7 +34,7 @@ public final class TectonicConditioning {
     private static final float RIFT_CELL = 60f;
     private static final double RIFT_CHANCE = 0.15;
     /** Half-length (coarse pixels) range, half-width at the middle, axial depth (m), shoulder height (m). */
-    private static final float RIFT_LEN_MIN = 12f, RIFT_LEN_MAX = 30f, RIFT_HW_MIN = 3f, RIFT_HW_MAX = 7f;
+    private static final float RIFT_LEN_MIN = 12f, RIFT_LEN_MAX = 30f, RIFT_HW_MIN = 1.6f, RIFT_HW_MAX = 3.5f;   // 25-55 km wide (Calvin, Oct 21: 45-110 km was too wide)
     private static final float RIFT_DEPTH_MIN = 1600f, RIFT_DEPTH_MAX = 2600f, SHOULDER_MIN = 600f, SHOULDER_MAX = 1500f;
     /** How far (coarse pixels) past an open end the rift runs on, fading out, to meet the ocean. */
     private static final float OPEN_RUN = 8f;
@@ -176,7 +176,7 @@ public final class TectonicConditioning {
         float q = -px * r.dy + py * r.dx - off;
         // A ragged coastline at ~70 km.
         float wob = riftWobble.GetNoise(x, y);
-        float d = Math.abs(q) + 0.9f * wob;
+        float d = Math.abs(q) + 0.9f * Math.min(1f, r.halfWidth / 3f) * wob;   // gentler on a narrow sea
         boolean open = s < 0 ? r.openA : r.openB;
         float u = Math.abs(s) / r.halfLen;
         float width, along;
@@ -210,7 +210,7 @@ public final class TectonicConditioning {
                 float e = elev + (Math.min(elev, trough) - elev) * along * inner;
                 // The rift shoulders: uplifted flanks just behind the coasts, on land only.
                 float xo = d - w;
-                float sh = r.shoulder * (float) Math.exp(-sq((xo - 2.5f) / 3f)) * smoothstep(-0.5f, 1.5f, xo);
+                float sh = r.shoulder * (float) Math.exp(-sq((xo - 2f) / 2.5f)) * smoothstep(-0.5f, 1.2f, xo);
                 if (elev > 0f) e += sh * along * smoothstep(0f, 300f, elev + 300f);
                 elev = e;
             }
