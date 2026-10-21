@@ -282,6 +282,9 @@ public final class WorldPipeline implements AutoCloseable {
         float[][] archs = new float[batch][];
         boolean modelArch = stage != STAGE_INIT && initSamples != null && TerrainDiffusionConfig.modelArchipelagos()
                 && TerrainDiffusionConfig.archipelagoStrength() > 0f;
+        // "step": no extra pass for archipelagos, the refinement step gets the drowned terrain with the model's detail.
+        String archMode = TerrainDiffusionConfig.archipelagoMode();
+        if (stage == STAGE_ISLAND && "step".equals(archMode)) modelArch = false;
         int run = 0;
         for (int b = 0; b < batch; b++) {
             int[] ctx = wis.get(b);
@@ -307,10 +310,10 @@ public final class WorldPipeline implements AutoCloseable {
             if (stage == STAGE_ISLAND) {
                 boolean island = guide != null && guide.inTile();
                 if (!island && arch == null) continue;              // passes through unchanged
-                if (arch != null) prepareArchipelagoPass(sample, arch, S);
+                if (arch != null) prepareArchipelagoPass(sample, arch, S, "clear".equals(archMode));
                 if (island) guide.prepareIslandPass(sample, S);
             } else if (stage == STAGE_STEP) {
-                if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, ARCH_STEP_PULL);
+                if (arch != null) pullTowards(sample, arch, S, SIGMA_DATA, "step".equals(archMode) ? 1f : ARCH_STEP_PULL);
                 if (guide != null) guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
             }
 
@@ -442,13 +445,13 @@ public final class WorldPipeline implements AutoCloseable {
      * Input for the island pass in an archipelago zone: the low-frequency channel (4) is set to the drowned terrain, and
      * the detail channels (0-3) fade out where that moved the ground, so the model redraws it from the noise.
      */
-    private static void prepareArchipelagoPass(float[] sample, float[] target, int S) {
+    private static void prepareArchipelagoPass(float[] sample, float[] target, int S, boolean clear) {
         int off = 4 * S * S;
         for (int px = 0; px < S * S; px++) {
             float g = target[px];
             if (Float.isNaN(g)) continue;
             float l = sample[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
-            float w = smoothstep(0f, ARCH_CLEAR, Math.abs(g - l));
+            float w = clear ? smoothstep(0f, ARCH_CLEAR, Math.abs(g - l)) : 0f;
             for (int ch = 0; ch < 4; ch++) sample[ch * S * S + px] *= 1f - w;
             sample[off + px] = (g - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
         }

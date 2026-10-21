@@ -125,6 +125,12 @@ public final class TerrainDiffusionConfig {
      * flattened and drowned afterwards.
      */
     public static boolean modelArchipelagos() { return readBoolean("oceans.model_archipelagos", true); }
+    /**
+     * How model-drawn archipelagos are made (being tuned): "step" (the drowned terrain goes into the refinement step,
+     * the model's detail kept), "keep" (an extra pass from sigma 1 with the detail kept), "clear" (that pass with the
+     * detail cleared where the ground moved).
+     */
+    public static String archipelagoMode() { return readString("oceans.archipelago_mode", "step"); }
     /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
     public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */

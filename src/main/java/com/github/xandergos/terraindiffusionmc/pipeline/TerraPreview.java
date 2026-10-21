@@ -53,9 +53,10 @@ public final class TerraPreview {
         summary.add("found within 1200 km: " + count(marks, "archipelago") + " archipelago markers, "
                 + count(marks, "rift_sea") + " rift seas, " + count(marks, "active_margin") + " active-margin markers");
 
-        // Archipelagos, model-drawn and old.
-        for (String variant : new String[]{"model", "old"}) {
-            TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", variant.equals("model") ? "true" : "false");
+        // Archipelagos: the old pass, and model-drawn in each mode being tuned.
+        for (String variant : new String[]{"old", "step", "keep", "clear"}) {
+            TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", variant.equals("old") ? "false" : "true");
+            if (!variant.equals("old")) TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", variant);
             try (WorldPipeline p = new WorldPipeline(seed)) {
                 for (int k = 0; k < arch.size(); k++) {
                     OceanFeatures.Landmark m = arch.get(k);
@@ -70,6 +71,7 @@ public final class TerraPreview {
             }
         }
         TerrainDiffusionConfig.setForTools("oceans.model_archipelagos", "true");
+        TerrainDiffusionConfig.setForTools("oceans.archipelago_mode", "step");
 
         // Rift seas and active margins at coarse resolution, with and without.
         for (String variant : new String[]{"on", "off"}) {
@@ -85,8 +87,16 @@ public final class TerraPreview {
                     float[] e = p.coarseElevation(ci0, cj0, ci0 + C, cj0 + C);
                     String name = m.type() + k + "_" + variant;
                     write(render(e, C, C), out.resolve(name + ".png"));
-                    summary.add(String.format("%s at /tp %d ~ %d (scale 6): coarse, %d x %d px of 7.7 km", name,
-                            Math.round(m.j() * 6), Math.round(m.i() * 6), C, C));
+                    // Deepest and highest within 12 coarse px (92 km) of the marker, and land share.
+                    float lo = Float.MAX_VALUE, hi = -Float.MAX_VALUE;
+                    int landN = 0, n = 0;
+                    for (int r = C / 2 - 12; r < C / 2 + 12; r++) for (int c = C / 2 - 12; c < C / 2 + 12; c++) {
+                        float v = e[r * C + c];
+                        lo = Math.min(lo, v); hi = Math.max(hi, v); n++;
+                        if (v >= 0) landN++;
+                    }
+                    summary.add(String.format("%s at /tp %d ~ %d (scale 6): within 92 km deepest %.0f m, highest %.0f m, land %d%%",
+                            name, Math.round(m.j() * 6), Math.round(m.i() * 6), lo, hi, 100 * landN / n));
                 }
             }
         }
