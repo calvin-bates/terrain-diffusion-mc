@@ -8,9 +8,11 @@
     "BiomeMixin",
     "ChunkGeneratorMixin",
     "MinecraftServerMixin",
+    "MonumentBuildingAccessor",
     "NoiseBasedChunkGeneratorMixin",
     "OceanMonumentMixin",
     "StructureMixin",
+    "StructurePieceMixin",
     "TropicalFishSpawnMixin",
     "WaterAnimalSpawnMixin"
   ],
