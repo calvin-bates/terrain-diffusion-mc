@@ -34,6 +34,8 @@ import org.slf4j.LoggerFactory;
  *       flatter ground; fresh lava flows and deltas in bare basalt and blackstone, with the odd magma block in a
  *       hollow and pools of live lava along the active channel wherever it lies level and well away from anything
  *       that burns.</li>
+ *   <li><b>Strandflats</b> (round 4): bare, ice-scoured rock with gravel and moss in patches and a little grass, and
+ *       gravel and stone where the plain is drowned.</li>
  * </ul>
  * Each chunk writes only its own columns and chooses from hashes of block positions, so the result does not depend on
  * generation order.
@@ -120,6 +122,7 @@ public final class OceanSurfaces {
                             deepFloor(chunk, pos, x, z, tag, seaLevel, minY);
                     case OceanFeatures.TAG_TUFF, OceanFeatures.TAG_LAVA, OceanFeatures.TAG_LAVA_CHANNEL ->
                             volcanicRock(chunk, data, pos, x, z, lx, lz, h, tag, minY, blockSize, scale);
+                    case OceanFeatures.TAG_STRANDFLAT -> strandflat(chunk, pos, x, z, minY);
                     default -> {
                     }
                 }
@@ -298,6 +301,32 @@ public final class OceanSurfaces {
             chunk.setBlockState(pos.set(x, y - 1, z), Blocks.MAGMA_BLOCK.defaultBlockState(), 0);
         } else if (unit(mix(h + 9)) < MAGMA_CHANCE) {
             chunk.setBlockState(pos.set(x, y, z), Blocks.MAGMA_BLOCK.defaultBlockState(), 0);
+        }
+    }
+
+    /** Soft blocks under a strandflat's surface that turn to stone. */
+    private static final int STRAND_DEPTH = 3;
+
+    private static void strandflat(ChunkAccess chunk, BlockPos.MutableBlockPos pos, int x, int z, int minY) {
+        int top = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG, x & 15, z & 15);
+        int y = top;
+        while (y > minY) {
+            BlockState st = chunk.getBlockState(pos.set(x, y, z));
+            if (!st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.SNOW)) break;
+            y--;
+        }
+        if (y <= minY) return;
+        boolean underWater = !chunk.getBlockState(pos.set(x, y + 1, z)).getFluidState().isEmpty();
+        float p = PATCHES.GetNoise(x * 1.5f - 2100, z * 1.5f);
+        if (!underWater && SOIL.GetNoise(x + 900, z - 40) > 0.45f) return;    // pockets of grass or heath
+        for (int k = 0; k < STRAND_DEPTH && y - k > minY; k++) {
+            BlockState st = chunk.getBlockState(pos.set(x, y - k, z));
+            if (!isRock(st)) break;
+            BlockState b;
+            if (k == 0 && !underWater && p > 0.35f) b = Blocks.MOSS_BLOCK.defaultBlockState();
+            else if (k < 2 && (p < -0.4f || (underWater && p < 0.2f))) b = Blocks.GRAVEL.defaultBlockState();
+            else b = Blocks.STONE.defaultBlockState();
+            chunk.setBlockState(pos, b, 0);
         }
     }
 

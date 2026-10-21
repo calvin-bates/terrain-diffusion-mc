@@ -18,13 +18,29 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  *       no raised rims) and fades in and out along the shore. Valley floors are left alone, and cliffs fade out
  *       around river mouths (from the hydrology), so rivers reach the sea at sea level.</li>
  *   <li><b>Stony shores</b> on scattered stretches of otherwise gentle coast.</li>
+ *   <li><b>Wave-cut platforms</b> (round 4) at the foot of about half the sea cliffs: a flat bench of bare rock
+ *       30-90 m wide right at sea level, awash, where the waves have planed the old slope off as the cliff retreated.
+ *       Only sea floor is raised (never land); the bench fades out at its seaward edge and around river mouths.</li>
  * </ul>
+ *
+ * <p>The platform pass looks up to {@link #PLATFORM_LOOK_PX} native pixels landward from a sea column, so the tile
+ * margin must be that clean.
  */
 public final class CoastShaper {
 
     private static final FastNoiseLite BEACH_WIDTH = noise(7101, 1f / 180f);
     private static final FastNoiseLite CLIFF_MASK = noise(7102, 1f / 900f);
     private static final FastNoiseLite ROCKY_MASK = noise(7103, 1f / 400f);
+    private static final FastNoiseLite PLATFORM_ZONE = noise(7104, 1f / 1200f);
+    private static final FastNoiseLite PLATFORM_WIDTH = noise(7105, 1f / 250f);
+    private static final FastNoiseLite PLATFORM_ROUGH = noise(7106, 1f / 35f);
+
+    /** Share of sea cliffs with a wave-cut platform in front (noise level; lower = more). */
+    private static final float PLATFORM_ZONE_LEVEL = 0f;
+    /** Native pixels a sea column looks landward for a cliff: the widest bench (3) plus the cliff test's band (2). */
+    public static final int PLATFORM_LOOK_PX = 5;
+    /** Deepest sea floor (metres) a platform is built over. */
+    private static final float PLATFORM_MAX_DEPTH_M = 30f;
 
     /** Highest elevation (metres) a beach can reach. */
     private static final float BEACH_MAX_M = 6f;
@@ -161,6 +177,66 @@ public final class CoastShaper {
                 }
             }
         }
+        platforms(smooth, upH, upW, cropI, cropJ, H, W, scale, i1, j1, elevOut, biomes, riverMouth, metresPerBlock);
+    }
+
+    /**
+     * Wave-cut platforms: sea columns within a bench's width (30-90 m) of land that rises as a cliff (the same test as
+     * the cliffs above: steep enough over the 60 m shore band and inside the cliff mask) are raised to a rough, flat
+     * bench at sea level. Only ever raises the sea floor, and only where it is shallow.
+     */
+    private static void platforms(float[][] smooth, int upH, int upW, int cropI, int cropJ, int H, int W, int scale,
+                                  int i1, int j1, float[] elevOut, short[] biomes, float[] riverMouth, float metresPerBlock) {
+        int R = 2 * scale, P = 3 * scale;
+        for (int r = 0; r < H; r++) {
+            int si = cropI + r;
+            for (int c = 0; c < W; c++) {
+                int sj = cropJ + c, k = r * W + c;
+                float e = smooth[si][sj];
+                if (e >= 0f || e < -PLATFORM_MAX_DEPTH_M) continue;
+                float wx = (j1 + c) * metresPerBlock, wz = (i1 + r) * metresPerBlock;
+                float mask = platformMask(wx, wz);
+                if (riverMouth != null) mask *= 1f - riverMouth[k];
+                if (mask <= 0f) continue;
+                float width = (1f + 2f * (0.5f + 0.5f * PLATFORM_WIDTH.GetNoise(wx, wz))) * scale;   // 30-90 m
+                float dl = landDistance(smooth, upH, upW, si, sj, Math.min(P, (int) Math.ceil(width) + 1));
+                if (dl == Float.MAX_VALUE || dl > width) continue;
+                // Is the land behind a cliff? The same rise the cliff test uses, seen from here.
+                float high = highest(smooth, upH, upW, si, sj, (int) Math.ceil(dl) + R, 0f);
+                float rise = high / (R * metresPerBlock);
+                float w = mask * smoothstep(0.12f, 0.35f, rise);
+                if (w <= 0f) continue;
+                // Flat at sea level, a little rough, fading out over the outer quarter of the bench.
+                float top = -0.6f + 1.4f * PLATFORM_ROUGH.GetNoise(wx, wz);
+                w *= 1f - smoothstep(0.75f * width, width, dl);
+                float raised = e + (top - e) * w;
+                if (raised > elevOut[k]) elevOut[k] = raised;
+                if (w > 0.5f && elevOut[k] > -3f) biomes[k] = BiomeClassifier.STONY_SHORE;   // bare rock, awash
+            }
+        }
+    }
+
+    /** 0..1: how strongly wave-cut platforms form at world position (metres): the platform zones times the cliff mask. */
+    public static float platformMask(float wx, float wz) {
+        return smoothstep(PLATFORM_ZONE_LEVEL, PLATFORM_ZONE_LEVEL + 0.2f, PLATFORM_ZONE.GetNoise(wx, wz))
+                * smoothstep(-0.05f, 0.25f, CLIFF_MASK.GetNoise(wx, wz));
+    }
+
+    /** Blocks to the nearest land column (at or above sea level) within radius R, or {@link Float#MAX_VALUE}. */
+    private static float landDistance(float[][] a, int h, int w, int si, int sj, int R) {
+        float best = Float.MAX_VALUE;
+        for (int dy = -R; dy <= R; dy++) {
+            int y = si + dy;
+            if (y < 0 || y >= h) continue;
+            for (int dx = -R; dx <= R; dx++) {
+                int x = sj + dx;
+                if (x < 0 || x >= w) continue;
+                int d2 = dx * dx + dy * dy;
+                if (d2 > R * R || d2 >= best) continue;
+                if (a[y][x] >= 0f) best = d2;
+            }
+        }
+        return best == Float.MAX_VALUE ? best : (float) Math.sqrt(best);
     }
 
     /** Bilinear sample of a [h][w] grid at fractional (row, column), clamped at the edges. */

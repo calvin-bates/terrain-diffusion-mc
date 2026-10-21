@@ -615,17 +615,19 @@ public final class LocalTerrainProvider {
     private HeightmapData handle1x(int i1, int j1, int i2, int j2) {
         int H = i2 - i1, W = j2 - j1;
 
-        // Three pixels of margin: one for the slope, three for the shore pass (see CoastShaper).
-        float[] elevMargin = pipeline.get(i1 - 3, j1 - 3, i2 + 3, j2 + 3, false)[0];
-        float[][] elevMargin2D = to2D(elevMargin, H + 6, W + 6);
-        float[] elevPadded = cropFlat(elevMargin2D, 2, 2, H + 2, W + 2, H + 6, W + 6);
+        // Margin: one pixel for the slope, five for the shore pass (cliffs look 3 pixels out, wave-cut platforms 5; see
+        // CoastShaper).
+        final int M = CoastShaper.PLATFORM_LOOK_PX;
+        float[] elevMargin = pipeline.get(i1 - M, j1 - M, i2 + M, j2 + M, false)[0];
+        float[][] elevMargin2D = to2D(elevMargin, H + 2 * M, W + 2 * M);
+        float[] elevPadded = cropFlat(elevMargin2D, M - 1, M - 1, H + 2, W + 2, H + 2 * M, W + 2 * M);
         byte[] tags = new byte[H * W];
         float[][] out = pipeline.get(i1, j1, i2, j2, true, tags);
         float[] elevFlat = out[0];
         float[] climate  = out[1];
 
         short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION);
-        CoastShaper.apply(elevMargin2D, 3, 3, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
+        CoastShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
         HeightmapData data = buildHeightmapData(elevFlat, biomeFlat, H, W);
@@ -638,7 +640,7 @@ public final class LocalTerrainProvider {
     // =========================================================================
 
     /** Native pixels of margin around an upsampled tile (see {@link #handleUpsampled}). */
-    private static final int PAD_PX = 6;
+    private static final int PAD_PX = CoastShaper.PLATFORM_LOOK_PX + 3;
 
     private HeightmapData handleUpsampled(int i1, int j1, int i2, int j2, int scale) {
         int H = i2 - i1, W = j2 - j1;
@@ -650,9 +652,9 @@ public final class LocalTerrainProvider {
         int i2n = -Math.floorDiv(-i2, scale);
         int j2n = -Math.floorDiv(-j2, scale);
 
-        // 6-pixel native padding. Bicubic resampling clamps at the array edge, which bends the outer ~1.5 native
-        // pixels; settling the shoreline averages over 1 more; the shore pass looks up to 3 native pixels outside the
-        // tile, so it needs clean values out there for neighbouring tiles to agree. (The resize is
+        // 8-pixel native padding. Bicubic resampling clamps at the array edge, which bends the outer ~1.5 native
+        // pixels; settling the shoreline averages over 1 more; the shore pass looks up to 5 native pixels outside the
+        // tile (wave-cut platforms), so it needs clean values out there for neighbouring tiles to agree. (The resize is
         // translation-consistent, so the padding does not change the values inside.)
         int i1p = i1n - PAD_PX, j1p = j1n - PAD_PX;
         int i2p = i2n + PAD_PX, j2p = j2n + PAD_PX;

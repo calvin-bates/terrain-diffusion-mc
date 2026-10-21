@@ -91,6 +91,8 @@ public final class OceanFeatures {
     public static final byte TAG_LAVA_CHANNEL = 19;
     /** Floor of a glacial trough across a cold shelf (no special blocks; lets the finder see troughs). */
     public static final byte TAG_TROUGH = 20;
+    /** Strandflat: a low rock plain on a cold coast, strewn with skerries: bare stone, gravel and moss. */
+    public static final byte TAG_STRANDFLAT = 21;
 
     /** Whether a surface tag is a coral reef of any kind. */
     public static boolean isReef(byte tag) {
@@ -187,6 +189,7 @@ public final class OceanFeatures {
     private final FastNoiseLite shelfZone, currentDir, sandWaves, drowned, saltLumps;
     private final FastNoiseLite islandCoast, islandCoastWarpX, islandCoastWarpZ;
     private final FastNoiseLite troughNoise, troughZone;
+    private final FastNoiseLite strandZone, strandPatch, strandRough, skerries;
 
     public OceanFeatures(long seed) {
         this.seed = seed;
@@ -224,6 +227,11 @@ public final class OceanFeatures {
         islandCoastWarpZ = noise(s + 128, 1f / 1.5f);
         troughNoise = single(s + 129);
         troughZone = noise(s + 130, 1f / 350f);
+        strandZone = noise(s + 131, 1f / 300f);
+        strandPatch = noise(s + 132, 1f / 40f);
+        strandRough = noise(s + 133, 1f / 0.4f);
+        strandRough.SetFractalOctaves(3);
+        skerries = noise(s + 134, 1f / 0.35f);
     }
 
     /** Single-octave noise at frequency 1 (callers scale their coordinates). */
@@ -298,6 +306,75 @@ public final class OceanFeatures {
                 if (tags != null) tags[k] = coastTag != TAG_NONE ? coastTag : ctx.tag;
             }
         }
+    }
+
+    // =========================================================================
+    // Round 4: strandflats
+    // =========================================================================
+
+    /** Coarse temperatures (deg C) below which strandflats form (fully below the first). */
+    private static final float STRAND_TEMP_FULL = 2f, STRAND_TEMP = 4.5f;
+    /** Share of cold coasts in strandflat zones (noise level; higher = rarer), and of those, the patches. */
+    private static final float STRAND_ZONE = 0.15f, STRAND_PATCH = -0.15f;
+
+    /**
+     * <b>Strandflats</b> (the coast of Norway): on cold, once-glaciated coasts, a broad low rock plain cut across the
+     * shore by frost and waves, half drowned, strewn with thousands of skerries, ending at the foot of steep mountains.
+     * A remap of height alone, in place, before the other ocean features (so the hydrology and biomes follow): land
+     * from the shore up to ~60 m and sea floor down to ~30 m are flattened toward a plain from -10 to +15 m, the land
+     * behind steepens to meet the old ground by 100 m, and the floor in front drops back to its own depth by 60 m. The
+     * remap is monotone (no slope reverses, so no new hollows); then the plain gets a little roughness and skerry knobs
+     * rise from its drowned part. Patchy: zones a few hundred km across on cold coasts, broken into stretches inside.
+     *
+     * @return per-pixel 1 where the result is strandflat rock (for the surface tag), or null if none
+     */
+    public byte[] strandflats(float[] elev, int i1, int j1, int H, int W, CoarseField coarse) {
+        byte[] out = null;
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int k = r * W + c;
+                float h = elev[k];
+                if (h < -62f || h > 102f) continue;
+                int pi = i1 + r, pj = j1 + c;
+                float temp = coarse.temperature(pi, pj);
+                if (temp >= STRAND_TEMP) continue;
+                float ce = coarse.elevation(pi, pj);
+                double coastW = smoothstep(-700, -150, ce) * (1 - smoothstep(200, 700, ce));
+                if (coastW <= 0) continue;
+                float kx = (float) (pj / KM), kz = (float) (pi / KM);
+                double z = (1 - smoothstep(STRAND_TEMP_FULL, STRAND_TEMP, temp)) * coastW
+                        * smoothstep(STRAND_ZONE, STRAND_ZONE + 0.2, strandZone.GetNoise(kx, kz))
+                        * smoothstep(STRAND_PATCH, STRAND_PATCH + 0.3, strandPatch.GetNoise(kx, kz));
+                if (z <= 0) continue;
+                double f = strandRemap(h);
+                double v = h + (f - h) * z;
+                // A little roughness on the plain (ice-scoured knolls and hollows, metres high).
+                double plain = smoothstep(-12, -6, v) * (1 - smoothstep(10, 16, v));
+                v += 2.5 * strandRough.GetNoise(kx, kz) * plain * z;
+                // Skerries: knobs of rock rising from the drowned plain, a few just breaking the surface.
+                double inSea = smoothstep(-14, -9, v) * (1 - smoothstep(-2, 0, v));
+                if (inSea > 0) {
+                    double n = skerries.GetNoise(kx, kz);
+                    double knob = smoothstep(0.4, 0.65, n) * inSea * z;
+                    double top = 0.5 + 5 * smoothstep(0.5, 0.9, n);           // mostly islets 1-5 m high
+                    if (top > v) v += (top - v) * knob;
+                }
+                elev[k] = (float) v;
+                if (z > 0.4 && v > -3 && v < 18) {
+                    if (out == null) out = new byte[H * W];
+                    out[k] = 1;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The strandflat height remap (metres): monotone, identity outside -60..100 m. */
+    private static double strandRemap(double h) {
+        if (h <= -60 || h >= 100) return h;
+        if (h < -30) return -60 + (h + 60) * (50.0 / 30);        // the floor rises steeply to the plain's edge
+        if (h < 60) return -10 + (h + 30) * (25.0 / 90);         // the plain: -30..60 m squeezed into -10..15 m
+        return 15 + (h - 60) * (85.0 / 40);                       // the land behind rises steeply to the old ground
     }
 
     /** Scratch values for one pixel, reused to avoid allocation. */
@@ -1176,6 +1253,10 @@ public final class OceanFeatures {
                 return e > -200 && e < -40 && coarse.temperature(i, j) < TROUGH_TEMP - 0.5f
                         && troughZone.GetNoise(kx, kz) > TROUGH_ZONE + 0.15f;
             }
+            case "strandflat" -> {
+                return e > -300 && e < 300 && coarse.temperature(i, j) < STRAND_TEMP - 0.5f
+                        && strandZone.GetNoise(kx, kz) > STRAND_ZONE + 0.15f && strandPatch.GetNoise(kx, kz) > STRAND_PATCH + 0.25f;
+            }
             default -> { }
         }
         if (coarse.temperature(i, j) < REEF_TEMP_HI - 0.5f) return false;
@@ -1210,6 +1291,7 @@ public final class OceanFeatures {
             case "pockmarks" -> TAG_POCKMARK;
             case "salt_domes" -> TAG_SALT;
             case "glacial_trough" -> TAG_TROUGH;
+            case "strandflat" -> TAG_STRANDFLAT;
             default -> -1;
         };
     }

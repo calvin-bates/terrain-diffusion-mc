@@ -66,6 +66,7 @@ public final class FeatureFinder {
         KINDS.put("pockmarks", new String[]{"pockmarks", "pockmark field"});
         KINDS.put("salt_domes", new String[]{"salt_domes", "salt dome province"});
         KINDS.put("glacial_trough", new String[]{"glacial_trough", "glacial trough"});
+        KINDS.put("strandflat", new String[]{"strandflat", "strandflat with skerries"});
     }
 
     /** Farthest search, in native pixels (1200 km). */
@@ -144,6 +145,7 @@ public final class FeatureFinder {
                             case "submarine_canyon" -> "Canyons cut continental slopes on about half the margins.";
                             case "deep_sea_fan" -> "Fans lie on the deep rise below continental slopes.";
                             case "glacial_trough" -> "Troughs cross cold shelves (sea about 3 °C or colder); try a polar coast.";
+                            case "strandflat" -> "Strandflats line patches of cold coast (about 4 °C or colder); try another cold coast.";
                             default -> "These lie on continental shelves and slopes; try a different coast.";
                         };
                         source.sendFailure(Component.literal("No " + name + " found (checked " + res.checked()

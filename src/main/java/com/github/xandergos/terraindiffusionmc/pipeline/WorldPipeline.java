@@ -691,7 +691,16 @@ public final class WorldPipeline implements AutoCloseable {
         archipelagoShaper.apply(elevFlat, padded, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION);
         if (tagsOut != null) java.util.Arrays.fill(tagsOut, OceanFeatures.TAG_NONE);
         if (TerrainDiffusionConfig.oceanFeatures()) {
-            applyOceanFeatures(elevFlat, i1, j1, i2, j2, tagsOut);
+            OceanFeatures.CoarseField field = oceanCoarseField(i1, j1, i2, j2);
+            // Strandflats reshape low cold coasts on land as well as sea, so they run on every request (an all-land
+            // request skipping them would leave a seam).
+            byte[] strand = oceanFeatures.strandflats(elevFlat, i1, j1, H, W, field);
+            applyOceanFeatures(elevFlat, i1, j1, i2, j2, tagsOut, field);
+            if (strand != null && tagsOut != null) {
+                for (int k = 0; k < strand.length; k++) {
+                    if (strand[k] != 0 && tagsOut[k] == OceanFeatures.TAG_NONE) tagsOut[k] = OceanFeatures.TAG_STRANDFLAT;
+                }
+            }
         }
         float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
         return new float[][]{elevFlat, climate};
@@ -705,14 +714,20 @@ public final class WorldPipeline implements AutoCloseable {
      * Stamps tectonic sea-floor relief and oceanic islands into the elevation (see {@link OceanFeatures}). Runs
      * before climate so island peaks get the lapse-rate cooling of any other high ground.
      */
-    private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2, byte[] tags) {
+    private void applyOceanFeatures(float[] elev, int i1, int j1, int i2, int j2, byte[] tags, OceanFeatures.CoarseField field) {
         boolean anyOcean = false;
         for (float v : elev) if (v < 0f) { anyOcean = true; break; }
         if (!anyOcean && !oceanFeatures.modelIslands) return;   // island craters are cut into all-land tiles too
-        // Volcano centres can lie a footprint away from the request (twice that through the plate warp), and a
-        // hotspot volcano's moat and debris field reach MAX_FEATURE_REACH from it.
+        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, field, tags);
+    }
+
+    /**
+     * The coarse field the ocean features need around a request: volcano centres can lie a footprint away from it
+     * (twice that through the plate warp), and a hotspot volcano's moat and debris field reach MAX_FEATURE_REACH.
+     */
+    private OceanFeatures.CoarseField oceanCoarseField(int i1, int j1, int i2, int j2) {
         int padPx = (int) Math.ceil(Math.max(2 * OceanFeatures.MAX_VOLCANO_REACH, OceanFeatures.MAX_FEATURE_REACH));
-        oceanFeatures.apply(elev, i1, j1, i2 - i1, j2 - j1, coarseField(i1 - padPx, j1 - padPx, i2 + padPx, j2 + padPx), tags);
+        return coarseField(i1 - padPx, j1 - padPx, i2 + padPx, j2 + padPx);
     }
 
     /** Smoothed coarse elevation and temperature covering the native-pixel window, sampled bilinearly. */
