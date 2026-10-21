@@ -47,6 +47,8 @@ public final class OceanFeatures {
         float temperature(double i, double j);
         /** Archipelago zone strength 0..1 (see {@code SyntheticMapFactory.archipelagoZone}); 0 if unknown. */
         default float archipelago(double i, double j) { return 0f; }
+        /** Distance (native pixels) to a rift sea's young spreading axis (round 5), or {@code Double.MAX_VALUE}. */
+        default double riftAxis(double i, double j) { return Double.MAX_VALUE; }
     }
 
     // Surface tags reported per pixel by apply(): what the chunk generator should do with the floor or ground there.
@@ -592,8 +594,11 @@ public final class OceanFeatures {
         if (coastTag != TAG_NONE) ctx.tag = coastTag;
         // Island rock from the landform that stands highest here (forearc islands).
         if (ctx.surfaceTag != TAG_NONE && total > -30 && ctx.surfaceC >= ctx.top1 - 1 && !ctx.reefOp) ctx.tag = ctx.surfaceTag;
-        // Sea floor materials on open-ocean floors that nothing else has claimed.
-        if (ctx.tag == TAG_NONE && total < -900) ctx.tag = floorMaterial(total, x, z, ctx);
+        // Sea floor materials on open-ocean floors that nothing else has claimed (a rift sea's axis counts as a ridge).
+        if (ctx.tag == TAG_NONE && total < -900) {
+            ctx.ridgeAxis = Math.min(ctx.ridgeAxis, coarse.riftAxis(z, x));
+            ctx.tag = floorMaterial(total, x, z, ctx);
+        }
         return Math.max(MAX_DEPTH, total);
     }
 

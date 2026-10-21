@@ -1202,6 +1202,8 @@
     seamount:        { name: 'Seamount',        color: '#94a3b8', on: false },
     trench:          { name: 'Trench',          color: '#f43f5e', on: true },
     archipelago:     { name: 'Archipelago sea', color: '#4ade80', on: true },
+    rift_sea:        { name: 'Rift sea',        color: '#fb923c', on: true },
+    active_margin:   { name: 'Active margin',   color: '#e11d48', on: true },
     vent_field:      { name: 'Vent field',      color: '#eab308', on: true },
   };
   const coarseFeatures = document.getElementById('coarse-features');
@@ -1233,6 +1235,8 @@
       case 'seamount': return `summit ${-v} m down`;
       case 'trench': return `floor about ${-v} m down`;
       case 'archipelago': return 'island-strewn shallow sea (its islands come from the model)';
+      case 'rift_sea': return `young rift sea; axial trough about ${-v} m deep, spreading axis down the middle`;
+      case 'active_margin': return `trench about ${-v} m down off an active margin; coastal range inland`;
       case 'vent_field': return `sulfur chimneys on the ridge axis, about ${-v} m down`;
       default: return '';
     }

@@ -43,6 +43,11 @@ public final class SyntheticMapFactory {
      * shallow sea broken up by island-sized highs ({@link #archipelagoIslands}), so the model draws island-strewn
      * seas like the Aegean or Indonesia instead of open ocean or unbroken coast. Units are coarse pixels (7.7 km).
      */
+    /** Rift seas and active continental margins (oceans round 5), laid into the elevation conditioning. */
+    private final TectonicConditioning tectonics;
+    /** The synthetic elevation before any nudges, for the tectonic landforms to find continents and coasts. */
+    private final TectonicConditioning.Base baseElev;
+
     private final FastNoiseLite archipelagoMask;
     private final FastNoiseLite archipelagoIslands;
     private final float archipelagoStrength;
@@ -87,6 +92,37 @@ public final class SyntheticMapFactory {
         archipelagoIslands.SetFractalType(FastNoiseLite.FractalType.FBm);
         archipelagoIslands.SetFractalOctaves(3);
         archipelagoStrength = TerrainDiffusionConfig.archipelagoStrength();
+        tectonics = new TectonicConditioning(worldSeed, TerrainDiffusionConfig.riftSeas(), TerrainDiffusionConfig.activeMargins());
+        baseElev = (bx, by) -> interp(noises[0].GetNoise(bx, by), noiseQuantiles[0], dataQuantiles[0]);
+    }
+
+    /**
+     * Rift seas and active margins at coarse position (x, y), faded out inside archipelago zones (both busy places).
+     */
+    private float tectonic(float elev, float x, float y) {
+        float a = archipelagoZone(x, y);
+        if (a >= 1f) return elev;
+        float e = tectonics.apply(elev, x, y, baseElev);
+        return elev + (e - elev) * (1f - a);
+    }
+
+    /** Distance (coarse pixels) from coarse position (x, y) to a rift sea's spreading axis, or Float.MAX_VALUE. */
+    public float riftAxis(float x, float y) {
+        return tectonics.riftAxis(x, y, baseElev);
+    }
+
+    /** Rift sea centres in the coarse window ({x, y, depth} each). */
+    public java.util.List<float[]> riftCentres(float x0, float y0, float x1, float y1) {
+        return tectonics.riftCentres(x0, y0, x1, y1, baseElev);
+    }
+
+    /** Markers on active-margin trenches in the coarse window ({x, y, strength} each). */
+    public java.util.List<float[]> marginMarkers(float x0, float y0, float x1, float y1) {
+        java.util.List<float[]> out = new java.util.ArrayList<>();
+        for (float[] m : tectonics.marginMarkers(x0, y0, x1, y1, baseElev)) {
+            if (archipelagoZone(m[0], m[1]) < 0.5f) out.add(m);
+        }
+        return out;
     }
 
     /**
@@ -206,7 +242,7 @@ public final class SyntheticMapFactory {
                 for (int c = 0; c < W; c++) {
                     float noiseVal = fnl.GetNoise(x1 + c, y1 + r);
                     float v = interp(noiseVal, nq, dq);
-                    if (ch == 0) v = archipelago(v, x1 + c, y1 + r);
+                    if (ch == 0) v = tectonic(archipelago(v, x1 + c, y1 + r), x1 + c, y1 + r);
                     rawChannels[ch][k++] = v;
                 }
             }

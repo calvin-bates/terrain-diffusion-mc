@@ -895,6 +895,10 @@ public final class WorldPipeline implements AutoCloseable {
             @Override public float temperature(double i, double j) { return sample(temp2, i, j); }
             // Same zones (and the same coordinates) as ArchipelagoShaper uses.
             @Override public float archipelago(double i, double j) { return syn.archipelagoZone((float) (j / S), (float) (i / S)); }
+            @Override public double riftAxis(double i, double j) {
+                float d = syn.riftAxis((float) (j / S), (float) (i / S));
+                return d == Float.MAX_VALUE ? Double.MAX_VALUE : d * (double) S;
+            }
 
             private float sample(float[][] a, double i, double j) {
                 // Coarse pixel k covers native rows [k*S, (k+1)*S), with its centre at (k + 0.5) * S.
@@ -961,6 +965,16 @@ public final class WorldPipeline implements AutoCloseable {
                 if (field.elevation(i, j) > 300f) continue;   // the zone only reshapes low ground and sea
                 out.add(new OceanFeatures.Landmark("archipelago", i, j, best));
             }
+        }
+        // Rift seas (at the middle of each, value: axial depth) and active margins (on the trench, value: strength).
+        float cx0 = (float) j1 / S, cy0 = (float) i1 / S, cx1 = (float) j2 / S, cy1 = (float) i2 / S;
+        for (float[] r : syn.riftCentres(cx0, cy0, cx1, cy1)) {
+            out.add(new OceanFeatures.Landmark("rift_sea", r[1] * S, r[0] * S, -r[2]));
+        }
+        for (float[] m : syn.marginMarkers(cx0, cy0, cx1, cy1)) {
+            double i = m[1] * S, j = m[0] * S;
+            if (field.elevation(i, j) > -2000f) continue;     // where the model really drew deep water
+            out.add(new OceanFeatures.Landmark("active_margin", i, j, field.elevation(i, j)));
         }
         return out;
     }

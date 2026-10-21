@@ -120,6 +120,10 @@ public final class TerrainDiffusionConfig {
      * flattened and drowned afterwards.
      */
     public static boolean modelArchipelagos() { return readBoolean("oceans.model_archipelagos", true); }
+    /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
+    public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
+    /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */
+    public static boolean activeMargins() { return readBoolean("oceans.active_margins", true); }
     /**
      * How strongly the continent conditioning is pushed toward archipelagos: shallow seas scattered with islands.
      * 0 turns it off (the model's own coastlines only); 1 is the default; up to 2 for island-heavy worlds.

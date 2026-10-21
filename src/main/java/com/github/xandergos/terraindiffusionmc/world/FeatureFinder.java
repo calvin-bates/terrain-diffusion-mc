@@ -55,6 +55,8 @@ public final class FeatureFinder {
         KINDS.put("seamount", new String[]{"seamount", "seamount"});
         KINDS.put("trench", new String[]{"trench", "trench"});
         KINDS.put("archipelago", new String[]{"archipelago", "archipelago sea"});
+        KINDS.put("rift_sea", new String[]{"rift_sea", "young rift sea"});
+        KINDS.put("active_margin", new String[]{"active_margin", "active continental margin (trench off a coastal range)"});
         KINDS.put("vent_field", new String[]{"vent_field", "hydrothermal vent field"});
         KINDS.put("delta", new String[]{"delta", "river delta"});
         KINDS.put("ria", new String[]{"ria", "ria (drowned river valley)"});
@@ -348,6 +350,8 @@ public final class FeatureFinder {
             case "guyot", "seamount" -> "summit " + v + " m";
             case "trench" -> "floor about " + v + " m";
             case "vent_field" -> "on the ridge axis about " + (-v) + " m down";
+            case "rift_sea" -> "the middle of a narrow rift sea, axial trough planned about " + (-v) + " m deep";
+            case "active_margin" -> "over the trench, about " + (-v) + " m down; the coastal range is inland";
             default -> "";
         };
     }
