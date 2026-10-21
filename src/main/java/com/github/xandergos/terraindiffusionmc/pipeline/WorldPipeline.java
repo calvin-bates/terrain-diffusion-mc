@@ -314,8 +314,9 @@ public final class WorldPipeline implements AutoCloseable {
                 if (guide != null) guide.pullLowfreq(sample, S, SIGMA_DATA, ISLAND_STEP_PULL, ISLAND_STEP_PULL, false);
             }
 
-            // Build conditioning from coarse slice (7, 4, 4)
-            conds[b] = buildLatentConditioning(coarseSlices.get(b), guide);
+            // Build conditioning from coarse slice (7, 4, 4); in an archipelago the coarse elevation is drowned too, so it
+            // agrees with the drowned terrain (contradicting it, the model hedged: smooth land with no texture).
+            conds[b] = buildLatentConditioning(coarseSlices.get(b), guide, arch != null ? ctx : null);
 
             // z = noise * sigma_data; x_t = cos(t)*sample + sin(t)*z
             float[] noise = flatten3D(GaussianNoisePatch.generate(seed + seedOffset, i1, j1, S, S, 5, S, S));
@@ -451,6 +452,42 @@ public final class WorldPipeline implements AutoCloseable {
             for (int ch = 0; ch < 4; ch++) sample[ch * S * S + px] *= 1f - w;
             sample[off + px] = (g - LOWFREQ_MEAN) / LOWFREQ_STD * SIGMA_DATA;
         }
+    }
+
+    /**
+     * The coarse conditioning of latent tile (ti, tj) (mean and 5th-percentile elevation, signed sqrt, for its 4x4 coarse
+     * pixels ti-1..ti+2, tj-1..tj+2), drowned like the terrain: each pixel's mean becomes the average, over an 8x8 grid
+     * of points in it, of the drowned mean; its low end the 5th percentile of the drowned low end.
+     */
+    private void drownConditioning(float[] condFlat, int N, int ti, int tj) {
+        int CS = 32 * LATENT_COMPRESSION, G = ISLAND_COARSE_SAMPLES;
+        SyntheticMapFactory syn = syntheticMapFactory;
+        ArchipelagoShaper shaper = archipelagoShaper;
+        int ni0 = (ti - 1) * CS, nj0 = (tj - 1) * CS;
+        float[] lows = new float[G * G];
+        for (int a = 0; a < 4; a++)
+            for (int b = 0; b < 4; b++) {
+                int px = a * 4 + b;
+                float m = condFlat[px], p = condFlat[N + px];
+                float eMean = Math.signum(m) * m * m, eLow = Math.signum(p) * p * p;
+                double sum = 0;
+                boolean any = false;
+                for (int u = 0; u < G; u++)
+                    for (int v = 0; v < G; v++) {
+                        int i = ni0 + a * CS + (2 * u + 1) * CS / (2 * G), j = nj0 + b * CS + (2 * v + 1) * CS / (2 * G);
+                        float z = syn.archipelagoZone((float) j / CS, (float) i / CS);
+                        float dm = z > 0f ? shaper.base(eMean, i, j, z) : eMean;
+                        float dl = z > 0f ? shaper.base(eLow, i, j, z) : eLow;
+                        any |= z > 0f;
+                        sum += dm;
+                        lows[u * G + v] = dl;
+                    }
+                if (!any) continue;
+                java.util.Arrays.sort(lows);
+                float mean = (float) (sum / (G * G)), low = Math.min(lows[(int) (0.05f * lows.length)], mean);
+                condFlat[px] = (float) (Math.signum(mean) * Math.sqrt(Math.abs(mean)));
+                condFlat[N + px] = (float) (Math.signum(low) * Math.sqrt(Math.abs(low)));
+            }
     }
 
     /** Moves the low-frequency channel of a latent sample stored scaled by {@code scale} {@code k} of the way to target. */
@@ -629,6 +666,14 @@ public final class WorldPipeline implements AutoCloseable {
 
     /** {@link #buildLatentConditioning(FloatTensor)}, with the coarse elevation lifted to the islands of {@code guide}. */
     private float[] buildLatentConditioning(FloatTensor coarseSlice, IslandGuide guide) {
+        return buildLatentConditioning(coarseSlice, guide, null);
+    }
+
+    /**
+     * As above; with {@code archTile} (the latent tile's window index) the coarse elevation is first drowned the way
+     * {@link #archipelagoTarget} drowns the terrain.
+     */
+    private float[] buildLatentConditioning(FloatTensor coarseSlice, IslandGuide guide, int[] archTile) {
         int N = 4 * 4;
         // Unnormalize: cond[:-1] / cond[-1] for each pixel
         float[] condFlat = new float[6 * N];
@@ -637,6 +682,7 @@ public final class WorldPipeline implements AutoCloseable {
                 float w = coarseSlice.data[6 * N + px];
                 condFlat[ch * N + px] = (w > 1e-6f) ? coarseSlice.data[ch * N + px] / w : 0f;
             }
+        if (archTile != null) drownConditioning(condFlat, N, archTile[1], archTile[2]);
         if (guide != null) guide.liftConditioning(condFlat, N);
 
         // Append mask channel (all ones = (1 - mean) / std normalized)
