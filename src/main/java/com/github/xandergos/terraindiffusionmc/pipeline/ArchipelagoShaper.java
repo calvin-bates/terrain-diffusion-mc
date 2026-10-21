@@ -53,9 +53,19 @@ public final class ArchipelagoShaper {
      * model's own fine noise decided land or sea pixel by pixel there).
      */
     private static final float SETTLE_M = 2f, SETTLE_FADE_M = 6f, SETTLE_RIPPLE_M = 1.5f;
+    /**
+     * Model-drawn archipelagos ({@link #modelBase}): low ground is squeezed toward sea level by {@link #M_FLATTEN}, then
+     * given hills and hollows of {@link #M_RELIEF} metres either way from a fine island field ({@link #M_FINE_KM} km down
+     * to ~1 km, stretched along the same slowly turning grain), and drowned by {@link #M_DROWN} metres plus up to
+     * {@link #M_DROWN_VARY} more or less from the 7 km field. The coast then runs through drowned hilly ground, as in
+     * the Stockholm or Dalmatian archipelagos: many islands of every size, more and bigger toward higher ground, fewer
+     * and smaller out to sea, with shallow sounds between. (Drowning alone only lowered the model's smooth lowlands,
+     * which left a few big rounded islands.)
+     */
+    private static final float M_FLATTEN = 0.6f, M_RELIEF = 70f, M_DROWN = 25f, M_DROWN_VARY = 70f, M_FINE_KM = 4.5f;
     private static final int SETTLE_R = 4;
 
-    private final FastNoiseLite islands, warpX, warpZ, direction, detail, detailWarpX, detailWarpZ;
+    private final FastNoiseLite islands, islandsFine, warpX, warpZ, direction, detail, detailWarpX, detailWarpZ;
 
     public ArchipelagoShaper(long seed) {
         int s = (int) (seed ^ (seed >>> 32));
@@ -65,6 +75,12 @@ public final class ArchipelagoShaper {
         islands.SetFractalType(FastNoiseLite.FractalType.FBm);
         islands.SetFractalOctaves(3);
         islands.SetFractalGain(0.45f);
+        islandsFine = new FastNoiseLite(s + 308);
+        islandsFine.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        islandsFine.SetFrequency(1f / M_FINE_KM);
+        islandsFine.SetFractalType(FastNoiseLite.FractalType.FBm);
+        islandsFine.SetFractalOctaves(3);
+        islandsFine.SetFractalGain(0.5f);
         warpX = simple(s + 302, 1f / 12f);
         warpZ = simple(s + 303, 1f / 12f);
         direction = simple(s + 304, 1f / 250f);
@@ -189,6 +205,20 @@ public final class ArchipelagoShaper {
         return e * (1f - FLATTEN * k) - k * (DROWN_BASE_M + DROWN_VARY_M * field(i, j));
     }
 
+    /**
+     * The archipelago terrain for model-drawn islands (see {@link #M_FLATTEN}): what the model's low-frequency terrain
+     * {@code e} (metres) becomes at native pixel (i, j), zone strength 0..1. Rises with {@code e} (no reversed slopes).
+     */
+    public float modelBase(float e, int i, int j, float zone) {
+        float w;
+        if (e > FULL_HIGH_M) w = 1f - smoothstep(FULL_HIGH_M, FADE_HIGH_M, e);
+        else if (e < FULL_LOW_M) w = smoothstep(FADE_LOW_M, FULL_LOW_M, e);
+        else w = 1f;
+        if (w <= 0f) return e;
+        float k = zone * w;
+        return e * (1f - M_FLATTEN * k) + k * (M_RELIEF * field(islandsFine, i, j) - M_DROWN - M_DROWN_VARY * field(i, j));
+    }
+
     /** Only the coastline detail of {@link #shape}, for ground {@code e} the model has already drowned. */
     float detailOnly(float e, int i, int j, float zone, float rough) {
         float w;
@@ -242,6 +272,11 @@ public final class ArchipelagoShaper {
      * direction contribute, with weights that sum (in variance) to one.
      */
     float field(double i, double j) {
+        return field(islands, i, j);
+    }
+
+    /** {@link #field(double, double)} from the given island noise. */
+    private float field(FastNoiseLite noise, double i, double j) {
         float xk = (float) (j / KM), zk = (float) (i / KM);
         float x = xk + 1.5f * warpX.GetNoise(xk, zk), z = zk + 1.5f * warpZ.GetNoise(xk, zk);
         double ang = direction.GetNoise(xk, zk) * Math.PI;
@@ -253,7 +288,7 @@ public final class ArchipelagoShaper {
             w *= w;                                      // adjacent orientations: cos^2 + sin^2 = 1
             float ca = (float) Math.cos(theta), sa = (float) Math.sin(theta);
             float u = (ca * x + sa * z) / STRETCH, v = -sa * x + ca * z;
-            sum += w * islands.GetNoise(u + 113 * k, v - 71 * k);
+            sum += w * noise.GetNoise(u + 113 * k, v - 71 * k);
             wsq += w * w;
         }
         float n = (float) (sum / Math.sqrt(Math.max(wsq, 1e-6)));

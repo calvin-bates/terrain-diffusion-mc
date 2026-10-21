@@ -434,7 +434,7 @@ public final class WorldPipeline implements AutoCloseable {
                 float z = syn.archipelagoZone((float) j / CS, (float) i / CS);
                 float l = init[off + px] / SIGMA_DATA * LOWFREQ_STD + LOWFREQ_MEAN;
                 float e = Math.signum(l) * l * l;
-                float e2 = z > 0f ? shaper.base(e, i, j, z) : e;
+                float e2 = z > 0f ? shaper.modelBase(e, i, j, z) : e;
                 if (e2 == e) { target[px] = Float.NaN; continue; }
                 target[px] = (float) (Math.signum(e2) * Math.sqrt(Math.abs(e2)));
                 any = true;
@@ -480,8 +480,8 @@ public final class WorldPipeline implements AutoCloseable {
                     for (int v = 0; v < G; v++) {
                         int i = ni0 + a * CS + (2 * u + 1) * CS / (2 * G), j = nj0 + b * CS + (2 * v + 1) * CS / (2 * G);
                         float z = syn.archipelagoZone((float) j / CS, (float) i / CS);
-                        float dm = z > 0f ? shaper.base(eMean, i, j, z) : eMean;
-                        float dl = z > 0f ? shaper.base(eLow, i, j, z) : eLow;
+                        float dm = z > 0f ? shaper.modelBase(eMean, i, j, z) : eMean;
+                        float dl = z > 0f ? shaper.modelBase(eLow, i, j, z) : eLow;
                         any |= z > 0f;
                         sum += dm;
                         lows[u * G + v] = dl;
@@ -965,7 +965,8 @@ public final class WorldPipeline implements AutoCloseable {
     /**
      * Ocean features whose centres lie in the native-pixel window, for the terrain explorer and /terra-find:
      * the volcanoes, atolls and trenches from {@link OceanFeatures#landmarks}, plus one marker per archipelago sea
-     * (the strongest point of each 24-coarse-pixel cell that lies well inside an archipelago zone).
+     * (in each 24-coarse-pixel cell well inside an archipelago zone, the point nearest sea level on the coarse map,
+     * where the islands are; none where the cell is all deep sea or high ground: markers used to fall on open sea).
      */
     public List<OceanFeatures.Landmark> oceanLandmarks(int i1, int j1, int i2, int j2) {
         OceanFeatures.CoarseField field = coarseField(i1, j1, i2, j2);
@@ -977,19 +978,22 @@ public final class WorldPipeline implements AutoCloseable {
         SyntheticMapFactory syn = syntheticMapFactory;
         for (int gy = Math.floorDiv(Math.floorDiv(i1, S), cell); gy <= Math.floorDiv(Math.floorDiv(i2, S), cell); gy++) {
             for (int gx = Math.floorDiv(Math.floorDiv(j1, S), cell); gx <= Math.floorDiv(Math.floorDiv(j2, S), cell); gx++) {
-                float best = 0f, bx = 0f, by = 0f;
-                for (int a = 0; a < 6; a++) {
-                    for (int b = 0; b < 6; b++) {
-                        float x = gx * cell + (b + 0.5f) * cell / 6f, y = gy * cell + (a + 0.5f) * cell / 6f;
+                float best = 0f, bx = 0f, by = 0f, bz = 0f;
+                for (int a = 0; a < 12; a++) {
+                    for (int b = 0; b < 12; b++) {
+                        float x = gx * cell + (b + 0.5f) * cell / 12f, y = gy * cell + (a + 0.5f) * cell / 12f;
                         float z = syn.archipelagoZone(x, y);
-                        if (z > best) { best = z; bx = x; by = y; }
+                        if (z < 0.8f) continue;
+                        double ii = y * S, jj = x * S;
+                        if (ii < i1 || ii >= i2 || jj < j1 || jj >= j2) continue;
+                        // Islands form where the model's coarse ground is near sea level.
+                        float near = 1f - smoothstep(60f, 250f, Math.abs(field.elevation(ii, jj) - 20f));
+                        float score = z * near;
+                        if (score > best) { best = score; bx = x; by = y; bz = z; }
                     }
                 }
-                if (best < 0.9f) continue;
-                double i = by * S, j = bx * S;
-                if (i < i1 || i >= i2 || j < j1 || j >= j2) continue;
-                if (field.elevation(i, j) > 300f) continue;   // the zone only reshapes low ground and sea
-                out.add(new OceanFeatures.Landmark("archipelago", i, j, best));
+                if (best < 0.5f) continue;
+                out.add(new OceanFeatures.Landmark("archipelago", by * S, bx * S, bz));
             }
         }
         // Rift seas (at the middle of each, value: axial depth) and active margins (on the trench, value: strength).

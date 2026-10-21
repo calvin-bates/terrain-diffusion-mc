@@ -136,7 +136,10 @@ public final class SyntheticMapFactory {
         float lowland = 1f - smoothstep(150f, 800f, elev);
         float k = Math.min(1f, 0.85f * archipelagoStrength) * zone * lowland;
         if (k <= 0f) return elev;
-        float target = -350f + 1100f * archipelagoIslands.GetNoise(x, y);   // above ~0.32 is an island
+        // Island groups near sea level with shallow sounds, deeper basins between groups (above ~0.15 is land). The
+        // islands themselves come from the finer drowned hills at native scale (ArchipelagoShaper.modelBase); a target
+        // of -350 + 1100 n (Oct 21) made the model draw a few big islands in a sea too deep for any small ones.
+        float target = Math.max(-450f, -100f + 650f * archipelagoIslands.GetNoise(x, y));
         return elev + (target - elev) * k;
     }
 

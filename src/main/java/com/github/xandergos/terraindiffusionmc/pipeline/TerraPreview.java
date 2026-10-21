@@ -81,6 +81,7 @@ public final class TerraPreview {
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
                             Math.round(m.i() * 6), stats(e, win, win), (System.nanoTime() - t0) / 1e9));
                     summary.add("    " + speckSources(p.debugModel, p.debugShaped, e, tags, win));
+                    summary.add("    " + islands(e, win));
                 }
             }
         }
@@ -144,6 +145,33 @@ public final class TerraPreview {
             if (lone(fin, k, W)) { nf++; byTag.merge((int) tags[k], 1, Integer::sum); }
         }
         return "lone pixels: model " + nm + ", after archipelago pass " + ns + ", final " + nf + " (by tag " + byTag + ")";
+    }
+
+    /** Islands wholly inside the window (land not touching its edge), by area: under 0.1 km2, 0.1-1, 1-10, over 10. */
+    private static String islands(float[] e, int W) {
+        int[] lab = new int[W * W];
+        int[] stack = new int[W * W];
+        int[] bins = new int[4];
+        int next = 0;
+        for (int s0 = 0; s0 < W * W; s0++) {
+            if (e[s0] < 0 || lab[s0] != 0) continue;
+            next++;
+            int sp = 0, area = 0;
+            boolean edge = false;
+            stack[sp++] = s0; lab[s0] = next;
+            while (sp > 0) {
+                int k = stack[--sp]; area++;
+                int r = k / W, c = k % W;
+                if (r == 0 || c == 0 || r == W - 1 || c == W - 1) edge = true;
+                int[] nb = {k - W, k + W, c > 0 ? k - 1 : -1, c < W - 1 ? k + 1 : -1};
+                for (int q : nb) if (q >= 0 && q < W * W && lab[q] == 0 && e[q] >= 0) { lab[q] = next; stack[sp++] = q; }
+            }
+            if (edge) continue;
+            double km2 = area * 0.0009;
+            bins[km2 < 0.1 ? 0 : km2 < 1 ? 1 : km2 < 10 ? 2 : 3]++;
+        }
+        return String.format("islands inside the window: %d (<0.1 km2 %d, 0.1-1 %d, 1-10 %d, >10 %d)",
+                bins[0] + bins[1] + bins[2] + bins[3], bins[0], bins[1], bins[2], bins[3]);
     }
 
     private static boolean lone(float[] e, int k, int W) {
