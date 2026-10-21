@@ -836,7 +836,9 @@ public final class WorldPipeline implements AutoCloseable {
         // Islands at native resolution inside archipelago zones (off when oceans.archipelago_strength is 0).
         // With model-drawn archipelagos the model has already drawn the islands: only the fine coastline roughness is added.
         boolean detailOnly = TerrainDiffusionConfig.modelArchipelagos();
+        if (captureStages) debugModel = elevFlat.clone();
         archipelagoShaper.apply(elevFlat, padded, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION, detailOnly);
+        if (captureStages) debugShaped = elevFlat.clone();
         if (tagsOut != null) java.util.Arrays.fill(tagsOut, OceanFeatures.TAG_NONE);
         if (TerrainDiffusionConfig.oceanFeatures()) {
             OceanFeatures.CoarseField field = oceanCoarseField(i1, j1, i2, j2);
@@ -853,6 +855,10 @@ public final class WorldPipeline implements AutoCloseable {
         float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
         return new float[][]{elevFlat, climate};
     }
+
+    /** Tools only (TerraPreview): when set, {@link #get} keeps copies of the elevation before and after the archipelago pass. */
+    public volatile boolean captureStages;
+    public volatile float[] debugModel, debugShaped;
 
     // =========================================================================
     // Ocean features

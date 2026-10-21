@@ -68,7 +68,13 @@ public final class TerraPreview {
                     OceanFeatures.Landmark m = arch.get(k);
                     int i1 = (int) m.i() - win / 2, j1 = (int) m.j() - win / 2;
                     long t0 = System.nanoTime();
-                    float[] e = p.get(i1, j1, i1 + win, j1 + win, false)[0];
+                    p.captureStages = true;
+                    byte[] tags = new byte[win * win];
+                    float[] e = p.get(i1, j1, i1 + win, j1 + win, false, tags)[0];
+                    p.captureStages = false;
+                    // Stages of a central 256 px patch (model, after the archipelago pass, final; float32 LE) and its tags.
+                    dumpPatch(out.resolve("archipelago" + k + "_" + variant.replace("@", "_") + "_stages.bin"), win,
+                            p.debugModel, p.debugShaped, e, tags);
                     String name = "archipelago" + k + "_" + variant.replace("@", "_");
                     write(render(e, win, win), out.resolve(name + ".png"));
                     summary.add(String.format("%s at /tp %d ~ %d (scale 6): %s, %.1f s", name, Math.round(m.j() * 6),
@@ -112,6 +118,16 @@ public final class TerraPreview {
         }
         for (String s : summary) System.out.println(s);
         System.exit(0);
+    }
+
+    /** Writes a 256x256 patch (rows 150-405, columns 400-655 of the window) of each stage as float32 LE, then the tags. */
+    private static void dumpPatch(Path file, int win, float[] model, float[] shaped, float[] fin, byte[] tags) throws Exception {
+        int r0 = Math.min(150, win - 256), c0 = Math.min(400, win - 256), N = 256;
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(3 * N * N * 4 + N * N).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        for (float[] a : new float[][]{model, shaped, fin})
+            for (int r = 0; r < N; r++) for (int c = 0; c < N; c++) buf.putFloat(a == null ? Float.NaN : a[(r0 + r) * win + c0 + c]);
+        for (int r = 0; r < N; r++) for (int c = 0; c < N; c++) buf.put(tags[(r0 + r) * win + c0 + c]);
+        Files.write(file, buf.array());
     }
 
     private static List<OceanFeatures.Landmark> nearest(List<OceanFeatures.Landmark> all, String type, int n) {
