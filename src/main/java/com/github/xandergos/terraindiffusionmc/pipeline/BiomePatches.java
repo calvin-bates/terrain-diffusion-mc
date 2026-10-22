@@ -70,6 +70,12 @@ final class BiomePatches {
     /** Unshared jitter fields for climate edges (pine/spruce split, sparse jungle, savanna plateau, jagged peaks). */
     private final FastNoiseLite jitterA, jitterB;
 
+    /**
+     * Scales every patch biome's size (v1.1 here and v1.2 in {@link RegionalBiomes}): {@code biomes.size}, default 2.5
+     * (Calvin, Oct 22: biomes too small for the world's scale). Shares are unchanged, so patches get bigger and fewer.
+     */
+    static final float SIZE = com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig.biomeSize();
+
     private static volatile BiomePatches cached;
 
     private final long seed;
@@ -91,8 +97,8 @@ final class BiomePatches {
         gravelly = new Patch(s + 112, FOREST_SIZE_M);
         windsweptForest = new Patch(s + 113, SMALL_SIZE_M);
         savannaPlateau = new Patch(s + 114, FOREST_SIZE_M);
-        jitterA = fbm(s + 120, 1f / 2500f, 2);
-        jitterB = fbm(s + 121, 1f / 1200f, 2);
+        jitterA = fbm(s + 120, 1f / (2500f * SIZE), 2);
+        jitterB = fbm(s + 121, 1f / (1200f * SIZE), 2);
     }
 
     static BiomePatches forSeed(long seed) {
@@ -270,7 +276,7 @@ final class BiomePatches {
         private final FastNoiseLite noise;
 
         Patch(int seed, float sizeM) {
-            noise = fbm(seed, 1f / sizeM, 3);
+            noise = fbm(seed, 1f / (sizeM * SIZE), 3);
         }
 
         /** True if the noise at (x, z) is in the top {@code share} of its range. */
