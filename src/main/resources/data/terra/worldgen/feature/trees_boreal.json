@@ -3,12 +3,16 @@
   "default": "minecraft:spruce_checked",
   "features": [
     {
-      "chance": 0.3,
+      "chance": 0.25,
+      "feature": "terra:golden_birch_checked"
+    },
+    {
+      "chance": 0.2,
       "feature": "minecraft:pine_checked"
     },
     {
-      "chance": 0.12,
-      "feature": "minecraft:birch_checked"
+      "chance": 0.04,
+      "feature": "minecraft:mega_spruce_checked"
     },
     {
       "chance": 0.0125,

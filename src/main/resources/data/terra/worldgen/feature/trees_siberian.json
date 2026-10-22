@@ -1,18 +1,14 @@
 {
   "type": "minecraft:random_selector",
-  "default": "minecraft:pine_checked",
+  "default": "terra:larch_checked",
   "features": [
     {
-      "chance": 0.08,
-      "feature": "minecraft:mega_pine_checked"
+      "chance": 0.4,
+      "feature": "terra:tall_spruce_checked"
     },
     {
-      "chance": 0.25,
-      "feature": "minecraft:spruce_checked"
-    },
-    {
-      "chance": 0.05,
-      "feature": "minecraft:birch_checked"
+      "chance": 0.1,
+      "feature": "minecraft:pine_checked"
     },
     {
       "chance": 0.01,

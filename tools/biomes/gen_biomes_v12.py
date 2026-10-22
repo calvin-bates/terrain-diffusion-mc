@@ -107,6 +107,33 @@ FEATURES = {
         "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 2, "upper_size": 2},
         "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 6, "height_rand_a": 3, "height_rand_b": 1},
         "trunk_provider": log("minecraft:dark_oak_log")},
+    # Siberian taiga (Calvin's Terralith reference): larches, tall bare dark trunks topped by tiers of needles that
+    # take the biome's orange foliage colour (dark oak leaves), among tall-trunked green spruces in tiers.
+    "larch": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 1), "radius": uniform(2, 3),
+                           "trunk_height": uniform(7, 10)},
+        "foliage_provider": leaves("minecraft:dark_oak_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 2, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 13, "height_rand_a": 5, "height_rand_b": 2},
+        "trunk_provider": log("minecraft:dark_oak_log")},
+    "tall_spruce": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 1), "radius": uniform(2, 3),
+                           "trunk_height": uniform(6, 9)},
+        "foliage_provider": leaves("minecraft:spruce_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 2, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 12, "height_rand_a": 4, "height_rand_b": 2},
+        "trunk_provider": log("minecraft:spruce_log")},
+    # Boreal forest (Calvin's reference): golden birches among dark spruce; birch trunks with oak leaves, which take the
+    # biome's golden foliage colour (birch leaves are never tinted).
+    "golden_birch": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:blob_foliage_placer", "height": 3, "offset": 0, "radius": 2},
+        "foliage_provider": leaves("minecraft:oak_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size"},
+        "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 5, "height_rand_a": 3, "height_rand_b": 0},
+        "trunk_provider": log("minecraft:birch_log")},
     # Pools for marsh and bog: vanilla's lake feature with water, lined with mud; the water sits flush with the ground.
     "wetland_pool": {
         "type": "minecraft:lake", "barrier": {"id": "minecraft:mud"}, "can_place_feature": {"type": "minecraft:true"},
@@ -137,10 +164,11 @@ FEATURES = {
 # Tree mixes: random selectors over placed trees (vanilla's "*_checked" ones test the soil).
 SELECTORS = {
     "trees_treeline": ("terra:krummholz_checked", [("minecraft:spruce_checked", 0.15), ("minecraft:pine_checked", 0.08)]),
-    "trees_boreal": ("minecraft:spruce_checked", [("minecraft:pine_checked", 0.3), ("minecraft:birch_checked", 0.12),
+    "trees_boreal": ("minecraft:spruce_checked", [("terra:golden_birch_checked", 0.25), ("minecraft:pine_checked", 0.2),
+                                                 ("minecraft:mega_spruce_checked", 0.04),
                                                  ("minecraft:fallen_spruce_tree", 0.0125)]),
-    "trees_siberian": ("minecraft:pine_checked", [("minecraft:mega_pine_checked", 0.08), ("minecraft:spruce_checked", 0.25),
-                                                 ("minecraft:birch_checked", 0.05), ("minecraft:fallen_spruce_tree", 0.01)]),
+    "trees_siberian": ("terra:larch_checked", [("terra:tall_spruce_checked", 0.4), ("minecraft:pine_checked", 0.1),
+                                              ("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_birch_taiga": ("minecraft:spruce_checked", [("minecraft:birch_checked", 0.5), ("minecraft:pine_checked", 0.15),
                                                       ("minecraft:fallen_birch_tree", 0.01)]),
     "trees_taiga_mountain": ("minecraft:spruce_checked", [("minecraft:pine_checked", 0.4),
@@ -203,6 +231,9 @@ PLACED = {
     "stunted_spruce_checked": {"feature": "terra:stunted_spruce", "placement": [survive("minecraft:spruce_sapling")]},
     "oak_bush_checked": {"feature": "terra:oak_bush", "placement": [survive("minecraft:oak_sapling")]},
     "redwood_checked": {"feature": "terra:redwood", "placement": [survive("minecraft:spruce_sapling")]},
+    "larch_checked": {"feature": "terra:larch", "placement": [survive("minecraft:spruce_sapling")]},
+    "tall_spruce_checked": {"feature": "terra:tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
+    "golden_birch_checked": {"feature": "terra:golden_birch", "placement": [survive("minecraft:birch_sapling")]},
     "highland_dark_oak_checked": {"feature": "terra:highland_dark_oak", "placement": [survive("minecraft:dark_oak_sapling")]},
     "highland_orange_conifer_checked": {"feature": "terra:highland_orange_conifer",
                                         "placement": [survive("minecraft:dark_oak_sapling")]},
@@ -210,7 +241,7 @@ PLACED = {
     "trees_treeline": trees("terra:trees_treeline", [(1, 3), (2, 2), (0, 2)]),
     "trees_tundra": trees("terra:krummholz", [(0, 12), (1, 1)], sapling="minecraft:spruce_sapling"),
     "trees_boreal": trees("terra:trees_boreal", [(10, 9), (11, 1)]),
-    "trees_siberian": trees("terra:trees_siberian", [(5, 9), (6, 1)]),
+    "trees_siberian": trees("terra:trees_siberian", [(7, 9), (8, 1)]),
     "trees_birch_taiga": trees("terra:trees_birch_taiga", [(8, 9), (9, 1)]),
     "trees_taiga_mountain": trees("terra:trees_taiga_mountain", [(3, 9), (4, 1)]),
     "trees_taiga_clearing": trees("terra:trees_boreal", [(0, 3), (1, 1)]),
@@ -306,15 +337,15 @@ biome("treeline", id=52, base="grove", temp=0.2, downfall=0.6,
       under=rule((noise("surface", 0.3), "minecraft:stone")),
       tags=["is_forest"])
 biome("boreal_forest", id=53, base="taiga", temp=0.2, downfall=0.8,
-      colors={"grass_color": "#6c9a5c", "foliage_color": "#4f7e47"},
+      colors={"grass_color": "#6c9a5c", "foliage_color": "#d4a72c"},
       veg=["minecraft:patch_large_fern", "terra:trees_boreal", "minecraft:patch_grass_taiga", "terra:patch_moss_carpet",
            "minecraft:brown_mushroom_taiga", "minecraft:red_mushroom_taiga", "minecraft:patch_berry_common",
            "minecraft:patch_firefly_bush_near_water"],
       top=rule((noise("surface", 0.0), "minecraft:podzol"), (noise("surface_secondary", 0.5), "minecraft:moss_block")))
 biome("siberian_taiga", id=54, base="taiga", temp=0.15, downfall=0.4,
-      colors={"grass_color": "#88a060", "foliage_color": "#5d8048"},
+      colors={"grass_color": "#88a060", "foliage_color": "#d9772c", "dry_foliage_color": "#c0662a"},
       veg=["terra:trees_siberian", "minecraft:patch_grass_taiga_2", "minecraft:patch_large_fern",
-           "minecraft:brown_mushroom_taiga", "minecraft:patch_berry_common"],
+           "minecraft:patch_leaf_litter", "minecraft:brown_mushroom_taiga", "minecraft:patch_berry_common"],
       top=rule((noise("surface", 0.21), "minecraft:coarse_dirt"), (noise("surface", -0.12), "minecraft:podzol")))
 biome("birch_taiga", id=55, base="taiga", temp=0.3, downfall=0.8,
       colors={"grass_color": "#79a85f", "foliage_color": "#62994c"},

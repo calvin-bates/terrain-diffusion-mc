@@ -128,7 +128,8 @@
   "effects": {
     "water_color": "#3f76e4",
     "grass_color": "#88a060",
-    "foliage_color": "#5d8048"
+    "foliage_color": "#d9772c",
+    "dry_foliage_color": "#c0662a"
   },
   "features": [
     [],
@@ -187,6 +188,7 @@
       "minecraft:patch_large_fern",
       "minecraft:patch_grass_taiga_2",
       "minecraft:brown_mushroom_taiga",
+      "minecraft:patch_leaf_litter",
       "minecraft:patch_berry_common"
     ],
     [
