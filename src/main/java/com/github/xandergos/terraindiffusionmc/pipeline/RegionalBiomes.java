@@ -197,10 +197,14 @@ public final class RegionalBiomes {
 
     // ---- River forests ----
 
-    /** Riverside forest reaches this far (native pixels, ~90 m) from a river, plus up to {@link #RIVERSIDE_JITTER_PX}. */
+    /**
+     * Riverside forest reaches this far (native pixels, ~90 m) from any channel, plus up to
+     * {@link #RIVERSIDE_JITTER_PX}. Channels through dry land are mostly streams (the hydrology sizes rivers by
+     * rain-weighted runoff), so streams count too (Calvin found none along rivers only, Oct 21).
+     */
     static final float RIVERSIDE_PX = 3f, RIVERSIDE_JITTER_PX = 1.5f;
-    /** Floodplain forest reaches this far (native pixels, ~240 m) from a main river, plus jitter. */
-    static final float FLOODPLAIN_PX = 8f, FLOODPLAIN_JITTER_PX = 3f;
+    /** Floodplain forest reaches this far (native pixels, ~210 m) from a river or main river, plus jitter. */
+    static final float FLOODPLAIN_PX = 7f, FLOODPLAIN_JITTER_PX = 3f;
 
     /** Biomes dry enough that rivers through them grow a strip of trees. */
     private static boolean dryLand(short b) {
@@ -217,10 +221,10 @@ public final class RegionalBiomes {
     }
 
     /**
-     * Riverside or floodplain forest for a pixel {@code distRiver} native pixels from the nearest river or main river
-     * and {@code distMain} from the nearest main river (either may be infinite), or {@code b} unchanged. Riverside
-     * forest lines rivers through dry land; floodplain forest fills a broad strip beside big lowland rivers in wet
-     * climates. The edge wanders with a noise in world metres.
+     * Riverside or floodplain forest for a pixel {@code distRiver} native pixels from the nearest channel (stream,
+     * river or main river) and {@code distMain} from the nearest river or main river (either may be infinite), or
+     * {@code b} unchanged. Riverside forest lines channels through dry land; floodplain forest fills a broad strip
+     * beside rivers in wet lowland. The edge wanders with a noise in world metres.
      */
     short riverForest(short b, float xm, float zm, float distRiver, float distMain, float altM, float slope,
                       float treeMoisture, float temp) {

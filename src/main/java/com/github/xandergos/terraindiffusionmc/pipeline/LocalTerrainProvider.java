@@ -833,8 +833,8 @@ public final class LocalTerrainProvider {
             (int) Math.ceil(RegionalBiomes.FLOODPLAIN_PX + RegionalBiomes.FLOODPLAIN_JITTER_PX) + 1;
 
     /**
-     * Distances (native pixels) from each block of a tile to the nearest river or main river and to the nearest main
-     * river, from the same river regions the carver uses, for the riverside and floodplain forests
+     * Distances (native pixels) from each block of a tile to the nearest channel (stream, river or main river) and
+     * to the nearest river or main river, from the same river regions the carver uses, for the riverside and floodplain forests
      * ({@link RegionalBiomes#riverForest}); null when rivers are off, the tile has no land, or no river is near.
      * Distances are measured between native pixel centres and interpolated bilinearly onto the blocks.
      */
@@ -857,8 +857,8 @@ public final class LocalTerrainProvider {
                     RiverService.Region reg = svc.regionOfPixel(pi0 + r, pj0 + c, source);
                     int k = reg.index(pi0 + r, pj0 + c);
                     byte v = k >= 0 ? reg.cls[k] : 0;
-                    if (v == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.RIVER
-                            || v == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.MAIN) {
+                    if (v >= com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.STREAM
+                            && v <= com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.MAIN) {
                         cls[r * nw + c] = v;
                         any = true;
                     }
@@ -873,7 +873,7 @@ public final class LocalTerrainProvider {
                 for (int c = 0; c < nw; c++) {
                     byte v = cls[r * nw + c];
                     if (v == 0) continue;
-                    boolean main = v == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.MAIN;
+                    boolean main = v >= com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.RIVER;
                     for (int a = Math.max(0, r - R); a <= Math.min(nh - 1, r + R); a++) {
                         for (int b = Math.max(0, c - R); b <= Math.min(nw - 1, c + R); b++) {
                             int d2 = (a - r) * (a - r) + (b - c) * (b - c), k = a * nw + b;
