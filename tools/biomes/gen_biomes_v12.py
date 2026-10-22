@@ -426,6 +426,7 @@ def main():
     check_references()
 
     # Biome files.
+    generated = {}
     for name, d in B.items():
         base = load(f"{VANILLA}/worldgen/biome/{d['base']}.json")
         out = dict(base)
@@ -444,7 +445,15 @@ def main():
         if not d.get("freeze", True):
             steps[10] = [f for f in steps[10] if f != "minecraft:freeze_top_layer"]
         out["features"] = steps
+        generated[name] = out
+    # Minecraft runs each step's features in one global order across every biome of the world (FeatureSorter), and
+    # refuses to generate if two biomes disagree. Sort each generated step into an order consistent with all the
+    # other biomes Terra uses, then check the whole set the way the game does.
+    fixed = fixed_biomes()
+    for name, out in generated.items():
+        out["features"] = [sort_step(k, out["features"][k], fixed) for k in range(len(out["features"]))]
         write(f"{TERRA}/biome/{name}.json", out)
+    check_feature_order(list(fixed.values()) + [o["features"] for o in generated.values()])
 
     # Tags: the base biome's direct memberships, plus extras.
     members = {}
@@ -498,6 +507,99 @@ def main():
     write(MATERIAL_RULE, mr)
     print(f"{len(B)} biomes, {len(FEATURES) + len(SELECTORS)} features, {len(PLACED)} placed features, "
           f"{len(members)} tag files")
+
+
+# Vanilla biomes Terra's biome source uses (TerrainDiffusionBiomeSource), and Terra's own non-generated biomes.
+VANILLA_USED = """badlands bamboo_jungle beach birch_forest cherry_grove cold_ocean dappled_forest deep_cold_ocean
+deep_frozen_ocean deep_lukewarm_ocean deep_ocean desert flower_forest forest frozen_ocean frozen_peaks frozen_river
+grove jagged_peaks jungle lukewarm_ocean mangrove_swamp meadow ocean old_growth_birch_forest old_growth_pine_taiga
+old_growth_spruce_taiga pale_garden plains river savanna savanna_plateau snowy_beach snowy_plains snowy_slopes
+snowy_taiga sparse_jungle stony_peaks stony_shore sunflower_plains swamp taiga warm_ocean windswept_forest
+windswept_gravelly_hills windswept_hills windswept_savanna""".split()
+TERRA_FIXED = ["dark_forest", "forest_sparse", "taiga_sparse", "snowy_taiga_sparse"]
+
+
+def fixed_biomes():
+    """Feature steps of every biome in the world that this script doesn't write (overrides in the mod win)."""
+    out = {}
+    for b in VANILLA_USED:
+        override = f"{RES}/minecraft/worldgen/biome/{b}.json"
+        out[b] = load(override if os.path.exists(override) else f"{VANILLA}/worldgen/biome/{b}.json")["features"]
+    for b in TERRA_FIXED:
+        out["terra:" + b] = load(f"{TERRA}/biome/{b}.json")["features"]
+    return out
+
+
+def is_tree(f):
+    return f.startswith("terra:trees_")
+
+
+def sort_step(k, feats, fixed):
+    """Order one step's features: features other biomes also use by a topological order of those biomes' lists
+    (ties by first appearance); this script's trees right after glow lichen; everything else new at the end, in a
+    fixed global order, so every generated biome agrees with every other."""
+    order, edges, indeg = [], {}, {}
+    for steps in fixed.values():
+        lst = steps[k] if k < len(steps) else []
+        for f in lst:
+            if f not in indeg:
+                indeg[f] = 0
+                edges[f] = set()
+                order.append(f)
+        for a, b in zip(lst, lst[1:]):
+            if b not in edges[a]:
+                edges[a].add(b)
+                indeg[b] += 1
+    rank, ready = {}, [f for f in order if indeg[f] == 0]
+    deg = dict(indeg)
+    while ready:
+        ready.sort(key=order.index)
+        f = ready.pop(0)
+        rank[f] = len(rank)
+        for g in edges[f]:
+            deg[g] -= 1
+            if deg[g] == 0:
+                ready.append(g)
+    if len(rank) != len(order):
+        raise SystemExit(f"step {k}: the fixed biomes already disagree on feature order")
+    new = sorted({f for d in B.values() for f in d["veg"] + d.get("lakes", [])} - set(rank))
+    lichen = rank.get("minecraft:glow_lichen", -1)
+
+    def key(f):
+        if f in rank:
+            return rank[f]
+        i = new.index(f)
+        return lichen + 0.5 + i * 1e-4 if is_tree(f) else len(rank) + i
+    return sorted(feats, key=key)
+
+
+def check_feature_order(all_steps):
+    """The game's test: nodes (step, feature), an edge between consecutive features of each biome; no cycles."""
+    edges = {}
+    for steps in all_steps:
+        flat = [(k, f) for k, lst in enumerate(steps) for f in lst]
+        for a, b in zip(flat, flat[1:]):
+            edges.setdefault(a, set()).add(b)
+            edges.setdefault(b, set())
+    state = {}
+
+    def visit(n):
+        stack = [(n, iter(edges[n]))]
+        state[n] = 1
+        while stack:
+            node, it = stack[-1]
+            nxt = next(it, None)
+            if nxt is None:
+                state[node] = 2
+                stack.pop()
+            elif state.get(nxt) == 1:
+                raise SystemExit(f"feature order cycle through {nxt}")
+            elif nxt not in state:
+                state[nxt] = 1
+                stack.append((nxt, iter(edges[nxt])))
+    for n in edges:
+        if n not in state:
+            visit(n)
 
 
 def biome_rule(bid, body):

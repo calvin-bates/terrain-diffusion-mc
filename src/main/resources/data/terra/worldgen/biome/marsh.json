@@ -195,10 +195,10 @@
       "minecraft:glow_lichen",
       "terra:trees_marsh",
       "minecraft:patch_tall_grass",
-      "minecraft:patch_grass_normal",
-      "minecraft:patch_sugar_cane_swamp",
-      "minecraft:patch_waterlily",
       "minecraft:flower_swamp",
+      "minecraft:patch_grass_normal",
+      "minecraft:patch_waterlily",
+      "minecraft:patch_sugar_cane_swamp",
       "minecraft:patch_firefly_bush_swamp",
       "minecraft:seagrass_swamp"
     ],

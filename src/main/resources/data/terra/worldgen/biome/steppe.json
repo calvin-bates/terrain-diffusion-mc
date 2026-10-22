@@ -184,9 +184,9 @@
     ],
     [
       "minecraft:glow_lichen",
-      "minecraft:patch_dry_grass_desert",
-      "minecraft:patch_grass_badlands",
       "minecraft:patch_bush",
+      "minecraft:patch_grass_badlands",
+      "minecraft:patch_dry_grass_desert",
       "minecraft:patch_dead_bush"
     ],
     [

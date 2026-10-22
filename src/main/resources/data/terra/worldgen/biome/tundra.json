@@ -171,11 +171,11 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_tundra",
-      "terra:patch_tundra",
-      "terra:patch_moss_carpet",
-      "minecraft:patch_berry_rare",
       "minecraft:flower_default",
-      "terra:forest_rock_sparse"
+      "minecraft:patch_berry_rare",
+      "terra:forest_rock_sparse",
+      "terra:patch_moss_carpet",
+      "terra:patch_tundra"
     ],
     [
       "minecraft:freeze_top_layer"

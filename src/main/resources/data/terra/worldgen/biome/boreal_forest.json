@@ -183,14 +183,14 @@
     ],
     [
       "minecraft:glow_lichen",
-      "minecraft:patch_large_fern",
       "terra:trees_boreal",
+      "minecraft:patch_large_fern",
       "minecraft:patch_grass_taiga",
-      "terra:patch_moss_carpet",
       "minecraft:brown_mushroom_taiga",
       "minecraft:red_mushroom_taiga",
+      "minecraft:patch_firefly_bush_near_water",
       "minecraft:patch_berry_common",
-      "minecraft:patch_firefly_bush_near_water"
+      "terra:patch_moss_carpet"
     ],
     [
       "minecraft:freeze_top_layer"

@@ -184,10 +184,10 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_taiga_mountain",
-      "minecraft:patch_grass_taiga_2",
       "minecraft:patch_large_fern",
-      "terra:forest_rock_sparse",
-      "minecraft:patch_berry_rare"
+      "minecraft:patch_grass_taiga_2",
+      "minecraft:patch_berry_rare",
+      "terra:forest_rock_sparse"
     ],
     [
       "minecraft:freeze_top_layer"

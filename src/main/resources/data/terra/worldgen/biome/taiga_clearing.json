@@ -188,9 +188,9 @@
       "minecraft:patch_grass_meadow",
       "minecraft:flower_meadow",
       "minecraft:patch_large_fern",
+      "minecraft:patch_firefly_bush_near_water",
       "minecraft:patch_berry_common",
-      "minecraft:fallen_spruce_tree",
-      "minecraft:patch_firefly_bush_near_water"
+      "minecraft:fallen_spruce_tree"
     ],
     [
       "minecraft:freeze_top_layer"

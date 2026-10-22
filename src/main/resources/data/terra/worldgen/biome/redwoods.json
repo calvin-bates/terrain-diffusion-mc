@@ -191,12 +191,12 @@
     ],
     [
       "minecraft:glow_lichen",
-      "minecraft:patch_large_fern",
       "terra:trees_redwoods",
+      "minecraft:patch_large_fern",
       "minecraft:patch_grass_taiga",
-      "terra:patch_moss_carpet",
       "minecraft:brown_mushroom_old_growth",
-      "minecraft:patch_berry_common"
+      "minecraft:patch_berry_common",
+      "terra:patch_moss_carpet"
     ],
     [
       "minecraft:freeze_top_layer"

@@ -174,10 +174,10 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_moorland",
-      "terra:patch_heath",
       "minecraft:patch_red_shrub",
       "minecraft:patch_grass_plain",
-      "terra:forest_rock_sparse"
+      "terra:forest_rock_sparse",
+      "terra:patch_heath"
     ],
     [
       "minecraft:freeze_top_layer"

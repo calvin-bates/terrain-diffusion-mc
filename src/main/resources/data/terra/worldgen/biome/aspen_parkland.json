@@ -185,9 +185,9 @@
       "minecraft:glow_lichen",
       "terra:trees_aspen",
       "minecraft:patch_tall_grass_2",
-      "minecraft:patch_grass_plain",
-      "minecraft:flower_plains",
       "minecraft:patch_bush",
+      "minecraft:flower_plains",
+      "minecraft:patch_grass_plain",
       "minecraft:patch_leaf_litter",
       "minecraft:patch_firefly_bush_near_water"
     ],

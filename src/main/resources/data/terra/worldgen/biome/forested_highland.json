@@ -184,11 +184,11 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_forested_highland",
-      "minecraft:patch_grass_forest",
       "minecraft:patch_large_fern",
       "minecraft:flower_default",
-      "terra:forest_rock_sparse",
-      "minecraft:patch_berry_common"
+      "minecraft:patch_grass_forest",
+      "minecraft:patch_berry_common",
+      "terra:forest_rock_sparse"
     ],
     [
       "minecraft:freeze_top_layer"

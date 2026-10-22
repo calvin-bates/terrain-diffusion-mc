@@ -203,9 +203,9 @@
       "terra:trees_cloud_forest",
       "minecraft:patch_large_fern",
       "minecraft:patch_grass_jungle",
-      "terra:patch_moss_carpet",
+      "minecraft:brown_mushroom_normal",
       "minecraft:vines",
-      "minecraft:brown_mushroom_normal"
+      "terra:patch_moss_carpet"
     ],
     [
       "minecraft:freeze_top_layer"

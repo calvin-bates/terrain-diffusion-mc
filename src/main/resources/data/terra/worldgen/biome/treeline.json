@@ -177,9 +177,9 @@
       "terra:trees_treeline",
       "minecraft:patch_grass_meadow",
       "minecraft:flower_meadow",
-      "terra:patch_heath",
+      "minecraft:patch_berry_rare",
       "terra:forest_rock_sparse",
-      "minecraft:patch_berry_rare"
+      "terra:patch_heath"
     ],
     [
       "minecraft:freeze_top_layer"

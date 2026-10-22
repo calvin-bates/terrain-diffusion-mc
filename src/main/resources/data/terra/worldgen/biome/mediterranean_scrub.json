@@ -185,9 +185,9 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_mediterranean",
-      "terra:patch_scrub",
       "minecraft:flower_warm",
-      "minecraft:patch_dry_grass_desert"
+      "minecraft:patch_dry_grass_desert",
+      "terra:patch_scrub"
     ],
     [
       "minecraft:freeze_top_layer"

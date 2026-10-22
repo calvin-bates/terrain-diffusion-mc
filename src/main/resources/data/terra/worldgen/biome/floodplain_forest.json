@@ -173,13 +173,13 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_floodplain",
-      "minecraft:patch_grass_forest",
       "minecraft:patch_large_fern",
-      "minecraft:patch_sugar_cane",
-      "terra:patch_moss_carpet",
+      "minecraft:patch_grass_forest",
       "minecraft:brown_mushroom_swamp",
       "minecraft:patch_leaf_litter",
-      "minecraft:patch_firefly_bush_near_water"
+      "minecraft:patch_sugar_cane",
+      "minecraft:patch_firefly_bush_near_water",
+      "terra:patch_moss_carpet"
     ],
     [
       "minecraft:freeze_top_layer"

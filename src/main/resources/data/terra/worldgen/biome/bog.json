@@ -194,11 +194,11 @@
     [
       "minecraft:glow_lichen",
       "terra:trees_bog",
-      "terra:patch_bog",
       "minecraft:patch_waterlily",
       "minecraft:brown_mushroom_swamp",
+      "minecraft:patch_firefly_bush_swamp",
       "minecraft:patch_berry_rare",
-      "minecraft:patch_firefly_bush_swamp"
+      "terra:patch_bog"
     ],
     [
       "minecraft:freeze_top_layer"

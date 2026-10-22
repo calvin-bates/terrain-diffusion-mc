@@ -183,13 +183,13 @@
     ],
     [
       "minecraft:glow_lichen",
-      "minecraft:patch_tall_grass",
-      "minecraft:patch_tall_grass_2",
       "terra:trees_prairie",
-      "minecraft:flower_plains",
+      "minecraft:patch_tall_grass_2",
+      "minecraft:patch_tall_grass",
       "minecraft:wildflowers_meadow",
-      "minecraft:patch_grass_plain",
       "minecraft:patch_sunflower",
+      "minecraft:flower_plains",
+      "minecraft:patch_grass_plain",
       "minecraft:patch_firefly_bush_near_water"
     ],
     [
