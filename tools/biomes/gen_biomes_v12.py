@@ -134,6 +134,43 @@ FEATURES = {
         "minimum_size": {"type": "minecraft:two_layers_feature_size"},
         "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 5, "height_rand_a": 3, "height_rand_b": 0},
         "trunk_provider": log("minecraft:birch_log")},
+    # 2x2 giants of the trees above (Calvin, Oct 22: about 15% of each kind in boreal forest, forested highland and
+    # Siberian taiga; vanilla's giant spruce and giant pine are the other two).
+    "giant_highland_dark_oak": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:mega_pine_foliage_placer", "crown_height": uniform(9, 13), "offset": 0, "radius": 0},
+        "foliage_provider": leaves("minecraft:dark_oak_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 12, "height_rand_a": 2, "height_rand_b": 6},
+        "trunk_provider": log("minecraft:dark_oak_log")},
+    "giant_highland_orange_conifer": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:mega_pine_foliage_placer", "crown_height": uniform(8, 12), "offset": 0, "radius": 0},
+        "foliage_provider": leaves("minecraft:orange_poplar_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 11, "height_rand_a": 2, "height_rand_b": 5},
+        "trunk_provider": log("minecraft:dark_oak_log")},
+    "giant_larch": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:mega_pine_foliage_placer", "crown_height": uniform(7, 10), "offset": 0, "radius": 0},
+        "foliage_provider": leaves("minecraft:dark_oak_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 18, "height_rand_a": 3, "height_rand_b": 6},
+        "trunk_provider": log("minecraft:dark_oak_log")},
+    "giant_tall_spruce": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:mega_pine_foliage_placer", "crown_height": uniform(8, 11), "offset": 0, "radius": 0},
+        "foliage_provider": leaves("minecraft:spruce_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 16, "height_rand_a": 3, "height_rand_b": 6},
+        "trunk_provider": log("minecraft:spruce_log")},
+    "giant_golden_birch": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:blob_foliage_placer", "height": 4, "offset": 0, "radius": 3},
+        "foliage_provider": leaves("minecraft:oak_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 7, "height_rand_a": 2, "height_rand_b": 2},
+        "trunk_provider": log("minecraft:birch_log")},
     # Pools for marsh and bog: vanilla's lake feature with water, lined with mud; the water sits flush with the ground.
     "wetland_pool": {
         "type": "minecraft:lake", "barrier": {"id": "minecraft:mud"}, "can_place_feature": {"type": "minecraft:true"},
@@ -161,14 +198,40 @@ FEATURES = {
         {"data": "minecraft:short_grass", "weight": 2}, {"data": "minecraft:tall_dry_grass", "weight": 1}]}},
 }
 
+def mix(default, shares):
+    """A random selector whose options end up with these overall shares (the default takes the rest). The selector
+    tries its options in order, each with its own chance, so each chance is the share over what is left."""
+    out, left = [], 1.0
+    for f, share in shares:
+        out.append((f, round(share / left, 5)))
+        left -= share
+    assert left > 0
+    return default, out
+
+
+GIANT = 0.15   # share of each tree kind grown as a 2x2 giant in the giant-tree forests
+
+
+def with_giants(default, default_share, kinds):
+    """kinds: [(tree, giant tree, share of all trees)]; the default kind (default_share) and each kind give GIANT of
+    their share to their giant."""
+    shares = []
+    for tree, giant, share in kinds:
+        shares += [(tree, share * (1 - GIANT)), (giant, share * GIANT)]
+    return shares
+
+
 # Tree mixes: random selectors over placed trees (vanilla's "*_checked" ones test the soil).
 SELECTORS = {
     "trees_treeline": ("terra:krummholz_checked", [("minecraft:spruce_checked", 0.15), ("minecraft:pine_checked", 0.08)]),
-    "trees_boreal": ("minecraft:spruce_checked", [("terra:golden_birch_checked", 0.25), ("minecraft:pine_checked", 0.2),
-                                                 ("minecraft:mega_spruce_checked", 0.04),
-                                                 ("minecraft:fallen_spruce_tree", 0.0125)]),
-    "trees_siberian": ("terra:larch_checked", [("terra:tall_spruce_checked", 0.4), ("minecraft:pine_checked", 0.1),
-                                              ("minecraft:fallen_spruce_tree", 0.01)]),
+    # Spruce 60%, golden birch 25%, pine 15%; each 15% giant.
+    "trees_boreal": mix("minecraft:spruce_checked", [("minecraft:mega_spruce_checked", 0.6 * GIANT)] + with_giants(None, 0, [
+        ("terra:golden_birch_checked", "terra:giant_golden_birch_checked", 0.25),
+        ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.15)]) + [("minecraft:fallen_spruce_tree", 0.0125)]),
+    # Larch 50%, tall spruce 40%, pine 10%; each 15% giant.
+    "trees_siberian": mix("terra:larch_checked", [("terra:giant_larch_checked", 0.5 * GIANT)] + with_giants(None, 0, [
+        ("terra:tall_spruce_checked", "terra:giant_tall_spruce_checked", 0.4),
+        ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.1)]) + [("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_birch_taiga": ("minecraft:spruce_checked", [("minecraft:birch_checked", 0.5), ("minecraft:pine_checked", 0.15),
                                                       ("minecraft:fallen_birch_tree", 0.01)]),
     "trees_taiga_mountain": ("minecraft:spruce_checked", [("minecraft:pine_checked", 0.4),
@@ -181,10 +244,12 @@ SELECTORS = {
                                                 ("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_aspen": ("minecraft:yellow_poplar", [("minecraft:birch_checked", 0.3)]),
     "trees_mediterranean": ("minecraft:oak_checked", [("terra:oak_bush_checked", 0.45), ("minecraft:fancy_oak_checked", 0.08)]),
-    "trees_forested_highland": ("terra:highland_dark_oak_checked", [("minecraft:pine_checked", 0.4),
-                                                                    ("terra:highland_orange_conifer_checked", 0.1),
-                                                                    ("minecraft:spruce_checked", 0.08),
-                                                                    ("minecraft:fallen_spruce_tree", 0.01)]),
+    # Red dark oak 42%, pine 40%, orange 10%, spruce 8%; each 15% giant.
+    "trees_forested_highland": mix("terra:highland_dark_oak_checked", [
+        ("terra:giant_highland_dark_oak_checked", 0.42 * GIANT)] + with_giants(None, 0, [
+            ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.4),
+            ("terra:highland_orange_conifer_checked", "terra:giant_highland_orange_conifer_checked", 0.1),
+            ("minecraft:spruce_checked", "minecraft:mega_spruce_checked", 0.08)]) + [("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_highland": ("minecraft:spruce_checked", [("minecraft:oak_checked", 0.3), ("minecraft:birch_checked", 0.2),
                                                    ("minecraft:fancy_oak_checked", 0.05), ("minecraft:fallen_oak_tree", 0.01)]),
     "trees_cloud_forest": ("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.35), ("minecraft:oak_checked", 0.15)]),
@@ -232,6 +297,13 @@ PLACED = {
     "oak_bush_checked": {"feature": "terra:oak_bush", "placement": [survive("minecraft:oak_sapling")]},
     "redwood_checked": {"feature": "terra:redwood", "placement": [survive("minecraft:spruce_sapling")]},
     "larch_checked": {"feature": "terra:larch", "placement": [survive("minecraft:spruce_sapling")]},
+    "giant_larch_checked": {"feature": "terra:giant_larch", "placement": [survive("minecraft:spruce_sapling")]},
+    "giant_tall_spruce_checked": {"feature": "terra:giant_tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
+    "giant_golden_birch_checked": {"feature": "terra:giant_golden_birch", "placement": [survive("minecraft:birch_sapling")]},
+    "giant_highland_dark_oak_checked": {"feature": "terra:giant_highland_dark_oak",
+                                        "placement": [survive("minecraft:dark_oak_sapling")]},
+    "giant_highland_orange_conifer_checked": {"feature": "terra:giant_highland_orange_conifer",
+                                              "placement": [survive("minecraft:dark_oak_sapling")]},
     "tall_spruce_checked": {"feature": "terra:tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
     "golden_birch_checked": {"feature": "terra:golden_birch", "placement": [survive("minecraft:birch_sapling")]},
     "highland_dark_oak_checked": {"feature": "terra:highland_dark_oak", "placement": [survive("minecraft:dark_oak_sapling")]},

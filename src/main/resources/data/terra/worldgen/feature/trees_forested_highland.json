@@ -3,19 +3,35 @@
   "default": "terra:highland_dark_oak_checked",
   "features": [
     {
-      "chance": 0.4,
+      "chance": 0.063,
+      "feature": "terra:giant_highland_dark_oak_checked"
+    },
+    {
+      "chance": 0.36286,
       "feature": "minecraft:pine_checked"
     },
     {
-      "chance": 0.1,
+      "chance": 0.1005,
+      "feature": "minecraft:mega_pine_checked"
+    },
+    {
+      "chance": 0.15829,
       "feature": "terra:highland_orange_conifer_checked"
     },
     {
-      "chance": 0.08,
+      "chance": 0.03319,
+      "feature": "terra:giant_highland_orange_conifer_checked"
+    },
+    {
+      "chance": 0.15561,
       "feature": "minecraft:spruce_checked"
     },
     {
-      "chance": 0.01,
+      "chance": 0.03252,
+      "feature": "minecraft:mega_spruce_checked"
+    },
+    {
+      "chance": 0.02801,
       "feature": "minecraft:fallen_spruce_tree"
     }
   ]
