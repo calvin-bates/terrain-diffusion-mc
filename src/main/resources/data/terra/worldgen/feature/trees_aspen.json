@@ -1,10 +1,18 @@
 {
   "type": "minecraft:random_selector",
-  "default": "minecraft:yellow_poplar",
+  "default": "terra:aspen_yellow_checked",
   "features": [
     {
-      "chance": 0.3,
-      "feature": "minecraft:birch_checked"
+      "chance": 0.22,
+      "feature": "terra:aspen_orange_checked"
+    },
+    {
+      "chance": 0.25641,
+      "feature": "terra:aspen_green_checked"
+    },
+    {
+      "chance": 0.17241,
+      "feature": "terra:aspen_red_checked"
     }
   ]
 }

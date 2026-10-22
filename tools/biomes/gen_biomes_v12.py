@@ -198,6 +198,21 @@ FEATURES = {
         {"data": "minecraft:short_grass", "weight": 2}, {"data": "minecraft:tall_dry_grass", "weight": 1}]}},
 }
 
+def aspen(leaf_block):
+    """Aspen (Calvin, Oct 22): vanilla 26.3's poplar shape (trunk with short branches, tall narrow crown, shelf
+    mushrooms) on a birch trunk, with the given leaves."""
+    with open(f"{VANILLA}/worldgen/feature/yellow_poplar.json") as f:
+        t = json.load(f)
+    t["trunk_provider"] = log("minecraft:birch_log")
+    t["foliage_provider"] = leaves(leaf_block)
+    return t
+
+
+for _colour, _leaf in [("yellow", "minecraft:yellow_poplar_leaves"), ("orange", "minecraft:orange_poplar_leaves"),
+                       ("red", "minecraft:red_poplar_leaves"), ("green", "minecraft:birch_leaves")]:
+    FEATURES[f"aspen_{_colour}"] = aspen(_leaf)
+
+
 def mix(default, shares):
     """A random selector whose options end up with these overall shares (the default takes the rest). The selector
     tries its options in order, each with its own chance, so each chance is the share over what is left."""
@@ -242,7 +257,9 @@ SELECTORS = {
                                                      ("minecraft:fallen_spruce_tree", 0.02), ("minecraft:fallen_oak_tree", 0.01)]),
     "trees_redwoods": ("terra:redwood_checked", [("minecraft:mega_spruce_checked", 0.2), ("minecraft:spruce_checked", 0.15),
                                                 ("minecraft:fallen_spruce_tree", 0.01)]),
-    "trees_aspen": ("minecraft:yellow_poplar", [("minecraft:birch_checked", 0.3)]),
+    # Aspens in several colours: mostly yellow, some orange, still-green (birch leaves) and a few red.
+    "trees_aspen": mix("terra:aspen_yellow_checked", [("terra:aspen_orange_checked", 0.22),
+                                                      ("terra:aspen_green_checked", 0.2), ("terra:aspen_red_checked", 0.1)]),
     "trees_mediterranean": ("minecraft:oak_checked", [("terra:oak_bush_checked", 0.45), ("minecraft:fancy_oak_checked", 0.08)]),
     # Red dark oak 42%, pine 40%, orange 10%, spruce 8%; each 15% giant.
     "trees_forested_highland": mix("terra:highland_dark_oak_checked", [
@@ -297,6 +314,8 @@ PLACED = {
     "oak_bush_checked": {"feature": "terra:oak_bush", "placement": [survive("minecraft:oak_sapling")]},
     "redwood_checked": {"feature": "terra:redwood", "placement": [survive("minecraft:spruce_sapling")]},
     "larch_checked": {"feature": "terra:larch", "placement": [survive("minecraft:spruce_sapling")]},
+    **{f"aspen_{c}_checked": {"feature": f"terra:aspen_{c}", "placement": [survive("minecraft:birch_sapling")]}
+       for c in ("yellow", "orange", "red", "green")},
     "giant_larch_checked": {"feature": "terra:giant_larch", "placement": [survive("minecraft:spruce_sapling")]},
     "giant_tall_spruce_checked": {"feature": "terra:giant_tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
     "giant_golden_birch_checked": {"feature": "terra:giant_golden_birch", "placement": [survive("minecraft:birch_sapling")]},
@@ -321,6 +340,7 @@ PLACED = {
     "trees_rainforest": trees("terra:trees_rainforest", [(12, 9), (14, 1)]),
     "trees_redwoods": trees("terra:trees_redwoods", [(6, 9), (7, 1)]),
     "trees_aspen": grove_trees("terra:trees_aspen", above=7, below=0),
+    "trees_aspen_grove": trees("terra:trees_aspen", [(11, 9), (13, 1)]),
     "trees_prairie": trees("minecraft:oak", [(0, 39), (1, 1)], sapling="minecraft:oak_sapling"),
     "trees_moorland": trees("terra:oak_bush", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
     "trees_mediterranean": trees("terra:trees_mediterranean", [(2, 3), (3, 1), (1, 1)]),
@@ -463,6 +483,13 @@ biome("aspen_parkland", id=61, base="plains", temp=0.4, downfall=0.5,
       veg=["terra:trees_aspen", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_plain", "minecraft:flower_plains",
            "minecraft:patch_bush", "minecraft:patch_leaf_litter", "minecraft:patch_firefly_bush_near_water"],
       top=None, tags=["is_forest"])
+# Dense stands of aspen on cool mountainsides (Rocky Mountain aspen groves); the same aspens as the parkland.
+biome("aspen_grove", id=74, base="birch_forest", temp=0.4, downfall=0.7,
+      colors={"grass_color": "#7fae55", "foliage_color": "#d6b43a"},
+      veg=["terra:trees_aspen_grove", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_forest",
+           "minecraft:flower_meadow", "minecraft:patch_large_fern", "minecraft:patch_leaf_litter",
+           "minecraft:patch_berry_rare"],
+      top=None)
 biome("tallgrass_prairie", id=62, base="plains", temp=0.8, downfall=0.6,
       colors={"grass_color": "#a2bb52", "foliage_color": "#86a53e"},
       veg=["minecraft:patch_tall_grass", "minecraft:patch_tall_grass_2", "terra:trees_prairie",

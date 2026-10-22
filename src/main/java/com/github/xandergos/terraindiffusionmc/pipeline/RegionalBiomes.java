@@ -25,7 +25,7 @@ public final class RegionalBiomes {
     static final short TEMPERATE_RAINFOREST = 60, ASPEN_PARKLAND = 61, TALLGRASS_PRAIRIE = 62, STEPPE = 63, MARSH = 64;
     static final short RIVERSIDE_FOREST = 65, FLOODPLAIN_FOREST = 66, REDWOODS = 67, MEDITERRANEAN_SCRUB = 68;
     static final short FORESTED_HIGHLAND = 69, TEMPERATE_HIGHLAND = 70, ROCKY_DESERT = 71, CLOUD_FOREST = 72;
-    static final short TROPICAL_DRY_FOREST = 73;
+    static final short TROPICAL_DRY_FOREST = 73, ASPEN_GROVE = 74;
 
     /** Id → biome name in the {@code terra} namespace, for the biome source and the explorer. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -34,7 +34,7 @@ public final class RegionalBiomes {
                 "taiga_mountain", "taiga_clearing", "bog", "moorland", "temperate_rainforest", "aspen_parkland",
                 "tallgrass_prairie", "steppe", "marsh", "riverside_forest", "floodplain_forest", "redwoods",
                 "mediterranean_scrub", "forested_highland", "temperate_highland", "rocky_desert", "cloud_forest",
-                "tropical_dry_forest"};
+                "tropical_dry_forest", "aspen_grove"};
         for (int k = 0; k < n.length; k++) NAMES.put((short) (TUNDRA + k), n[k]);
     }
 
@@ -64,6 +64,8 @@ public final class RegionalBiomes {
     static final float POLAR_DESERT_SHARE = 0.7f, TUNDRA_SHARE = 0.75f, TREELINE_SHARE = 0.85f;
     static final float BOG_SHARE = 0.4f, MARSH_SHARE = 0.35f, TAIGA_MOUNTAIN_SHARE = 0.5f;
     static final float FORESTED_HIGHLAND_SHARE = 0.35f, TEMPERATE_HIGHLAND_SHARE = 0.35f, TAIGA_CLEARING_SHARE = 0.1f;
+    /** Aspen groves on cool mountainsides (Calvin, Oct 22). */
+    static final float ASPEN_GROVE_SHARE = 0.3f;
     static final float BOREAL_SHARE = 0.55f, SIBERIAN_SHARE = 0.55f, BIRCH_TAIGA_SHARE = 0.22f;
     static final float REDWOODS_SHARE = 0.18f, RAINFOREST_SHARE = 0.6f, CLOUD_FOREST_SHARE = 0.6f;
     static final float ASPEN_SHARE = 0.45f, MOORLAND_SHARE = 0.4f, STEPPE_SHARE = 0.5f, PRAIRIE_SHARE = 0.5f;
@@ -115,6 +117,11 @@ public final class RegionalBiomes {
                 // Taiga on mountain slopes.
                 rule(s, TAIGA_MOUNTAIN, MID_M, TAIGA_MOUNTAIN_SHARE, p -> ramp(p.altM, 1300f, 1700f)
                         * ramp(p.slope, 0.25f, 0.4f), TAIGA, TAIGA_SPARSE),
+                // Dense aspen stands on cool, moderately moist mountainsides (the Rockies), not steep.
+                rule(s, ASPEN_GROVE, MID_M, ASPEN_GROVE_SHARE, p -> ramp(p.altM, 1400f, 1900f)
+                        * (1f - ramp(p.altM, 2900f, 3300f)) * ramp(p.temp, 0f, 2f) * (1f - ramp(p.temp, 9f, 12f))
+                        * ramp(p.treeMoisture, 0.3f, 0.45f) * (1f - ramp(p.treeMoisture, 1.1f, 1.4f))
+                        * (1f - ramp(p.slope, 0.3f, 0.45f)), TAIGA, TAIGA_SPARSE, FOREST, FOREST_SPARSE),
                 // Mid-to-high forest bands on gentler ground.
                 rule(s, FORESTED_HIGHLAND, MID_M, FORESTED_HIGHLAND_SHARE, p -> ramp(p.altM, 1100f, 1500f)
                         * (1f - ramp(p.altM, 2300f, 2700f)) * ramp(p.temp, 2f, 5f) * (1f - ramp(p.temp, 14f, 17f))

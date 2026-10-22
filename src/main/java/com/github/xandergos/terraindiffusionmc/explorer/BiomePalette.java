@@ -89,6 +89,7 @@ public final class BiomePalette {
         put(71, "Rocky Desert", 0xC89A6A);
         put(72, "Cloud Forest", 0x2FA06A);
         put(73, "Tropical Dry Forest", 0xA0A040);
+        put(74, "Aspen Grove", 0xE8C840);
         // Shores
         put(130, "Beach", 0xF5E08A);
         put(131, "Snowy Beach", 0xF2EEDC);
