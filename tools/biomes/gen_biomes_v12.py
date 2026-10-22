@@ -399,7 +399,7 @@ biome("mediterranean_scrub", id=68, base="plains", temp=1.2, downfall=0.25,
       veg=["terra:trees_mediterranean", "terra:patch_scrub", "minecraft:flower_warm", "minecraft:patch_dry_grass_desert"],
       top=rule((noise("surface", 0.05), "minecraft:coarse_dirt"), (noise("surface_secondary", 0.55), "minecraft:gravel")))
 biome("forested_highland", id=69, base="taiga", temp=0.4, downfall=0.7,
-      colors={"grass_color": "#8db35a", "foliage_color": "#d9502c", "dry_foliage_color": "#b5482a"},
+      colors={"grass_color": "#72a35a", "foliage_color": "#d9502c", "dry_foliage_color": "#b5482a"},
       veg=["terra:trees_forested_highland", "minecraft:patch_grass_forest", "minecraft:patch_large_fern",
            "minecraft:flower_default", "terra:forest_rock_sparse", "minecraft:patch_berry_common"],
       top=rule((STEEP, "minecraft:stone"), (noise("surface", 0.45), "minecraft:stone"),
