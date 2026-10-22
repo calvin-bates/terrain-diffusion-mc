@@ -157,6 +157,12 @@ public final class TerrainDiffusionConfig {
     public static float archipelagoSteerIsland() { return readFloat("oceans.archipelago_steer_island", 0f); }
     /** Young rift seas (Red Sea style) laid into the elevation conditioning (oceans round 5). */
     public static boolean riftSeas() { return readBoolean("oceans.rift_seas", true); }
+    /**
+     * Coastal currents (biomes plan v1.2): west-facing coasts (facing -X) get cold upwelling where the sea-level
+     * temperature is subtropical (cooler, much drier, coastal deserts) and a warm current where it is cold (milder,
+     * wetter, open sea instead of sea ice). See {@code pipeline.CoastalCurrents}.
+     */
+    public static boolean coastalCurrents() { return readBoolean("climate.coastal_currents", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */
     public static boolean activeMargins() { return readBoolean("oceans.active_margins", true); }
     /**

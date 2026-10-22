@@ -960,7 +960,7 @@ public final class LocalTerrainProvider {
         float[] elevSmooth = cropFlat(elevUp, cropI1,     cropJ1,     H,   W,   nH * scale, nW * scale);
         float[] elevPadded = cropFlat(elevUp, cropI1 - 1, cropJ1 - 1, H+2, W+2, nH * scale, nW * scale);
 
-        // Upsample climate (4, nH, nW) → (4, H, W)
+        // Upsample climate (6, nH, nW) → (6, H, W)
         float[] climate = upsampleClimate(climateNativeFlat, nH, nW, cropI1, cropJ1, H, W, scale, nH * scale, nW * scale);
 
         float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
@@ -1111,8 +1111,11 @@ public final class LocalTerrainProvider {
                                             int cropI1, int cropJ1, int H, int W,
                                             int scale, int upH, int upW) {
         if (climNative == null) return null;
-        float[] result = new float[4 * H * W];
-        for (int ch = 0; ch < 4; ch++) {
+        // Every channel the pipeline gives (temperature, seasonality, precipitation, its CV, lapse rate, coastal current).
+        int nCh = climNative.length / (nH * nW);
+        float[] result = new float[nCh * H * W];
+        for (int ch = 0; ch < nCh; ch++) {
+            if (ch == 4) continue;   // the lapse rate isn't used at block resolution
             float[][] chNative = new float[nH][nW];
             for (int r = 0; r < nH; r++)
                 System.arraycopy(climNative, ch * nH * nW + r * nW, chNative[r], 0, nW);

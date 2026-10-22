@@ -845,7 +845,9 @@ public final class WorldPipeline implements AutoCloseable {
     /**
      * Get elevation and climate for a bounding box.
      *
-     * @return float[2]: [0] = elev (H*W flat), [1] = climate (5*H*W flat, or null)
+     * @return float[2]: [0] = elev (H*W flat), [1] = climate (6*H*W flat, or null): temperature (°C), temperature
+     *         seasonality (std × 100), precipitation (mm/yr), precipitation CV, lapse rate, and the signed coastal
+     *         current ({@link CoastalCurrents#signedCurrent}: negative for cold upwelling, positive for a warm current)
      */
     public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate) {
         return get(i1, j1, i2, j2, withClimate, null);
@@ -1097,6 +1099,18 @@ public final class WorldPipeline implements AutoCloseable {
     // Climate
     // =========================================================================
 
+    /**
+     * {@link CoastalCurrents#exposure} for the coarse pixels [ci0, ci0 + h) x [cj0, cj0 + w), from the coarse model's
+     * elevation with the margin the rays need. Depends only on the coarse map, so overlapping requests agree.
+     */
+    private float[][] currentExposure(int ci0, int cj0, int h, int w) {
+        int P = CoastalCurrents.PAD;
+        int cH = h + 2 * P, cW = w + 2 * P;
+        float[] elev = coarseElevation(ci0 - P, cj0 - P, ci0 + h + P, cj0 + w + P);
+        float[] ex = CoastalCurrents.exposure(elev, cH, cW, P, P, h, w);
+        return to2D(ex, h, w);
+    }
+
     private float[] computeClimate(int i1, int j1, int i2, int j2,
                                     float[] elevFlat, int H, int W) {
         int lc = LATENT_COMPRESSION;
@@ -1143,8 +1157,12 @@ public final class WorldPipeline implements AutoCloseable {
             centralCoarse[ch] = cropArray(full, cenPad, cenPad, cenH, cenW);
         }
 
+        // Coastal currents (biomes plan v1.2): exposure of each central coarse pixel to open sea on its west side.
+        float[][] exposure = TerrainDiffusionConfig.coastalCurrents()
+                ? currentExposure(ci1 - 1, cj1 - 1, cenH, cenW) : null;
+
         // Bilinear upsample to native resolution
-        float[] climate = new float[5 * H * W];
+        float[] climate = new float[6 * H * W];
         for (int r = 0; r < H; r++) {
             // fractional index into lbt/centralCoarse arrays (matches Python's u = (ii+0.5)/S - ci1 + 0.5)
             float gridY    = (i1 + r + 0.5f) / S - ci1 + 0.5f;
@@ -1155,13 +1173,25 @@ public final class WorldPipeline implements AutoCloseable {
 
                 float tBase = bilinearSample2D(lbt[0], lH, lW, gridY, gridX);
                 float beta  = bilinearSample2D(lbt[1], lH, lW, gridY, gridX);
+                float tSeason = bilinearSample2D(centralCoarse[3], cenH, cenW, cenGridY, cenGridX);
+                float precip = bilinearSample2D(centralCoarse[4], cenH, cenW, cenGridY, cenGridX);
+                float current = 0f;
+                if (exposure != null) {
+                    // The sea-level temperature stands in for latitude; the current shifts it before the lapse rate.
+                    current = CoastalCurrents.signedCurrent(
+                            bilinearSample2D(exposure, cenH, cenW, cenGridY, cenGridX), tBase);
+                    tBase += CoastalCurrents.deltaT(current);
+                    precip *= CoastalCurrents.precipFactor(current);
+                    tSeason *= CoastalCurrents.seasonFactor(current);
+                }
                 float tempReal = tBase + beta * Math.max(0f, elevFlat[r * W + c]);
 
                 climate[r * W + c]             = tempReal;
-                climate[H * W + r * W + c]     = bilinearSample2D(centralCoarse[3], cenH, cenW, cenGridY, cenGridX);
-                climate[2 * H * W + r * W + c] = bilinearSample2D(centralCoarse[4], cenH, cenW, cenGridY, cenGridX);
+                climate[H * W + r * W + c]     = tSeason;
+                climate[2 * H * W + r * W + c] = precip;
                 climate[3 * H * W + r * W + c] = bilinearSample2D(centralCoarse[5], cenH, cenW, cenGridY, cenGridX);
                 climate[4 * H * W + r * W + c] = beta;
+                climate[5 * H * W + r * W + c] = current;
             }
         }
         return climate;

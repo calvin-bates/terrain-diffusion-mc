@@ -41,6 +41,8 @@ public final class BiomeClassifier {
     static final short LUKEWARM_OCEAN = 42, DEEP_LUKEWARM_OCEAN = 43, DEEP_OCEAN = 45;
     static final short DEEP_COLD_OCEAN = 47, DEEP_FROZEN_OCEAN = 49;
 
+    /** Upwelling (0..1) above which a rainless, treeless coast at 10-20 °C is desert rather than dry grassland. */
+    static final float UPWELLING_DESERT = 0.3f;
     /** Water deeper than this (metres) gets the deep ocean variant: roughly past the continental slope's top. */
     static final float DEEP_OCEAN_M = 600f;
     /** Warm water shallower than this (metres) is reef water (warm ocean, with coral); deeper warm water is lukewarm. */
@@ -105,6 +107,7 @@ public final class BiomeClassifier {
 
         // Compute slope from padded elevation using Sobel (divide by pixelSizeM for ratio)
         float[] slopeRatio = computeSlopeRatio(elevPadded, H, W, pixelSizeM);
+        boolean hasCurrents = climate.length >= 6 * H * W;
         BiomePatches patches = BiomePatches.forSeed(seed);
 
         // Process per-pixel
@@ -120,6 +123,8 @@ public final class BiomeClassifier {
                 float tSeason  = climate[H * W + idx];
                 float precip   = Math.max(0f, climate[2 * H * W + idx]) * precipNoiseFact[idx];
                 float pCV      = climate[3 * H * W + idx];
+                // Cold upwelling off this coast (0..1), from the coastal currents (biomes plan v1.2).
+                float upwelling = hasCurrents ? Math.max(0f, -climate[5 * H * W + idx]) : 0f;
 
                 // Derived climate variables
                 float tStd     = tSeason / 100f;
@@ -214,6 +219,8 @@ public final class BiomeClassifier {
                         biome = (treesSparse || treesForest) ? SNOWY_TAIGA_SPARSE : SNOWY_TAIGA;
                     } else if (treesNone) {
                         if (warm || hot) biome = DESERT;
+                        // Coastal fog deserts (Atacama, Namib): cool but rainless where upwelling chills the coast.
+                        else if (upwelling > UPWELLING_DESERT && treeMoisture < 0.08f && temp >= 10f) biome = DESERT;
                         else if (barren && !lowland && (cold || cool || temperate)) biome = GROVE;
                         else if (treeMoisture < 0.35f || precip < 350f) biome = GROVE;
                         else biome = PLAINS;
