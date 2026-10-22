@@ -44,7 +44,7 @@ Use the `-cuda` build only if you are on Linux, or have an NVIDIA GPU and prefer
 
 ## Exploring the World
 
-The mod includes a built-in terrain explorer web UI. Run the `/terra-explore` command in-game; it will print a clickable link (e.g. `http://localhost:19801`) that opens an interactive map in your browser. Click the map on the left to open a "detailed view". Click the detailed view to get coordinates in the bottom left. You can also filter for certain climates.
+The mod includes a built-in terrain explorer web UI. Run the `/terra-explore` command in-game; it will print a clickable link (e.g. `http://localhost:19801`) that opens an interactive map in your browser. Click the map on the left to open a "detailed view". Click the detailed view to get coordinates in the bottom left. You can also filter for certain climates. The **Biomes** view colours each biome over the relief, with a legend of the biomes in view (click one to highlight it), and `/terra-find biome <name>` teleports you to the nearest patch of a biome.
 
 Use the explorer to scout continents, mountains, islands, and other interesting terrain before venturing out in Minecraft.
 

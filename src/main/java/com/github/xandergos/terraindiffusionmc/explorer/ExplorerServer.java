@@ -2,6 +2,8 @@ package com.github.xandergos.terraindiffusionmc.explorer;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor;
+import com.github.xandergos.terraindiffusionmc.pipeline.BiomeClassifier;
+import com.github.xandergos.terraindiffusionmc.pipeline.BiomeMap;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.OceanFeatures;
 import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipelineModelConfig;
@@ -73,6 +75,8 @@ public final class ExplorerServer {
         server.createContext("/api/detail.png", ExplorerServer::handleDetailPng);
         server.createContext("/api/detail_raw", ExplorerServer::handleDetailRaw);
         server.createContext("/api/features", ExplorerServer::handleFeatures);
+        server.createContext("/api/detail_biomes", ExplorerServer::handleDetailBiomes);
+        server.createContext("/api/biome_palette", ExplorerServer::handleBiomePalette);
         // Single-thread executor matches Python's threaded=False
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "terrain-explorer-http");
@@ -338,7 +342,11 @@ public final class ExplorerServer {
         try { return Float.parseFloat(q.getOrDefault(key, "")); } catch (Exception e) { return def; }
     }
 
-    private static byte[] riversPng(int i1, int j1, int H, int W,
+    /** River and lake classes (RiverMap.NONE..LAKE) and elevation over a window, computed with a 192 px margin. */
+    private record RiverWindow(byte[] cls, float[] elev) {
+    }
+
+    private static RiverWindow riverClasses(int i1, int j1, int H, int W,
             com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.Params params) throws Exception {
         final int margin = 192;
         int HH = H + 2 * margin, WW = W + 2 * margin;
@@ -346,28 +354,124 @@ public final class ExplorerServer {
                 i1 - margin, j1 - margin, i1 + H + margin, j1 + W + margin, true);
         float[] elevBig = out[0];
         float[] climateBig = out[1];
-        byte[] cls = com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.compute(
+        byte[] clsBig = com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.compute(
                 elevBig, climateBig, HH, WW, i1 - margin, j1 - margin, params);
-
         float[] elev = new float[H * W];
+        byte[] cls = new byte[H * W];
         for (int r = 0; r < H; r++) {
             System.arraycopy(elevBig, (r + margin) * WW + margin, elev, r * W, W);
+            System.arraycopy(clsBig, (r + margin) * WW + margin, cls, r * W, W);
         }
-        float[][] relief = ReliefMap.getReliefMap(elev, H, W, 90.0);
+        return new RiverWindow(cls, elev);
+    }
+
+    private static byte[] riversPng(int i1, int j1, int H, int W,
+            com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.Params params) throws Exception {
+        RiverWindow rw = riverClasses(i1, j1, H, W, params);
+        float[][] relief = ReliefMap.getReliefMap(rw.elev(), H, W, 90.0);
         float[][] rgba = new float[4][H * W];
+        for (int i = 0; i < H * W; i++) {
+            float cr = relief[0][i], cg = relief[1][i], cb = relief[2][i];
+            byte k = rw.cls()[i];
+            if (k == 1) { cr = 0.50f; cg = 0.69f; cb = 1.00f; }
+            else if (k == 2) { cr = 0.18f; cg = 0.48f; cb = 1.00f; }
+            else if (k == 3) { cr = 0.00f; cg = 0.90f; cb = 1.00f; }
+            else if (k == 4) { cr = 0.08f; cg = 0.28f; cb = 0.80f; }
+            rgba[0][i] = cr; rgba[1][i] = cg; rgba[2][i] = cb; rgba[3][i] = 1f;
+        }
+        return toPng(rgba, H, W);
+    }
+
+    // =========================================================================
+    // Biomes map (biomes plan v1.1)
+    // =========================================================================
+
+    /** One computed biome window: ids, inland water (rivers and lakes) and elevation. */
+    private record BiomeView(long seed, int i1, int j1, int H, int W, short[] biomes, boolean[] water, float[] elev) {
+    }
+
+    /** The last biome window, so the image and the raw ids for hover and legend are computed once. */
+    private static volatile BiomeView lastBiomeView;
+
+    private static BiomeView biomeView(int i1, int j1, int H, int W) throws Exception {
+        long seed = LocalTerrainProvider.getSeed();
+        BiomeView v = lastBiomeView;
+        if (v != null && v.seed() == seed && v.i1() == i1 && v.j1() == j1 && v.H() == H && v.W() == W) return v;
+        BiomeMap.Result res = LocalTerrainProvider.getBiomeMap(i1, j1, i1 + H, j1 + W);
+        RiverWindow rw = riverClasses(i1, j1, H, W, new com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.Params());
+        boolean[] water = new boolean[H * W];
+        for (int i = 0; i < H * W; i++) {
+            water[i] = rw.cls()[i] != com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.NONE
+                    && !BiomeClassifier.isOceanBiome(res.biomes()[i]);
+        }
+        v = new BiomeView(seed, i1, j1, H, W, res.biomes(), water, res.elev());
+        lastBiomeView = v;
+        return v;
+    }
+
+    /** Biome colours over a hillshade of the elevation, rivers and lakes on top. */
+    private static byte[] biomesPng(BiomeView v) throws IOException {
+        int H = v.H(), W = v.W();
+        float[] e = v.elev();
+        float[][] rgba = new float[4][H * W];
+        int waterRgb = BiomePalette.rgb(BiomePalette.WATER);
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int i = r * W + c;
-                float cr = relief[0][i], cg = relief[1][i], cb = relief[2][i];
-                byte k = cls[(r + margin) * WW + (c + margin)];
-                if (k == 1) { cr = 0.50f; cg = 0.69f; cb = 1.00f; }
-                else if (k == 2) { cr = 0.18f; cg = 0.48f; cb = 1.00f; }
-                else if (k == 3) { cr = 0.00f; cg = 0.90f; cb = 1.00f; }
-                else if (k == 4) { cr = 0.08f; cg = 0.28f; cb = 0.80f; }
-                rgba[0][i] = cr; rgba[1][i] = cg; rgba[2][i] = cb; rgba[3][i] = 1f;
+                // Hillshade from the north-west, 30 m pixels; sea flat.
+                float zl = e[r * W + Math.max(0, c - 1)], zr = e[r * W + Math.min(W - 1, c + 1)];
+                float zu = e[Math.max(0, r - 1) * W + c], zd = e[Math.min(H - 1, r + 1) * W + c];
+                float dx = (Math.max(0f, zr) - Math.max(0f, zl)) / 60f, dz = (Math.max(0f, zd) - Math.max(0f, zu)) / 60f;
+                float shade = (float) (0.88 - 0.9 * (dx + dz) * 0.7071 / Math.sqrt(1 + dx * dx + dz * dz));
+                shade = Math.max(0.45f, Math.min(1.12f, shade));
+                int rgb = v.water()[i] ? waterRgb : BiomePalette.rgb(v.biomes()[i]);
+                if (v.water()[i]) shade = 0.5f * shade + 0.5f;
+                rgba[0][i] = Math.min(1f, ((rgb >> 16) & 255) / 255f * shade);
+                rgba[1][i] = Math.min(1f, ((rgb >> 8) & 255) / 255f * shade);
+                rgba[2][i] = Math.min(1f, (rgb & 255) / 255f * shade);
+                rgba[3][i] = 1f;
             }
         }
         return toPng(rgba, H, W);
+    }
+
+    /**
+     * GET /api/detail_biomes — same window parameters as detail.png. Binary: H*W biome ids (uint8), then H*W water
+     * flags (1 where a river or lake covers the pixel). Headers X-Height, X-Width.
+     */
+    private static void handleDetailBiomes(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        try {
+            Map<String, String> q = parseQuery(ex.getRequestURI());
+            int detailSize = getInt(q, "detail_size", 1024);
+            int centerI = getInt(q, "ci", 0) * 256 + getInt(q, "pan_i", 0);
+            int centerJ = getInt(q, "cj", 0) * 256 + getInt(q, "pan_j", 0);
+            int half = detailSize / 2;
+            BiomeView v = biomeView(centerI - half, centerJ - half, detailSize, detailSize);
+            int n = v.H() * v.W();
+            byte[] payload = new byte[2 * n];
+            for (int i = 0; i < n; i++) {
+                payload[i] = (byte) v.biomes()[i];
+                payload[n + i] = (byte) (v.water()[i] ? 1 : 0);
+            }
+            ex.getResponseHeaders().set("Content-Type", "application/octet-stream");
+            ex.getResponseHeaders().set("X-Height", String.valueOf(v.H()));
+            ex.getResponseHeaders().set("X-Width", String.valueOf(v.W()));
+            ex.getResponseHeaders().set("Access-Control-Expose-Headers", "X-Height, X-Width");
+            ex.sendResponseHeaders(200, payload.length);
+            ex.getResponseBody().write(payload);
+        } catch (Exception e) {
+            LOG.error("detail_biomes error", e);
+            sendError(ex, 400, String.valueOf(e.getMessage()));
+        } finally {
+            ex.close();
+        }
+    }
+
+    /** GET /api/biome_palette → {id: {name, color}} for every biome id the map can show. */
+    private static void handleBiomePalette(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        sendJson(ex, 200, BiomePalette.asJson());
     }
 
     /**
@@ -390,6 +494,14 @@ public final class ExplorerServer {
             int half    = detailSize / 2;
 
             int H = detailSize, W = detailSize;
+
+            if (mode.equals("biomes")) {
+                byte[] png = biomesPng(biomeView(centerI - half, centerJ - half, H, W));
+                ex.getResponseHeaders().set("Content-Type", "image/png");
+                ex.sendResponseHeaders(200, png.length);
+                ex.getResponseBody().write(png);
+                return;
+            }
 
             if (mode.equals("rivers")) {
                 var params = new com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.Params();

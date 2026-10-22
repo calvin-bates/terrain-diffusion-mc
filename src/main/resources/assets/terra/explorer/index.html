@@ -501,6 +501,15 @@
 
   /* ── Ocean features ── */
   .feat-layer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  #biome-hl { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;
+              image-rendering: pixelated; display: none; }
+  .biome-legend { flex-wrap: wrap; gap: 4px 10px; font-size: 11px; max-height: 92px; overflow-y: auto; }
+  .bl-item { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; padding: 1px 4px;
+             border-radius: 3px; border: 1px solid transparent; white-space: nowrap; }
+  .bl-item:hover { border-color: var(--border); }
+  .bl-item.on { border-color: var(--accent); background: var(--accent-dim); }
+  .bl-sw { width: 11px; height: 11px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); flex-shrink: 0; }
+  .bl-pct { color: var(--muted); }
   .feat-dot {
     position: absolute;
     width: 10px; height: 10px;
@@ -641,6 +650,7 @@
         <button id="mode-elevation">Elevation</button>
         <button id="mode-temperature">Temperature</button>
         <button id="mode-rivers">Rivers</button>
+        <button id="mode-biomes">Biomes</button>
         <span class="panel-info" id="detail-info">click coarse map to load</span>
       </div>
       <div class="panel-header" id="river-params" style="font-size:11px;gap:6px;flex-wrap:wrap">
@@ -650,11 +660,13 @@
         <span>lake min px</span><input id="rp-la" type="number" value="150" step="50" style="width:56px">
         <span>depth m</span><input id="rp-ld" type="number" value="2" step="1" style="width:44px">
       </div>
+      <div class="panel-header biome-legend" id="biome-legend" style="display:none"></div>
       <div class="nav-grid">
         <button class="pan-btn btn-up"    id="detail-up">↑</button>
         <button class="pan-btn btn-left"  id="detail-left">←</button>
         <div class="map-container" id="detail-container">
           <img id="detail-img" class="map-img" alt="detail map" style="display:none">
+          <canvas id="biome-hl"></canvas>
           <div class="feat-layer" id="detail-features"></div>
           <div class="spinner" id="detail-spinner"></div>
           <div class="map-placeholder" id="detail-placeholder">Click coarse map to generate</div>
@@ -702,6 +714,9 @@
     detailPanI: 0,
     detailPanJ: 0,
     detailMode: 'relief',
+    biomePalette: {},
+    biomeRaw: null,
+    biomeHighlight: null,
   };
 
   // ── DOM refs ──
@@ -910,6 +925,10 @@
   function loadDetail() {
     if (state.detailCI === null) return;
     state.detailRaw = null;
+    state.biomeRaw = null;
+    biomeHl.style.display = 'none';
+    biomeLegend.style.display = state.detailMode === 'biomes' ? '' : 'none';
+    if (state.detailMode === 'biomes') biomeLegend.innerHTML = '<span class="bl-pct">Classifying biomes…</span>';
     detailFeatures.innerHTML = '';
     detailImg.style.display = 'block';
     detailImg.classList.add('loading');
@@ -955,6 +974,7 @@
     detailImg.classList.remove('loading');
     detailSpinner.classList.remove('active');
     loadDetailRaw();
+    if (state.detailMode === 'biomes') loadBiomeRaw();
     loadDetailFeatures();
   };
   detailImg.onerror = () => {
@@ -1048,6 +1068,12 @@
     const idx = row * w + col;
     let html = `<div class="ht-row"><span class="ht-label">Elevation</span><span class="ht-val">${elev[idx]} m</span></div>`;
     if (temp) html += `<div class="ht-row"><span class="ht-label">Temperature</span><span class="ht-val">${temp[idx].toFixed(2)}°</span></div>`;
+    const br = state.biomeRaw;
+    if (state.detailMode === 'biomes' && br && br.h === h && br.w === w) {
+      const id = br.ids[idx];
+      html += `<div class="ht-row"><span class="ht-label">Biome</span><span class="ht-val">${biomeName(id)}</span></div>`;
+      if (br.water[idx]) html += `<div class="ht-row"><span class="ht-label">Water</span><span class="ht-val">river or lake</span></div>`;
+    }
     showTooltip(e, html);
   });
   detailImg.addEventListener('mouseleave', hideTooltip);
@@ -1079,10 +1105,11 @@
   }
 
   // ── Detail mode ──
-  ['relief', 'elevation', 'temperature', 'rivers'].forEach(mode => {
+  const DETAIL_MODES = ['relief', 'elevation', 'temperature', 'rivers', 'biomes'];
+  DETAIL_MODES.forEach(mode => {
     document.getElementById(`mode-${mode}`).addEventListener('click', () => {
       state.detailMode = mode;
-      ['relief','elevation','temperature','rivers'].forEach(m =>
+      DETAIL_MODES.forEach(m =>
         document.getElementById(`mode-${m}`).classList.toggle('active', m === mode));
       loadDetail();
     });
@@ -1092,6 +1119,89 @@
     document.getElementById('rp-' + k).addEventListener('change', () => {
       if (state.detailMode === 'rivers') loadDetail();
     }));
+
+  // ── Biomes map ──
+  const biomeLegend = document.getElementById('biome-legend');
+  const biomeHl     = document.getElementById('biome-hl');
+
+  function biomeName(id) {
+    const e = state.biomePalette[id];
+    return e ? e.name : `biome ${id}`;
+  }
+
+  async function loadBiomePalette() {
+    try { state.biomePalette = await (await fetch('/api/biome_palette')).json(); } catch (_) {}
+  }
+
+  async function loadBiomeRaw() {
+    if (state.detailCI === null) return;
+    const { detailCI: ci, detailCJ: cj, detailPanI: pi, detailPanJ: pj, seed } = state;
+    try {
+      const res = await fetch(`/api/detail_biomes?ci=${ci}&cj=${cj}&detail_size=${DETAIL_SIZE}&pan_i=${pi}&pan_j=${pj}&_s=${seed}`);
+      if (!res.ok) throw new Error(res.statusText);
+      const h = parseInt(res.headers.get('X-Height')), w = parseInt(res.headers.get('X-Width'));
+      const buf = await res.arrayBuffer();
+      // Ignore a late answer for a window the user has already moved away from.
+      if (state.detailCI !== ci || state.detailCJ !== cj || state.detailPanI !== pi || state.detailPanJ !== pj
+          || state.detailMode !== 'biomes') return;
+      state.biomeRaw = { ids: new Uint8Array(buf, 0, h * w), water: new Uint8Array(buf, h * w, h * w), h, w };
+      renderBiomeLegend();
+      renderBiomeHighlight();
+    } catch (e) {
+      biomeLegend.innerHTML = '<span class="bl-pct">Could not load biome ids</span>';
+    }
+  }
+
+  /** Biomes in view, largest first, with their share of the window; click one to highlight it on the map. */
+  function renderBiomeLegend() {
+    const br = state.biomeRaw;
+    if (!br) return;
+    const counts = new Map();
+    for (let i = 0; i < br.ids.length; i++) counts.set(br.ids[i], (counts.get(br.ids[i]) || 0) + 1);
+    let waterN = 0;
+    for (let i = 0; i < br.water.length; i++) waterN += br.water[i];
+    const n = br.ids.length;
+    const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    if (waterN > 0) rows.push([255, waterN]);
+    biomeLegend.innerHTML = '';
+    rows.forEach(([id, c]) => {
+      const pct = 100 * c / n;
+      const item = document.createElement('span');
+      item.className = 'bl-item' + (state.biomeHighlight === id ? ' on' : '');
+      const color = state.biomePalette[id] ? state.biomePalette[id].color : '#ff00ff';
+      item.innerHTML = `<span class="bl-sw" style="background:${color}"></span>${biomeName(id)}`
+        + ` <span class="bl-pct">${pct < 0.1 ? '<0.1' : pct.toFixed(1)}%</span>`;
+      item.title = id === 255 ? 'Rivers and lakes (they keep the biome around them in game)' : `id ${id} — click to highlight`;
+      item.addEventListener('click', () => {
+        state.biomeHighlight = state.biomeHighlight === id ? null : id;
+        renderBiomeLegend();
+        renderBiomeHighlight();
+      });
+      biomeLegend.appendChild(item);
+    });
+  }
+
+  /** Dims everything except the highlighted biome (or water) and outlines it, so small patches stand out. */
+  function renderBiomeHighlight() {
+    const br = state.biomeRaw, id = state.biomeHighlight;
+    if (!br || id === null || state.detailMode !== 'biomes') { biomeHl.style.display = 'none'; return; }
+    biomeHl.width = br.w; biomeHl.height = br.h;
+    const ctx = biomeHl.getContext('2d');
+    const img = ctx.createImageData(br.w, br.h);
+    const sel = i => id === 255 ? br.water[i] === 1 : (br.ids[i] === id && !br.water[i]);
+    for (let r = 0; r < br.h; r++) for (let c = 0; c < br.w; c++) {
+      const i = r * br.w + c, o = 4 * i;
+      if (sel(i)) {
+        const edge = (c > 0 && !sel(i - 1)) || (c < br.w - 1 && !sel(i + 1))
+          || (r > 0 && !sel(i - br.w)) || (r < br.h - 1 && !sel(i + br.w));
+        if (edge) { img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255; img.data[o + 3] = 255; }
+      } else {
+        img.data[o + 3] = 170;   // dim black
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    biomeHl.style.display = 'block';
+  }
 
   // ── Seed ──
   btnSetSeed.addEventListener('click', async () => {
@@ -1125,6 +1235,8 @@
     state.detailCI = state.detailCJ = null;
     state.detailPanI = state.detailPanJ = 0;
     state.detailRaw = null;
+    state.biomeRaw = null;
+    biomeHl.style.display = 'none';
     detailImg.style.display = 'none';
     detailPlaceholder.style.display = '';
     detailInfo.textContent = 'click coarse map to load';
@@ -1400,6 +1512,7 @@
       state.coordScale = data.scale || 1;
       seedDisplay.textContent = data.seed;
       buildChannelButtons(data.channels);
+      loadBiomePalette();
       updateCoordScale();
       updateCoarseZoomLabel();
       statusBar.textContent = `Connected — seed ${data.seed} | scale ${data.scale}×`;

@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.world;
 
+import com.github.xandergos.terraindiffusionmc.explorer.BiomePalette;
 import com.github.xandergos.terraindiffusionmc.pipeline.CoastPlan;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.OceanFeatures;
@@ -27,7 +28,8 @@ import static net.minecraft.commands.Commands.literal;
 /**
  * {@code /terra-find <feature>}: the nearest ocean feature of a kind (volcanic island and its later stages, island-arc
  * island, landslide scar, aseismic ridge, guyot, seamount, trench, archipelago sea, vent field), river delta, or
- * reef or carbonate bank, with a click-to-teleport. Ocean features use the same placement rules as the terrain
+ * reef or carbonate bank, with a click-to-teleport. {@code /terra-find biome <name>} finds the nearest land biome of
+ * Terra's layout (vanilla's {@code /locate biome} doesn't know it). Ocean features use the same placement rules as the terrain
  * ({@link OceanFeatures#landmarks}), so it can point at places that are not generated yet. Deltas, reefs and banks
  * depend on the model's own terrain, so they are searched for by computing it. The search runs off the server thread
  * because far-away searches compute the coarse map.
@@ -83,6 +85,10 @@ public final class FeatureFinder {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(literal("terra-find")
+                .then(literal("biome")
+                        .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(BIOMES.keySet(), builder))
+                                .executes(FeatureFinder::executeBiome)))
                 .then(argument("feature", StringArgumentType.word())
                         .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(KINDS.keySet(), builder))
                         .executes(FeatureFinder::execute)));
@@ -132,6 +138,84 @@ public final class FeatureFinder {
         worker.setDaemon(true);
         worker.start();
         return 1;
+    }
+
+    /**
+     * Land biomes {@code /terra-find biome} knows: every biome on the explorer's map except oceans, rivers and the
+     * water overlay (key → id, from {@link BiomePalette}).
+     */
+    private static final Map<String, Integer> BIOMES = new LinkedHashMap<>();
+    static {
+        for (Map.Entry<String, Integer> e : BiomePalette.keys().entrySet()) {
+            int id = e.getValue();
+            if ((id >= 41 && id <= 49) || id == 120 || id == 121) continue;
+            BIOMES.put(e.getKey(), id);
+        }
+    }
+
+    /** Rings of 7.7 km windows searched for a biome around the player (about 35 km). */
+    private static final int BIOME_RINGS = 4;
+
+    private static int executeBiome(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        String word = StringArgumentType.getString(ctx, "name");
+        Integer id = BIOMES.get(word);
+        if (id == null) {
+            source.sendFailure(Component.literal("Unknown biome \"" + word + "\". Try one of: " + String.join(", ", BIOMES.keySet())));
+            return 0;
+        }
+        String name = BiomePalette.name(id);
+        Vec3 pos = source.getPosition();
+        int scale = Math.max(1, WorldScaleManager.getCurrentScale());
+        double pi = pos.z / scale, pj = pos.x / scale;
+        MinecraftServer server = source.getServer();
+        source.sendSuccess(() -> Component.literal("Searching for the nearest " + name + "…").withStyle(ChatFormatting.GRAY), false);
+        Thread worker = new Thread(() -> {
+            try {
+                LocalTerrainProvider.BiomeSearch res = LocalTerrainProvider.findNearestBiome(id.shortValue(), pi, pj,
+                        BIOME_RINGS, reachedPx -> {
+                            int km = Math.round(reachedPx * 30 / 1000f);
+                            if (km > 0) server.execute(() -> source.sendSuccess(() -> Component.literal("…searched about "
+                                    + km + " km around you").withStyle(ChatFormatting.GRAY), false));
+                        });
+                server.execute(() -> reportBiome(source, name, res, pi, pj, scale));
+            } catch (Exception e) {
+                LOG.error("terra-find biome " + word + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
+        return 1;
+    }
+
+    private static void reportBiome(CommandSourceStack source, String name, LocalTerrainProvider.BiomeSearch res,
+                                    double pi, double pj, int scale) {
+        int searchedKm = Math.round(res.searchedRadiusPx() * 30 / 1000f);
+        if (!res.found()) {
+            source.sendFailure(Component.literal("No " + name + " within about " + searchedKm + " km (" + res.windows()
+                    + " areas classified). Patch biomes only form inside their parent biome; check the explorer's Biomes map."));
+            return;
+        }
+        long x = Math.round(res.j() * scale), z = Math.round(res.i() * scale);
+        // Land a few blocks above the planned surface (the game adds a little noise and carves rivers).
+        int y = HeightConverter.convertToMinecraftHeight((short) Math.max(0, Math.round(res.elevM())), scale) + 4;
+        double distPx = Math.hypot(res.i() - pi, res.j() - pj);
+        long blocks = Math.round(distPx * scale);
+        String km = String.format("%.1f", distPx * 30 / 1000);
+        String tp = "/tp @s " + x + " " + y + " " + z;
+        MutableComponent teleport = Component.literal("[Teleport]").withStyle(s -> s
+                .withColor(ChatFormatting.GREEN)
+                .withClickEvent(new ClickEvent.SuggestCommand(tp))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal(tp))));
+        MutableComponent copy = Component.literal("[Copy]").withStyle(s -> s
+                .withColor(ChatFormatting.AQUA)
+                .withClickEvent(new ClickEvent.CopyToClipboard(x + " " + y + " " + z))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal("Copy the coordinates"))));
+        String edge = res.inside() ? "" : "; only small or thin patches nearby, this is on one's edge";
+        source.sendSuccess(() -> Component.literal("Nearest " + name + ": " + x + ", " + z + " (" + blocks + " blocks, "
+                        + km + " km" + edge + ") ")
+                .append(teleport).append(" ").append(copy), false);
     }
 
     /** Farthest reef or bank search (600 km) and most spots whose terrain is computed. */

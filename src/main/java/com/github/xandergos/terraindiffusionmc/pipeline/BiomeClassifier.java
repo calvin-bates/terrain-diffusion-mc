@@ -46,6 +46,15 @@ public final class BiomeClassifier {
     /** Warm water shallower than this (metres) is reef water (warm ocean, with coral); deeper warm water is lukewarm. */
     static final float REEF_DEPTH_M = 80f;
     static final short FOREST_SPARSE = 108, TAIGA_SPARSE = 115, SNOWY_TAIGA_SPARSE = 116;
+    /**
+     * Patch biomes (biomes plan v1.1), placed by {@link BiomePatches} inside the biomes above. Ids follow the vanilla
+     * biome order the rest of the table uses; pale garden and dappled forest are new in that order (36, 37).
+     */
+    static final short SUNFLOWER_PLAINS = 2, FLOWER_FOREST = 9, BIRCH_FOREST = 10, DARK_FOREST = 11;
+    static final short OLD_GROWTH_BIRCH_FOREST = 12, OLD_GROWTH_PINE_TAIGA = 13, OLD_GROWTH_SPRUCE_TAIGA = 14;
+    static final short SAVANNA_PLATEAU = 18, WINDSWEPT_GRAVELLY_HILLS = 20, WINDSWEPT_FOREST = 21;
+    static final short WINDSWEPT_SAVANNA = 22, SPARSE_JUNGLE = 24, BAMBOO_JUNGLE = 25, CHERRY_GROVE = 30;
+    static final short JAGGED_PEAKS = 34, PALE_GARDEN = 36, DAPPLED_FOREST = 37;
     /** Shore biomes, assigned by {@link CoastShaper} after classification. */
     static final short BEACH = 130, SNOWY_BEACH = 131, STONY_SHORE = 132, MANGROVE_SWAMP = 134;
 
@@ -60,10 +69,11 @@ public final class BiomeClassifier {
      * @param H          height
      * @param W          width
      * @param pixelSizeM physical size of one pixel in meters
+     * @param seed       world seed (places the patch biomes, see {@link BiomePatches})
      * @return short array (H, W) with biome IDs
      */
     public static short[] classify(float[] elev, float[] climate, int i0, int j0,
-                                    float[] elevPadded, int H, int W, float pixelSizeM) {
+                                    float[] elevPadded, int H, int W, float pixelSizeM, long seed) {
         short[] out = new short[H * W];
         for (int i = 0; i < H * W; i++) out[i] = PLAINS;
 
@@ -95,6 +105,7 @@ public final class BiomeClassifier {
 
         // Compute slope from padded elevation using Sobel (divide by pixelSizeM for ratio)
         float[] slopeRatio = computeSlopeRatio(elevPadded, H, W, pixelSizeM);
+        BiomePatches patches = BiomePatches.forSeed(seed);
 
         // Process per-pixel
         for (int r = 0; r < H; r++) {
@@ -228,6 +239,12 @@ public final class BiomeClassifier {
                 // Bare slope override for lowland/non-mountain cliffs
                 if (slopeBare && !isOcean && !mountains) {
                     biome = hasSnow ? FROZEN_PEAKS : STONY_PEAKS;
+                }
+
+                // Sub-biome patches inside the biome chosen above (world metres, so the same at every scale).
+                if (!isOcean) {
+                    biome = patches.apply(biome, (j0 + c) * pixelSizeM, (i0 + r) * pixelSizeM, altM, slope, temp,
+                            treeMoisture, effTreeMoisture, bareThreshold);
                 }
 
                 out[idx] = biome;

@@ -49,7 +49,7 @@ public final class RiverCarver {
     /** True for cold biomes where river and lake surfaces freeze. */
     public static boolean isFrozen(short biome) { return contains(FROZEN_BIOMES, biome); }
 
-    private static final short[] FROZEN_BIOMES = {3, 16, 32, 33, 48, 49, 116, 131};
+    private static final short[] FROZEN_BIOMES = {3, 16, 32, 33, 34, 48, 49, 116, 131};
 
     /** Distance (blocks) from the channel edge over which banks are shaped. */
     private static final float BANK = 4f;   // how far a stream reshapes the ground beside it (was 8: diagonal steps reached too far)

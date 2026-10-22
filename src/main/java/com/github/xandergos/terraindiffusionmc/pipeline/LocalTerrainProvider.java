@@ -182,6 +182,14 @@ public final class LocalTerrainProvider {
     }
 
     /**
+     * Biome ids at native resolution for the explorer's Biomes map and {@code /terra-find biome}: the same classifier
+     * (with the patch biomes) and shore pass the game uses, on the inference thread. See {@link BiomeMap}.
+     */
+    public static BiomeMap.Result getBiomeMap(int i1, int j1, int i2, int j2) throws Exception {
+        return submitToInferenceThread(() -> BiomeMap.compute(getInstance().pipeline, i1, j1, i2, j2));
+    }
+
+    /**
      * Fetch a coarse tensor slice on the inference thread.
      * Coordinates are in coarse index units (1 unit = 256 native pixels).
      *
@@ -235,6 +243,67 @@ public final class LocalTerrainProvider {
             if (radius >= maxRadiusPx) return best;
             radius = Math.min(maxRadiusPx, radius * 2);
         }
+    }
+
+    /** Result of {@link #findNearestBiome}: the spot (native pixels), windows classified, how far was searched. */
+    public record BiomeSearch(boolean found, boolean inside, double i, double j, float elevM, int windows, int searchedRadiusPx) {}
+
+    /** Side of the windows {@link #findNearestBiome} classifies (native pixels, 7.7 km). */
+    private static final int BIOME_WINDOW_PX = 256;
+    /** A spot this many native pixels (90 m) inside a patch on every side is preferred over the patch's edge. */
+    private static final int BIOME_INSIDE_PX = 3;
+
+    /**
+     * Nearest native pixel classified as biome {@code id} (vanilla's {@code /locate biome} can't search Terra's layout).
+     * Classifies 7.7 km windows ring by ring around the player with the game's classifier ({@link BiomeMap}), each on
+     * the inference thread by itself, and stops once no unsearched ring can hold anything closer. Prefers pixels
+     * {@link #BIOME_INSIDE_PX} inside the patch, so the teleport lands in the biome rather than on its edge.
+     */
+    public static BiomeSearch findNearestBiome(short id, double pi, double pj, int maxRings,
+                                               java.util.function.IntConsumer progress) throws Exception {
+        final int Wn = BIOME_WINDOW_PX, m = BIOME_INSIDE_PX;
+        int ci = Math.floorDiv((int) Math.floor(pi), Wn), cj = Math.floorDiv((int) Math.floor(pj), Wn);
+        double bestIn = Double.MAX_VALUE, bestAny = Double.MAX_VALUE;
+        double inI = 0, inJ = 0, anyI = 0, anyJ = 0;
+        float inE = 0f, anyE = 0f;
+        int windows = 0, searched = 0;
+        for (int k = 0; k <= maxRings; k++) {
+            // Every pixel of ring k is at least (k - 1) windows from the player.
+            double stopAt = Math.min(bestIn, bestAny + 2.0 * Wn);
+            if ((k - 1) * (double) Wn > stopAt) break;
+            for (int di = -k; di <= k; di++) {
+                for (int dj = -k; dj <= k; dj++) {
+                    if (Math.max(Math.abs(di), Math.abs(dj)) != k) continue;
+                    int i1 = (ci + di) * Wn, j1 = (cj + dj) * Wn;
+                    BiomeMap.Result r = getBiomeMap(i1 - m, j1 - m, i1 + Wn + m, j1 + Wn + m);
+                    windows++;
+                    int RW = Wn + 2 * m;
+                    short[] b = r.biomes();
+                    float[] e = r.elev();
+                    for (int rr = m; rr < Wn + m; rr++) {
+                        for (int cc = m; cc < Wn + m; cc++) {
+                            if (b[rr * RW + cc] != id) continue;
+                            double gi = i1 - m + rr + 0.5, gj = j1 - m + cc + 0.5;
+                            double d = Math.hypot(gi - pi, gj - pj);
+                            if (d < bestAny) { bestAny = d; anyI = gi; anyJ = gj; anyE = e[rr * RW + cc]; }
+                            if (d < bestIn && inside(b, RW, rr, cc, m, id)) {
+                                bestIn = d; inI = gi; inJ = gj; inE = e[rr * RW + cc];
+                            }
+                        }
+                    }
+                }
+            }
+            searched = (2 * k + 1) * Wn / 2;
+            progress.accept(searched);
+        }
+        if (bestIn < Double.MAX_VALUE) return new BiomeSearch(true, true, inI, inJ, inE, windows, searched);
+        if (bestAny < Double.MAX_VALUE) return new BiomeSearch(true, false, anyI, anyJ, anyE, windows, searched);
+        return new BiomeSearch(false, false, 0, 0, 0f, windows, searched);
+    }
+
+    private static boolean inside(short[] b, int RW, int r, int c, int m, short id) {
+        for (int dr = -m; dr <= m; dr++) for (int dc = -m; dc <= m; dc++) if (b[(r + dr) * RW + c + dc] != id) return false;
+        return true;
     }
 
     /** Result of a reef or bank search: the spot found (native pixels) if any, spots checked, how far it reached. */
@@ -834,7 +903,7 @@ public final class LocalTerrainProvider {
             for (int r = 0; r < H; r++) System.arraycopy(elevMargin2D[r + M], M, elevFlat, r * W, W);
         }
 
-        short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION);
+        short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION, getSeed());
         CoastShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
@@ -896,7 +965,7 @@ public final class LocalTerrainProvider {
 
         float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
 
-        short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM);
+        short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM, getSeed());
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);

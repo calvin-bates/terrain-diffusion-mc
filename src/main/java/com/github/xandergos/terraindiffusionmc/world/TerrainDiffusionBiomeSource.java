@@ -35,6 +35,8 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
     private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "forest_sparse"));
     private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "taiga_sparse"));
     private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "snowy_taiga_sparse"));
+    /** Vanilla dark forest without the huge mushrooms (biomes plan v1.1). */
+    private static final ResourceKey<Biome> DARK_FOREST = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "dark_forest"));
 
     public static final MapCodec<TerrainDiffusionBiomeSource> CODEC = RecordCodecBuilder.mapCodec((instance) ->
             instance.group(
@@ -90,7 +92,25 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
                     entry((short) 121, this.biomeLookup.getOrThrow(Biomes.FROZEN_RIVER)),
                     entry((short) 108, this.biomeLookup.getOrThrow(FOREST_SPARSE)),
                     entry((short) 115, this.biomeLookup.getOrThrow(TAIGA_SPARSE)),
-                    entry((short) 116, this.biomeLookup.getOrThrow(SNOWY_TAIGA_SPARSE))
+                    entry((short) 116, this.biomeLookup.getOrThrow(SNOWY_TAIGA_SPARSE)),
+                    // v1.1 patch biomes (BiomePatches)
+                    entry((short) 2, this.biomeLookup.getOrThrow(Biomes.SUNFLOWER_PLAINS)),
+                    entry((short) 9, this.biomeLookup.getOrThrow(Biomes.FLOWER_FOREST)),
+                    entry((short) 10, this.biomeLookup.getOrThrow(Biomes.BIRCH_FOREST)),
+                    entry((short) 11, this.biomeLookup.getOrThrow(DARK_FOREST)),
+                    entry((short) 12, this.biomeLookup.getOrThrow(Biomes.OLD_GROWTH_BIRCH_FOREST)),
+                    entry((short) 13, this.biomeLookup.getOrThrow(Biomes.OLD_GROWTH_PINE_TAIGA)),
+                    entry((short) 14, this.biomeLookup.getOrThrow(Biomes.OLD_GROWTH_SPRUCE_TAIGA)),
+                    entry((short) 18, this.biomeLookup.getOrThrow(Biomes.SAVANNA_PLATEAU)),
+                    entry((short) 20, this.biomeLookup.getOrThrow(Biomes.WINDSWEPT_GRAVELLY_HILLS)),
+                    entry((short) 21, this.biomeLookup.getOrThrow(Biomes.WINDSWEPT_FOREST)),
+                    entry((short) 22, this.biomeLookup.getOrThrow(Biomes.WINDSWEPT_SAVANNA)),
+                    entry((short) 24, this.biomeLookup.getOrThrow(Biomes.SPARSE_JUNGLE)),
+                    entry((short) 25, this.biomeLookup.getOrThrow(Biomes.BAMBOO_JUNGLE)),
+                    entry((short) 30, this.biomeLookup.getOrThrow(Biomes.CHERRY_GROVE)),
+                    entry((short) 34, this.biomeLookup.getOrThrow(Biomes.JAGGED_PEAKS)),
+                    entry((short) 36, this.biomeLookup.getOrThrow(Biomes.PALE_GARDEN)),
+                    entry((short) 37, this.biomeLookup.getOrThrow(Biomes.DAPPLED_FOREST))
             );
         }
     }
