@@ -89,6 +89,24 @@ FEATURES = {
         "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
         "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 26, "height_rand_a": 8, "height_rand_b": 12},
         "trunk_provider": log("minecraft:mangrove_log")},
+    # Forested highland (Terralith style, Calvin's reference): conifer-shaped dark oaks whose leaves take the biome's
+    # red foliage colour, among green pines (spruce leaves are never tinted), and a few orange ones (poplar leaves).
+    "highland_dark_oak": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 2), "radius": uniform(2, 3),
+                           "trunk_height": uniform(1, 2)},
+        "foliage_provider": leaves("minecraft:dark_oak_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 2, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 7, "height_rand_a": 3, "height_rand_b": 1},
+        "trunk_provider": log("minecraft:dark_oak_log")},
+    "highland_orange_conifer": {
+        "type": "minecraft:tree", "below_trunk_provider": "minecraft:soil_beneath_tree", "decorators": [],
+        "foliage_placer": {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 2), "radius": uniform(2, 3),
+                           "trunk_height": uniform(1, 2)},
+        "foliage_provider": leaves("minecraft:orange_poplar_leaves"), "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 2, "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": 6, "height_rand_a": 3, "height_rand_b": 1},
+        "trunk_provider": log("minecraft:dark_oak_log")},
     # Pools for marsh and bog: vanilla's lake feature with water, lined with mud; the water sits flush with the ground.
     "wetland_pool": {
         "type": "minecraft:lake", "barrier": {"id": "minecraft:mud"}, "can_place_feature": {"type": "minecraft:true"},
@@ -135,6 +153,10 @@ SELECTORS = {
                                                 ("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_aspen": ("minecraft:yellow_poplar", [("minecraft:birch_checked", 0.3)]),
     "trees_mediterranean": ("minecraft:oak_checked", [("terra:oak_bush_checked", 0.45), ("minecraft:fancy_oak_checked", 0.08)]),
+    "trees_forested_highland": ("terra:highland_dark_oak_checked", [("minecraft:pine_checked", 0.4),
+                                                                    ("terra:highland_orange_conifer_checked", 0.1),
+                                                                    ("minecraft:spruce_checked", 0.08),
+                                                                    ("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_highland": ("minecraft:spruce_checked", [("minecraft:oak_checked", 0.3), ("minecraft:birch_checked", 0.2),
                                                    ("minecraft:fancy_oak_checked", 0.05), ("minecraft:fallen_oak_tree", 0.01)]),
     "trees_cloud_forest": ("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.35), ("minecraft:oak_checked", 0.15)]),
@@ -181,6 +203,9 @@ PLACED = {
     "stunted_spruce_checked": {"feature": "terra:stunted_spruce", "placement": [survive("minecraft:spruce_sapling")]},
     "oak_bush_checked": {"feature": "terra:oak_bush", "placement": [survive("minecraft:oak_sapling")]},
     "redwood_checked": {"feature": "terra:redwood", "placement": [survive("minecraft:spruce_sapling")]},
+    "highland_dark_oak_checked": {"feature": "terra:highland_dark_oak", "placement": [survive("minecraft:dark_oak_sapling")]},
+    "highland_orange_conifer_checked": {"feature": "terra:highland_orange_conifer",
+                                        "placement": [survive("minecraft:dark_oak_sapling")]},
     "swamp_oak_checked": {"feature": "minecraft:swamp_oak", "placement": [survive("minecraft:oak_sapling")]},
     "trees_treeline": trees("terra:trees_treeline", [(1, 3), (2, 2), (0, 2)]),
     "trees_tundra": trees("terra:krummholz", [(0, 12), (1, 1)], sapling="minecraft:spruce_sapling"),
@@ -196,7 +221,7 @@ PLACED = {
     "trees_prairie": trees("minecraft:oak", [(0, 39), (1, 1)], sapling="minecraft:oak_sapling"),
     "trees_moorland": trees("terra:oak_bush", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
     "trees_mediterranean": trees("terra:trees_mediterranean", [(2, 3), (3, 1), (1, 1)]),
-    "trees_forested_highland": trees("terra:trees_highland", [(8, 9), (9, 1)]),
+    "trees_forested_highland": trees("terra:trees_forested_highland", [(9, 9), (11, 1)]),
     "trees_temperate_highland": trees("terra:trees_highland", [(0, 2), (1, 2), (2, 1)]),
     "trees_cloud_forest": trees("terra:trees_cloud_forest", [(10, 9), (12, 1)]),
     "trees_tropical_dry": trees("terra:trees_tropical_dry", [(3, 3), (4, 1), (2, 1)]),
@@ -231,6 +256,8 @@ def block(b):
 
 
 GRAVEL = "minecraft:overworld/gravel_or_stone_if_ceiling"
+# Vanilla's steep-slope test (as on jagged peaks): bare rock on cliffs and steep faces.
+STEEP = {"type": "minecraft:steep"}
 
 
 def rule(*pairs):
@@ -372,11 +399,12 @@ biome("mediterranean_scrub", id=68, base="plains", temp=1.2, downfall=0.25,
       veg=["terra:trees_mediterranean", "terra:patch_scrub", "minecraft:flower_warm", "minecraft:patch_dry_grass_desert"],
       top=rule((noise("surface", 0.05), "minecraft:coarse_dirt"), (noise("surface_secondary", 0.55), "minecraft:gravel")))
 biome("forested_highland", id=69, base="taiga", temp=0.4, downfall=0.7,
-      colors={"grass_color": "#72a35a", "foliage_color": "#55904a"},
+      colors={"grass_color": "#8db35a", "foliage_color": "#d9502c", "dry_foliage_color": "#b5482a"},
       veg=["terra:trees_forested_highland", "minecraft:patch_grass_forest", "minecraft:patch_large_fern",
            "minecraft:flower_default", "terra:forest_rock_sparse", "minecraft:patch_berry_common"],
-      top=rule((noise("surface", 0.45), "minecraft:stone"), (noise("surface", 0.25), "minecraft:coarse_dirt")),
-      under=rule((noise("surface", 0.45), "minecraft:stone")), tags=["is_forest"])
+      top=rule((STEEP, "minecraft:stone"), (noise("surface", 0.45), "minecraft:stone"),
+               (noise("surface", 0.25), "minecraft:coarse_dirt")),
+      under=rule((STEEP, "minecraft:stone"), (noise("surface", 0.45), "minecraft:stone")), tags=["is_forest"])
 biome("temperate_highland", id=70, base="meadow", temp=0.5, downfall=0.7,
       colors={"grass_color": "#86b25e", "foliage_color": "#62994c"},
       veg=["terra:trees_temperate_highland", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow",
