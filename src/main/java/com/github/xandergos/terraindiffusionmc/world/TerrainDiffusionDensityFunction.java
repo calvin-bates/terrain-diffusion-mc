@@ -5,6 +5,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.util.Interval;
+import net.minecraft.world.level.levelgen.Beardifier;
 import net.minecraft.world.level.levelgen.densityfunction.DensityBuffer;
 import net.minecraft.world.level.levelgen.densityfunction.DensityFunction;
 import net.minecraft.world.level.levelgen.densityfunction.DensitySampler;
@@ -64,6 +65,9 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
         int blockEndX = Integer.MIN_VALUE;
         int blockEndZ = Integer.MIN_VALUE;
         HeightmapData data;
+        /** The last column's ground pad (StructurePads), since a column is sampled at every y. */
+        Beardifier padBeardifier;
+        int padX, padZ, padNatural, padTarget;
 
         private static final ThreadLocal<TileCache> LOCAL = ThreadLocal.withInitial(TileCache::new);
 
@@ -109,7 +113,20 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
         @Override
         public float sampleValue(SamplerContext context, int x, int y, int z) {
             // When no tile is available, behave like empty air above y=0: density = -y.
-            int target = TileCache.get().surfaceHeight(x, z, 0);
+            TileCache cache = TileCache.get();
+            int target = cache.surfaceHeight(x, z, 0);
+            // Ground pads under village houses and outposts (see StructurePads), from the chunk's beardifier.
+            Beardifier beardifier = TerrainDiffusionConfig.structurePads() ? context.getField(Beardifier.CONTEXT_KEY) : null;
+            if (beardifier != null && beardifier != Beardifier.EMPTY) {
+                if (cache.padBeardifier != beardifier || cache.padX != x || cache.padZ != z || cache.padNatural != target) {
+                    cache.padBeardifier = beardifier;
+                    cache.padX = x;
+                    cache.padZ = z;
+                    cache.padNatural = target;
+                    cache.padTarget = StructurePads.adjust(beardifier, x, z, target);
+                }
+                target = cache.padTarget;
+            }
             return (float) (target - y);
         }
 

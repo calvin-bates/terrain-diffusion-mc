@@ -162,6 +162,11 @@ public final class TerrainDiffusionConfig {
      * temperature is subtropical (cooler, much drier, coastal deserts) and a warm current where it is cold (milder,
      * wetter, open sea instead of sea ice). See {@code pipeline.CoastalCurrents}.
      */
+    /**
+     * Ground pads under village houses and outposts: the terrain is pulled to each building's floor level so nothing
+     * floats or sinks into hills (see {@code world.StructurePads}).
+     */
+    public static boolean structurePads() { return readBoolean("structures.terrain_pads", true); }
     public static boolean coastalCurrents() { return readBoolean("climate.coastal_currents", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */
     public static boolean activeMargins() { return readBoolean("oceans.active_margins", true); }
