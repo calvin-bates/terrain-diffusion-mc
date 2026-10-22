@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "terra:krummholz_checked",
+  "features": [
+    {
+      "chance": 0.15,
+      "feature": "minecraft:spruce_checked"
+    },
+    {
+      "chance": 0.08,
+      "feature": "minecraft:pine_checked"
+    }
+  ]
+}

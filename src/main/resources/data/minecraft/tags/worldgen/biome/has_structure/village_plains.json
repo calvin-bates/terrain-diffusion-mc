@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "terra:aspen_parkland",
+    "terra:mediterranean_scrub",
+    "terra:moorland",
+    "terra:steppe",
+    "terra:tallgrass_prairie",
+    "terra:temperate_highland"
+  ]
+}

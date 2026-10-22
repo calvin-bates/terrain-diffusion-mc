@@ -828,6 +828,92 @@ public final class LocalTerrainProvider {
         }
     }
 
+    /** How far (native pixels) river distances are measured for the river forests; farther counts as infinite. */
+    private static final int RIVER_FOREST_REACH_PX =
+            (int) Math.ceil(RegionalBiomes.FLOODPLAIN_PX + RegionalBiomes.FLOODPLAIN_JITTER_PX) + 1;
+
+    /**
+     * Distances (native pixels) from each block of a tile to the nearest river or main river and to the nearest main
+     * river, from the same river regions the carver uses, for the riverside and floodplain forests
+     * ({@link RegionalBiomes#riverForest}); null when rivers are off, the tile has no land, or no river is near.
+     * Distances are measured between native pixel centres and interpolated bilinearly onto the blocks.
+     */
+    float[][] riverDistances(float[] elev, int i1, int j1, int H, int W, int scale) {
+        if (!TerrainDiffusionConfig.riversEnabled()) return null;
+        boolean land = false;
+        for (float e : elev) if (e > 0f) { land = true; break; }
+        if (!land) return null;
+        try {
+            int R = RIVER_FOREST_REACH_PX;
+            int pi0 = Math.floorDiv(i1, scale) - R - 1, pj0 = Math.floorDiv(j1, scale) - R - 1;
+            int pi1 = Math.floorDiv(i1 + H - 1, scale) + R + 1, pj1 = Math.floorDiv(j1 + W - 1, scale) + R + 1;
+            int nh = pi1 - pi0 + 1, nw = pj1 - pj0 + 1;
+            byte[] cls = new byte[nh * nw];
+            boolean any = false;
+            RiverService svc = rivers();
+            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            for (int r = 0; r < nh; r++) {
+                for (int c = 0; c < nw; c++) {
+                    RiverService.Region reg = svc.regionOfPixel(pi0 + r, pj0 + c, source);
+                    int k = reg.index(pi0 + r, pj0 + c);
+                    byte v = k >= 0 ? reg.cls[k] : 0;
+                    if (v == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.RIVER
+                            || v == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.MAIN) {
+                        cls[r * nw + c] = v;
+                        any = true;
+                    }
+                }
+            }
+            if (!any) return null;
+            // Squared distances stamped outward from each river pixel (rivers are sparse, so this is cheap).
+            int[] d2r = new int[nh * nw], d2m = new int[nh * nw];
+            java.util.Arrays.fill(d2r, Integer.MAX_VALUE);
+            java.util.Arrays.fill(d2m, Integer.MAX_VALUE);
+            for (int r = 0; r < nh; r++) {
+                for (int c = 0; c < nw; c++) {
+                    byte v = cls[r * nw + c];
+                    if (v == 0) continue;
+                    boolean main = v == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.MAIN;
+                    for (int a = Math.max(0, r - R); a <= Math.min(nh - 1, r + R); a++) {
+                        for (int b = Math.max(0, c - R); b <= Math.min(nw - 1, c + R); b++) {
+                            int d2 = (a - r) * (a - r) + (b - c) * (b - c), k = a * nw + b;
+                            if (d2 < d2r[k]) d2r[k] = d2;
+                            if (main && d2 < d2m[k]) d2m[k] = d2;
+                        }
+                    }
+                }
+            }
+            float[] dr = new float[nh * nw], dm = new float[nh * nw];
+            final float FAR = 1e6f;
+            for (int k = 0; k < nh * nw; k++) {
+                dr[k] = d2r[k] == Integer.MAX_VALUE ? FAR : (float) Math.sqrt(d2r[k]);
+                dm[k] = d2m[k] == Integer.MAX_VALUE ? FAR : (float) Math.sqrt(d2m[k]);
+            }
+            float[] outR = new float[H * W], outM = new float[H * W];
+            for (int r = 0; r < H; r++) {
+                float fr = (i1 + r + 0.5f) / scale - 0.5f - pi0;
+                int r0 = Math.max(0, Math.min(nh - 2, (int) Math.floor(fr)));
+                float tr = Math.max(0f, Math.min(1f, fr - r0));
+                for (int c = 0; c < W; c++) {
+                    float fc = (j1 + c + 0.5f) / scale - 0.5f - pj0;
+                    int c0 = Math.max(0, Math.min(nw - 2, (int) Math.floor(fc)));
+                    float tc = Math.max(0f, Math.min(1f, fc - c0));
+                    outR[r * W + c] = bilerp(dr, nw, r0, c0, tr, tc);
+                    outM[r * W + c] = bilerp(dm, nw, r0, c0, tr, tc);
+                }
+            }
+            return new float[][]{outR, outM};
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: river distances unavailable for the biomes at ({}, {}): {}", j1, i1, e.toString());
+            return null;
+        }
+    }
+
+    private static float bilerp(float[] a, int w, int r0, int c0, float tr, float tc) {
+        return (a[r0 * w + c0] * (1 - tc) + a[r0 * w + c0 + 1] * tc) * (1 - tr)
+                + (a[(r0 + 1) * w + c0] * (1 - tc) + a[(r0 + 1) * w + c0 + 1] * tc) * tr;
+    }
+
     private HeightmapData genHeightmap(CacheKey key, int i1, int j1, int i2, int j2) {
         int scale = WorldScaleManager.getCurrentScale();
         FutureTask<HeightmapData> task = new FutureTask<>(() -> {
@@ -903,7 +989,9 @@ public final class LocalTerrainProvider {
             for (int r = 0; r < H; r++) System.arraycopy(elevMargin2D[r + M], M, elevFlat, r * W, W);
         }
 
-        short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION, getSeed());
+        float[][] rd = riverDistances(elevFlat, i1, j1, H, W, 1);
+        short[] biomeFlat = BiomeClassifier.classify(elevFlat, climate, i1, j1, elevPadded, H, W, NATIVE_RESOLUTION, getSeed(),
+                rd == null ? null : rd[0], rd == null ? null : rd[1]);
         CoastShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
@@ -965,7 +1053,9 @@ public final class LocalTerrainProvider {
 
         float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
 
-        short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM, getSeed());
+        float[][] rd = riverDistances(elevSmooth, i1, j1, H, W, scale);
+        short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM, getSeed(),
+                rd == null ? null : rd[0], rd == null ? null : rd[1]);
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);

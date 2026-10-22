@@ -35,10 +35,12 @@ import java.util.function.Predicate;
  */
 public final class InlandFish {
     private static final Set<String> WARM = Set.of("jungle", "sparse_jungle", "bamboo_jungle", "savanna", "savanna_plateau",
-            "windswept_savanna", "swamp", "mangrove_swamp", "desert");
+            "windswept_savanna", "swamp", "mangrove_swamp", "desert", "cloud_forest", "tropical_dry_forest", "rocky_desert");
     private static final Set<String> COLD = Set.of("taiga", "snowy_taiga", "old_growth_pine_taiga", "old_growth_spruce_taiga",
             "taiga_sparse", "snowy_taiga_sparse", "grove", "snowy_slopes", "snowy_plains", "ice_spikes", "frozen_peaks",
-            "jagged_peaks", "stony_peaks", "meadow", "windswept_hills", "windswept_gravelly_hills", "windswept_forest");
+            "jagged_peaks", "stony_peaks", "meadow", "windswept_hills", "windswept_gravelly_hills", "windswept_forest",
+            "tundra", "polar_desert", "treeline", "boreal_forest", "siberian_taiga", "birch_taiga", "taiga_mountain",
+            "taiga_clearing", "bog", "moorland", "temperate_rainforest", "redwoods", "aspen_parkland", "forested_highland");
 
     private InlandFish() {
     }

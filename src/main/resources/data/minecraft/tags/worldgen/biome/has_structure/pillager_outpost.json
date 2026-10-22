@@ -1,0 +1,20 @@
+{
+  "replace": false,
+  "values": [
+    "terra:aspen_parkland",
+    "terra:birch_taiga",
+    "terra:boreal_forest",
+    "terra:forested_highland",
+    "terra:mediterranean_scrub",
+    "terra:polar_desert",
+    "terra:rocky_desert",
+    "terra:siberian_taiga",
+    "terra:steppe",
+    "terra:taiga_clearing",
+    "terra:taiga_mountain",
+    "terra:tallgrass_prairie",
+    "terra:treeline",
+    "terra:tropical_dry_forest",
+    "terra:tundra"
+  ]
+}

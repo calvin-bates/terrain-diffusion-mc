@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    "terra:floodplain_forest",
+    "terra:riverside_forest"
+  ]
+}

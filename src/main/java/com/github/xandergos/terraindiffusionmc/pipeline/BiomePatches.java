@@ -248,7 +248,7 @@ final class BiomePatches {
         return t <= 0f ? 0f : t >= 1f ? 1f : t;
     }
 
-    private static FastNoiseLite fbm(int seed, float freq, int octaves) {
+    static FastNoiseLite fbm(int seed, float freq, int octaves) {
         FastNoiseLite n = new FastNoiseLite(seed);
         n.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
         n.SetFrequency(freq);
@@ -266,7 +266,7 @@ final class BiomePatches {
      * One patch field: a 3-octave noise and the empirical distribution of its values, so a share converts to a
      * threshold exactly. The distribution doesn't depend on the seed, so it is sampled once for all patches.
      */
-    private static final class Patch {
+    static final class Patch {
         private final FastNoiseLite noise;
 
         Patch(int seed, float sizeM) {

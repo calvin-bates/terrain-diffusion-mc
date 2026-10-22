@@ -26,6 +26,7 @@ import net.minecraft.world.level.biome.Climate;
 import net.minecraft.world.level.levelgen.RandomState;
 
 import java.util.Map;
+import com.github.xandergos.terraindiffusionmc.pipeline.RegionalBiomes;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
@@ -58,7 +59,7 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
 
     private void requireBiomeIdMap() {
         if (biomeIdMap == null) {
-            biomeIdMap = Map.ofEntries(
+            Map<Short, Holder<Biome>> m = new java.util.HashMap<>(Map.ofEntries(
                     entry((short) 1, this.biomeLookup.getOrThrow(Biomes.PLAINS)),
                     entry((short) 3, this.biomeLookup.getOrThrow(Biomes.SNOWY_PLAINS)),
                     entry((short) 5, this.biomeLookup.getOrThrow(Biomes.DESERT)),
@@ -111,7 +112,13 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
                     entry((short) 34, this.biomeLookup.getOrThrow(Biomes.JAGGED_PEAKS)),
                     entry((short) 36, this.biomeLookup.getOrThrow(Biomes.PALE_GARDEN)),
                     entry((short) 37, this.biomeLookup.getOrThrow(Biomes.DAPPLED_FOREST))
-            );
+            ));
+            // v1.2 real-world biomes (terra namespace; data from tools/biomes/gen_biomes_v12.py).
+            for (Map.Entry<Short, String> e : RegionalBiomes.NAMES.entrySet()) {
+                m.put(e.getKey(), this.biomeLookup.getOrThrow(ResourceKey.create(Registries.BIOME,
+                        Identifier.fromNamespaceAndPath("terra", e.getValue()))));
+            }
+            biomeIdMap = m;
         }
     }
 

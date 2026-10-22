@@ -64,6 +64,31 @@ public final class BiomePalette {
         put(33, "Frozen Peaks", 0xA9C8E6);
         put(34, "Jagged Peaks", 0xE6E6FF);
         put(35, "Stony Peaks", 0x858585);
+        // Real-world biomes (v1.2)
+        put(50, "Tundra", 0xA7A983);
+        put(51, "Polar Desert", 0xBDB8AE);
+        put(52, "Treeline", 0x6F8F6A);
+        put(53, "Boreal Forest", 0x2E5E4A);
+        put(54, "Siberian Taiga", 0x55734A);
+        put(55, "Birch Taiga", 0x6FA07A);
+        put(56, "Taiga Mountain", 0x4C6A5C);
+        put(57, "Taiga Clearing", 0x9CC27A);
+        put(58, "Bog", 0x6B5E3A);
+        put(59, "Moorland", 0x8A6F7A);
+        put(60, "Temperate Rainforest", 0x1F5A2A);
+        put(61, "Aspen Parkland", 0xD6C24A);
+        put(62, "Tallgrass Prairie", 0xB4C85A);
+        put(63, "Steppe", 0xCFC28A);
+        put(64, "Marsh", 0x5E8F6A);
+        put(65, "Riverside Forest", 0x3F8F3A);
+        put(66, "Floodplain Forest", 0x2F7A50);
+        put(67, "Redwoods", 0x8A3A2A);
+        put(68, "Mediterranean Scrub", 0xB09A5A);
+        put(69, "Forested Highland", 0x4A7A4A);
+        put(70, "Temperate Highland", 0x8FB88A);
+        put(71, "Rocky Desert", 0xC89A6A);
+        put(72, "Cloud Forest", 0x2FA06A);
+        put(73, "Tropical Dry Forest", 0xA0A040);
         // Shores
         put(130, "Beach", 0xF5E08A);
         put(131, "Snowy Beach", 0xF2EEDC);

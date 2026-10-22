@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "minecraft:yellow_poplar",
+  "features": [
+    {
+      "chance": 0.3,
+      "feature": "minecraft:birch_checked"
+    }
+  ]
+}

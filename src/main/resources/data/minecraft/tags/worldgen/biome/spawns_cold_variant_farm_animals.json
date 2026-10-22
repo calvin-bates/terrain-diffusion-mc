@@ -1,0 +1,17 @@
+{
+  "replace": false,
+  "values": [
+    "terra:birch_taiga",
+    "terra:boreal_forest",
+    "terra:forested_highland",
+    "terra:moorland",
+    "terra:polar_desert",
+    "terra:redwoods",
+    "terra:siberian_taiga",
+    "terra:taiga_clearing",
+    "terra:taiga_mountain",
+    "terra:temperate_rainforest",
+    "terra:treeline",
+    "terra:tundra"
+  ]
+}

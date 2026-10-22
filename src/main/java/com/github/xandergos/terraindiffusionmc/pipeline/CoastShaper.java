@@ -283,7 +283,8 @@ public final class CoastShaper {
     private static boolean isSnowy(short b) {
         return b == BiomeClassifier.SNOWY_PLAINS || b == BiomeClassifier.SNOWY_TAIGA
                 || b == BiomeClassifier.SNOWY_TAIGA_SPARSE || b == BiomeClassifier.SNOWY_SLOPES
-                || b == BiomeClassifier.FROZEN_PEAKS || b == BiomeClassifier.JAGGED_PEAKS;
+                || b == BiomeClassifier.FROZEN_PEAKS || b == BiomeClassifier.JAGGED_PEAKS
+                || b == RegionalBiomes.TUNDRA || b == RegionalBiomes.POLAR_DESERT;
     }
 
     private static float smoothstep(float e0, float e1, float v) {

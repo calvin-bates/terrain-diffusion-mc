@@ -1,0 +1,15 @@
+{
+  "replace": false,
+  "values": [
+    "terra:aspen_parkland",
+    "terra:bog",
+    "terra:marsh",
+    "terra:mediterranean_scrub",
+    "terra:polar_desert",
+    "terra:rocky_desert",
+    "terra:steppe",
+    "terra:tallgrass_prairie",
+    "terra:tropical_dry_forest",
+    "terra:tundra"
+  ]
+}

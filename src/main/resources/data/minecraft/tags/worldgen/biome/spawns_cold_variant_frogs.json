@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "terra:polar_desert",
+    "terra:treeline",
+    "terra:tundra"
+  ]
+}

@@ -1,6 +1,11 @@
 {
   "replace": false,
   "values": [
-    "terra:dark_forest"
+    "terra:dark_forest",
+    "terra:aspen_parkland",
+    "terra:floodplain_forest",
+    "terra:forested_highland",
+    "terra:riverside_forest",
+    "terra:treeline"
   ]
 }

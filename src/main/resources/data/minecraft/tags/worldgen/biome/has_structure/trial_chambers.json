@@ -1,6 +1,30 @@
 {
   "replace": false,
   "values": [
-    "terra:dark_forest"
+    "terra:dark_forest",
+    "terra:aspen_parkland",
+    "terra:birch_taiga",
+    "terra:bog",
+    "terra:boreal_forest",
+    "terra:cloud_forest",
+    "terra:floodplain_forest",
+    "terra:forested_highland",
+    "terra:marsh",
+    "terra:mediterranean_scrub",
+    "terra:moorland",
+    "terra:polar_desert",
+    "terra:redwoods",
+    "terra:riverside_forest",
+    "terra:rocky_desert",
+    "terra:siberian_taiga",
+    "terra:steppe",
+    "terra:taiga_clearing",
+    "terra:taiga_mountain",
+    "terra:tallgrass_prairie",
+    "terra:temperate_highland",
+    "terra:temperate_rainforest",
+    "terra:treeline",
+    "terra:tropical_dry_forest",
+    "terra:tundra"
   ]
 }

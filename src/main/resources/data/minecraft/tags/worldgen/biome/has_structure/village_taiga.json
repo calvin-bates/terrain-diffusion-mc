@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "terra:birch_taiga",
+    "terra:boreal_forest",
+    "terra:forested_highland",
+    "terra:siberian_taiga",
+    "terra:taiga_clearing",
+    "terra:taiga_mountain"
+  ]
+}

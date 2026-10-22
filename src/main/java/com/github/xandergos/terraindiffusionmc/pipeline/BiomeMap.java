@@ -5,7 +5,8 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  * {@code /terra-find}. Runs the same classifier (with the patch biomes, {@link BiomePatches}) and shore pass
  * ({@link CoastShaper}) as the game, on the pipeline's elevation and climate.
  *
- * <p>Leaves out the block-level steps that happen after {@link WorldPipeline#get} in the game (rias, spits and the other
+ * <p>Riverside and floodplain forests use the game's river regions ({@link LocalTerrainProvider#riverDistances}).
+ * Leaves out the block-level steps that happen after {@link WorldPipeline#get} in the game (rias, spits and the other
  * coastal plans, deltas, the elevation noise) and the river-mouth mask, so shores can differ by a pixel or two and a
  * river mouth may show a cliff the game doesn't make. Inland biomes are exactly the game's (the classifier is pointwise
  * and the patches are sampled in world metres, so they match at every scale).
@@ -41,8 +42,9 @@ public final class BiomeMap {
                 System.arraycopy(crop(plane, WW, M, M, H, W), 0, climate, k * H * W, H * W);
             }
         }
+        float[][] rd = LocalTerrainProvider.getInstance().riverDistances(elev, i1, j1, H, W, 1);
         short[] biomes = BiomeClassifier.classify(elev, climate, i1, j1, elevPadded, H, W,
-                WorldPipelineModelConfig.nativeResolution(), p.getSeed());
+                WorldPipelineModelConfig.nativeResolution(), p.getSeed(), rd == null ? null : rd[0], rd == null ? null : rd[1]);
         float[] elevOut = elev.clone();
         CoastShaper.apply(elev2D, M, M, H, W, 1, i1, j1, climate, elevOut, biomes, null);
         return new Result(biomes, elev, climate, H, W);

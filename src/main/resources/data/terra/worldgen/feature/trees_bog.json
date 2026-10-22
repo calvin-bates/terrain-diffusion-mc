@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "terra:stunted_spruce_checked",
+  "features": [
+    {
+      "chance": 0.05,
+      "feature": "minecraft:birch_checked"
+    }
+  ]
+}

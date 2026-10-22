@@ -76,6 +76,17 @@ public final class BiomeClassifier {
      */
     public static short[] classify(float[] elev, float[] climate, int i0, int j0,
                                     float[] elevPadded, int H, int W, float pixelSizeM, long seed) {
+        return classify(elev, climate, i0, j0, elevPadded, H, W, pixelSizeM, seed, null, null);
+    }
+
+    /**
+     * {@link #classify(float[], float[], int, int, float[], int, int, float, long)} with the river network: for each
+     * pixel the distance (native pixels) to the nearest river or main river and to the nearest main river, or null
+     * when unknown (then no riverside or floodplain forests).
+     */
+    public static short[] classify(float[] elev, float[] climate, int i0, int j0,
+                                    float[] elevPadded, int H, int W, float pixelSizeM, long seed,
+                                    float[] riverDist, float[] mainDist) {
         short[] out = new short[H * W];
         for (int i = 0; i < H * W; i++) out[i] = PLAINS;
 
@@ -109,6 +120,8 @@ public final class BiomeClassifier {
         float[] slopeRatio = computeSlopeRatio(elevPadded, H, W, pixelSizeM);
         boolean hasCurrents = climate.length >= 6 * H * W;
         BiomePatches patches = BiomePatches.forSeed(seed);
+        RegionalBiomes regional = RegionalBiomes.forSeed(seed);
+        RegionalBiomes.Px px = new RegionalBiomes.Px();
 
         // Process per-pixel
         for (int r = 0; r < H; r++) {
@@ -250,8 +263,20 @@ public final class BiomeClassifier {
 
                 // Sub-biome patches inside the biome chosen above (world metres, so the same at every scale).
                 if (!isOcean) {
-                    biome = patches.apply(biome, (j0 + c) * pixelSizeM, (i0 + r) * pixelSizeM, altM, slope, temp,
-                            treeMoisture, effTreeMoisture, bareThreshold);
+                    float xm = (j0 + c) * pixelSizeM, zm = (i0 + r) * pixelSizeM;
+                    short base = biome;
+                    biome = patches.apply(biome, xm, zm, altM, slope, temp, treeMoisture, effTreeMoisture, bareThreshold);
+                    // Real-world biomes (v1.2) where the v1.1 patches left the classifier's biome.
+                    if (biome == base) {
+                        px.xm = xm; px.zm = zm; px.altM = altM; px.slope = slope; px.temp = temp; px.tSeason = tSeason;
+                        px.precip = precip; px.pCV = pCV; px.treeMoisture = treeMoisture;
+                        px.effMoisture = effTreeMoisture; px.growingSeason = growingSeason;
+                        biome = regional.apply(biome, px);
+                    }
+                    if (riverDist != null && mainDist != null) {
+                        biome = regional.riverForest(biome, xm, zm, riverDist[idx], mainDist[idx], altM, slope,
+                                treeMoisture, temp);
+                    }
                 }
 
                 out[idx] = biome;
