@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "terra:bog",
-    "terra:marsh"
+    "terra:marsh",
+    "terra:salt_marsh"
   ]
 }

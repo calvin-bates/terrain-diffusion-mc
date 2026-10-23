@@ -171,6 +171,14 @@ FEATURES = {
         "minimum_size": {"type": "minecraft:two_layers_feature_size", "lower_size": 1, "upper_size": 2},
         "trunk_placer": {"type": "minecraft:giant_trunk_placer", "base_height": 7, "height_rand_a": 2, "height_rand_b": 2},
         "trunk_provider": log("minecraft:birch_log")},
+    # Desert oasis pond: the lake feature with water, lined with sand.
+    "oasis_pool": {
+        "type": "minecraft:lake", "barrier": {"id": "minecraft:sand"}, "can_place_feature": {"type": "minecraft:true"},
+        "can_replace_with_air_or_fluid": {"type": "minecraft:not", "predicate": {
+            "type": "minecraft:matching_block_tag", "tag": "minecraft:features_cannot_replace"}},
+        "can_replace_with_barrier": {"type": "minecraft:not", "predicate": {
+            "type": "minecraft:matching_block_tag", "tag": "minecraft:lava_pool_stone_cannot_replace"}},
+        "fluid": {"id": "minecraft:water", "properties": {"level": "0"}}},
     # Pools for marsh and bog: vanilla's lake feature with water, lined with mud; the water sits flush with the ground.
     "wetland_pool": {
         "type": "minecraft:lake", "barrier": {"id": "minecraft:mud"}, "can_place_feature": {"type": "minecraft:true"},
@@ -267,6 +275,8 @@ SELECTORS = {
             ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.4),
             ("terra:highland_orange_conifer_checked", "terra:giant_highland_orange_conifer_checked", 0.1),
             ("minecraft:spruce_checked", "minecraft:mega_spruce_checked", 0.08)]) + [("minecraft:fallen_spruce_tree", 0.01)]),
+    # Oasis palms: small jungle trees and jungle bushes.
+    "trees_oasis": mix("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.4)]),
     "trees_highland": ("minecraft:spruce_checked", [("minecraft:oak_checked", 0.3), ("minecraft:birch_checked", 0.2),
                                                    ("minecraft:fancy_oak_checked", 0.05), ("minecraft:fallen_oak_tree", 0.01)]),
     "trees_cloud_forest": ("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.35), ("minecraft:oak_checked", 0.15)]),
@@ -340,6 +350,12 @@ PLACED = {
     "trees_rainforest": trees("terra:trees_rainforest", [(12, 9), (14, 1)]),
     "trees_redwoods": trees("terra:trees_redwoods", [(6, 9), (7, 1)]),
     "trees_aspen": grove_trees("terra:trees_aspen", above=7, below=0),
+    "trees_oasis": trees("terra:trees_oasis", [(3, 3), (5, 1)]),
+    "trees_blooming": trees("minecraft:fancy_oak", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
+    "trees_lush_valley": trees("terra:trees_highland", [(7, 9), (9, 1)]),
+    "oasis_pool": {"feature": "terra:oasis_pool", "placement": [
+        {"type": "minecraft:count", "count": 1}, {"type": "minecraft:in_square"},
+        {"type": "minecraft:heightmap", "heightmap": "WORLD_SURFACE_WG"}, {"type": "minecraft:biome"}]},
     "trees_aspen_grove": trees("terra:trees_aspen", [(11, 9), (13, 1)]),
     "trees_prairie": trees("minecraft:oak", [(0, 39), (1, 1)], sapling="minecraft:oak_sapling"),
     "trees_moorland": trees("terra:oak_bush", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
@@ -558,7 +574,64 @@ biome("tropical_dry_forest", id=73, base="savanna", temp=1.5, downfall=0.3,
            "minecraft:patch_bush", "minecraft:flower_warm", "minecraft:patch_melon_sparse"],
       top=rule((noise("surface", 0.3), "minecraft:coarse_dirt")))
 
+
+# ---- v1.3 round A: shores (placed by CoastShaper) and rare land biomes (RegionalBiomes, salt flats by the carver) ----
+CHALK = rule((noise("surface", 0.25), "minecraft:diorite"), (None, "minecraft:calcite"))
+biome("shingle_beach", id=75, base="beach", temp=0.5, downfall=0.4, colors={},
+      veg=[], top=rule((noise("surface", 0.45), "minecraft:cobblestone"), (noise("surface", -0.45), GRAVEL),
+                       (None, "minecraft:sand")),
+      under=rule((None, GRAVEL)), top_wet=True)
+biome("salt_marsh", id=76, base="swamp", temp=0.6, downfall=0.8,
+      colors={"grass_color": "#8aa452", "foliage_color": "#6f8f42", "water_color": "#4d7a72"},
+      lakes=["terra:wetland_pool"],
+      veg=["minecraft:patch_tall_grass", "minecraft:patch_grass_normal", "minecraft:patch_sugar_cane_swamp",
+           "minecraft:seagrass_swamp", "minecraft:patch_dead_bush"],
+      top=rule((noise("surface_swamp", -0.1), "minecraft:mud"), (None, "minecraft:grass_block")), top_wet=True)
+biome("tidal_flats", id=77, base="beach", temp=0.6, downfall=0.6, colors={"water_color": "#5a7f86"},
+      veg=["minecraft:seagrass_swamp"],
+      top=rule((noise("surface", 0.4), "minecraft:sand"), (noise("surface_secondary", 0.4), "minecraft:clay"),
+               (None, "minecraft:mud")),
+      under=rule((None, "minecraft:mud")), top_wet=True)
+biome("white_cliffs", id=78, base="plains", temp=0.6, downfall=0.6,
+      colors={"grass_color": "#86b25a", "foliage_color": "#6a9a48"},
+      veg=["minecraft:patch_grass_plain", "minecraft:flower_default", "minecraft:patch_bush"],
+      top=None, under=None, deep=(28, CHALK, "after"))
+biome("painted_mountains", id=79, base="badlands", temp=2.0, downfall=0.0,
+      colors={"grass_color": "#90814d", "foliage_color": "#9e814d"},
+      veg=["minecraft:patch_dead_bush_badlands", "minecraft:patch_dry_grass_badlands"],
+      top=None, deep=(60, {"type": "minecraft:bandlands"}, "before"))
+biome("desert_oasis", id=80, base="desert", temp=1.6, downfall=0.4,
+      colors={"grass_color": "#6fb04a", "foliage_color": "#4fa83a"},
+      lakes=["terra:oasis_pool"],
+      veg=["terra:trees_oasis", "minecraft:patch_grass_jungle", "minecraft:patch_tall_grass",
+           "minecraft:patch_sugar_cane_desert", "minecraft:flower_warm"],
+      top=rule((noise("surface", 0.5), "minecraft:sand")), top_wet=True)
+biome("blooming_plateau", id=81, base="meadow", temp=0.6, downfall=0.8,
+      colors={"grass_color": "#7cc25a", "foliage_color": "#62a84a"},
+      veg=["terra:trees_blooming", "minecraft:flower_flower_forest", "minecraft:wildflowers_meadow",
+           "minecraft:flower_meadow", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow"],
+      top=None)
+biome("blooming_valley", id=82, base="plains", temp=0.8, downfall=0.7,
+      colors={"grass_color": "#82c45a", "foliage_color": "#66aa48"},
+      veg=["terra:trees_blooming", "minecraft:flower_flower_forest", "minecraft:flower_plains",
+           "minecraft:wildflowers_meadow", "minecraft:patch_tall_grass", "minecraft:patch_sunflower",
+           "minecraft:patch_firefly_bush_near_water"],
+      top=None)
+biome("lush_valley", id=83, base="forest", temp=0.8, downfall=0.9,
+      colors={"grass_color": "#5fb046", "foliage_color": "#48a038"},
+      veg=["terra:trees_lush_valley", "minecraft:patch_large_fern", "minecraft:patch_tall_grass",
+           "minecraft:flower_forest_flowers", "terra:patch_moss_carpet", "minecraft:patch_berry_common",
+           "minecraft:patch_leaf_litter", "minecraft:patch_firefly_bush_near_water"],
+      top=rule((noise("surface", 0.45), "minecraft:moss_block")))
+biome("salt_flats", id=84, base="desert", temp=2.0, downfall=0.0, precip=False,
+      colors={}, veg=[],
+      top=rule((noise("surface", 0.3), "minecraft:calcite"), (None, "minecraft:white_terracotta")),
+      under=rule((None, "minecraft:white_terracotta")), top_wet=True)
+
 V12 = [f"terra:{n}" for n in B]
+# Vanilla biomes whose surface rules this script also owns (Terra places them; vanilla's rule tree isn't used).
+MANAGED = V12 + ["minecraft:mushroom_fields"]
+EXTRA_TOP = [("minecraft:mushroom_fields", {"type": "minecraft:block", "result_state": "minecraft:mycelium"})]
 
 
 def write(path, obj):
@@ -647,7 +720,10 @@ def main():
     top_seq, under_seq = find_surface_sequences(mr)
     strip(top_seq)
     strip(under_seq)
-    top_rules, under_rules = [], []
+    strip(mr["sequence"])
+    top_rules, under_rules, deep_before, deep_after = [], [], [], []
+    for bid, body in EXTRA_TOP:
+        top_rules.append(biome_rule(bid, y_guard(body)))
     for name, d in B.items():
         bid = f"terra:{name}"
         if d.get("top"):
@@ -659,9 +735,22 @@ def main():
             top_rules.append(biome_rule(bid, body))
         if d.get("under"):
             under_rules.append(biome_rule(bid, d["under"]))
+        if d.get("deep"):
+            # The top `depth` blocks of every column (so cliff faces show it too): "before" replaces the surface as
+            # well (painted mountains), "after" only what lies under the usual surface and soil (white cliffs).
+            depth, body, where = d["deep"]
+            rule_ = biome_rule(bid, {"type": "minecraft:condition", "if_true": {
+                "type": "minecraft:stone_depth", "offset": depth, "surface_type": "floor", "add_surface_depth": False,
+                "secondary_depth_range": 0}, "then_run": body})
+            (deep_before if where == "before" else deep_after).append(rule_)
     # Before the final grass/dirt defaults.
     top_seq[-2:-2] = top_rules
     under_seq[-1:-1] = under_rules
+    seq = mr["sequence"]
+    i0 = next(i for i, r in enumerate(seq) if is_depth(r, 0))
+    seq[i0:i0] = deep_before
+    i4 = next(i for i, r in enumerate(seq) if is_depth(r, 4))
+    seq[i4 + 1:i4 + 1] = deep_after
     write(MATERIAL_RULE, mr)
     print(f"{len(B)} biomes, {len(FEATURES) + len(SELECTORS)} features, {len(PLACED)} placed features, "
           f"{len(members)} tag files")
@@ -673,7 +762,7 @@ deep_frozen_ocean deep_lukewarm_ocean deep_ocean desert flower_forest forest fro
 grove jagged_peaks jungle lukewarm_ocean mangrove_swamp meadow ocean old_growth_birch_forest old_growth_pine_taiga
 old_growth_spruce_taiga pale_garden plains river savanna savanna_plateau snowy_beach snowy_plains snowy_slopes
 snowy_taiga sparse_jungle stony_peaks stony_shore sunflower_plains swamp taiga warm_ocean windswept_forest
-windswept_gravelly_hills windswept_hills windswept_savanna""".split()
+windswept_gravelly_hills windswept_hills windswept_savanna mushroom_fields""".split()
 TERRA_FIXED = ["dark_forest", "forest_sparse", "taiga_sparse", "snowy_taiga_sparse"]
 
 
@@ -764,10 +853,20 @@ def biome_rule(bid, body):
     return {"type": "minecraft:condition", "if_true": {"type": "minecraft:biome", "biome_is": [bid]}, "then_run": body}
 
 
+def is_depth(r, offset):
+    return (isinstance(r, dict) and r.get("type") == "minecraft:condition"
+            and r["if_true"].get("type") == "minecraft:stone_depth" and r["if_true"]["offset"] == offset)
+
+
+def y_guard(body):
+    return {"type": "minecraft:condition", "if_true": {"type": "minecraft:y_above", "anchor": {"absolute": 62},
+            "surface_depth_multiplier": 0, "add_stone_depth": False}, "then_run": body}
+
+
 def strip(seq):
     seq[:] = [r for r in seq if not (isinstance(r, dict) and r.get("type") == "minecraft:condition"
                                      and r["if_true"].get("type") == "minecraft:biome"
-                                     and set(r["if_true"]["biome_is"]) <= set(V12))]
+                                     and set(r["if_true"]["biome_is"]) <= set(MANAGED))]
 
 
 def find_surface_sequences(mr):

@@ -26,6 +26,10 @@ public final class RegionalBiomes {
     static final short RIVERSIDE_FOREST = 65, FLOODPLAIN_FOREST = 66, REDWOODS = 67, MEDITERRANEAN_SCRUB = 68;
     static final short FORESTED_HIGHLAND = 69, TEMPERATE_HIGHLAND = 70, ROCKY_DESERT = 71, CLOUD_FOREST = 72;
     static final short TROPICAL_DRY_FOREST = 73, ASPEN_GROVE = 74;
+    /** v1.3: shore biomes (placed by {@link CoastShaper}), rare land biomes (here) and salt flats (by the carver). */
+    static final short SHINGLE_BEACH = 75, SALT_MARSH = 76, TIDAL_FLATS = 77, WHITE_CLIFFS = 78;
+    static final short PAINTED_MOUNTAINS = 79, DESERT_OASIS = 80, BLOOMING_PLATEAU = 81, BLOOMING_VALLEY = 82;
+    static final short LUSH_VALLEY = 83, SALT_FLATS = 84;
 
     /** Id → biome name in the {@code terra} namespace, for the biome source and the explorer. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -34,7 +38,8 @@ public final class RegionalBiomes {
                 "taiga_mountain", "taiga_clearing", "bog", "moorland", "temperate_rainforest", "aspen_parkland",
                 "tallgrass_prairie", "steppe", "marsh", "riverside_forest", "floodplain_forest", "redwoods",
                 "mediterranean_scrub", "forested_highland", "temperate_highland", "rocky_desert", "cloud_forest",
-                "tropical_dry_forest", "aspen_grove"};
+                "tropical_dry_forest", "aspen_grove", "shingle_beach", "salt_marsh", "tidal_flats", "white_cliffs",
+                "painted_mountains", "desert_oasis", "blooming_plateau", "blooming_valley", "lush_valley", "salt_flats"};
         for (int k = 0; k < n.length; k++) NAMES.put((short) (TUNDRA + k), n[k]);
     }
 
@@ -70,7 +75,12 @@ public final class RegionalBiomes {
     static final float REDWOODS_SHARE = 0.18f, RAINFOREST_SHARE = 0.6f, CLOUD_FOREST_SHARE = 0.6f;
     static final float ASPEN_SHARE = 0.45f, MOORLAND_SHARE = 0.4f, STEPPE_SHARE = 0.5f, PRAIRIE_SHARE = 0.5f;
     static final float MEDITERRANEAN_SHARE = 0.65f, TROPICAL_DRY_SHARE = 0.6f, ROCKY_DESERT_SHARE = 0.7f;
+    /** v1.3 rare land biomes. */
+    static final float PAINTED_SHARE = 0.15f, OASIS_SHARE = 0.06f, BLOOMING_PLATEAU_SHARE = 0.15f;
+    static final float BLOOMING_VALLEY_SHARE = 0.12f, LUSH_VALLEY_SHARE = 0.15f;
     private static final float BROAD_M = 12000f, MID_M = 6500f, SMALL_M = 3500f;
+    /** Oases are small: ~1.2 km wavelength after the biome size factor, patches a few hundred metres across. */
+    private static final float OASIS_M = 500f;
 
     private static final short PLAINS = BiomeClassifier.PLAINS, SNOWY_PLAINS = BiomeClassifier.SNOWY_PLAINS;
     private static final short GROVE = BiomeClassifier.GROVE, DESERT = BiomeClassifier.DESERT;
@@ -90,6 +100,25 @@ public final class RegionalBiomes {
         this.seed = seed;
         int s = (int) (seed ^ (seed >>> 32)) + 200;
         rules = new Rule[]{
+                // Banded terracotta mountains in hot, arid land (sea-level temperature, so high ground counts).
+                rule(s, PAINTED_MOUNTAINS, MID_M, PAINTED_SHARE, p -> ramp(p.temp + 0.0065f * p.altM, 20f, 24f)
+                        * ramp(p.altM, 700f, 1100f) * (1f - ramp(p.treeMoisture, 0.12f, 0.2f)),
+                        DESERT, WINDSWEPT_HILLS, BiomeClassifier.STONY_PEAKS, GROVE),
+                // Small water-and-palm clusters on flat, low desert.
+                rule(s, DESERT_OASIS, OASIS_M, OASIS_SHARE, p -> (1f - ramp(p.altM, 600f, 900f))
+                        * (1f - ramp(p.slope, 0.05f, 0.1f)), DESERT),
+                // Flower-heavy gentle ground: high plateaus and low valleys; lush valleys in wet, warm lowland forest.
+                rule(s, BLOOMING_PLATEAU, MID_M, BLOOMING_PLATEAU_SHARE, p -> ramp(p.altM, 900f, 1200f)
+                        * (1f - ramp(p.altM, 2000f, 2400f)) * (1f - ramp(p.slope, 0.08f, 0.15f)) * ramp(p.temp, 6f, 9f)
+                        * (1f - ramp(p.temp, 17f, 20f)) * ramp(p.treeMoisture, 0.12f, 0.18f), GROVE, PLAINS, FOREST_SPARSE),
+                rule(s, BLOOMING_VALLEY, MID_M, BLOOMING_VALLEY_SHARE, p -> ramp(p.altM, 50f, 150f)
+                        * (1f - ramp(p.altM, 700f, 1000f)) * (1f - ramp(p.slope, 0.06f, 0.12f)) * ramp(p.temp, 9f, 12f)
+                        * (1f - ramp(p.temp, 20f, 23f)) * ramp(p.treeMoisture, 0.14f, 0.2f)
+                        * (1f - ramp(p.treeMoisture, 0.8f, 1f)), GROVE, PLAINS, FOREST_SPARSE, FOREST),
+                rule(s, LUSH_VALLEY, MID_M, LUSH_VALLEY_SHARE, p -> ramp(p.altM, 50f, 150f)
+                        * (1f - ramp(p.altM, 900f, 1300f)) * (1f - ramp(p.slope, 0.1f, 0.18f))
+                        * ramp(p.effMoisture, 0.8f, 1f) * ramp(p.temp, 10f, 13f) * (1f - ramp(p.temp, 22f, 25f)),
+                        FOREST, FOREST_SPARSE, JUNGLE),
                 // The coldest, driest land: gravel and stone.
                 rule(s, POLAR_DESERT, BROAD_M, POLAR_DESERT_SHARE, p -> (1f - ramp(p.temp, -10f, -6f))
                         * (1f - ramp(p.precip, 200f, 350f)), SNOWY_PLAINS, PLAINS, GROVE, WINDSWEPT_HILLS),

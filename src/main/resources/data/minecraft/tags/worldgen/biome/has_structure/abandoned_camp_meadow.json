@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
+    "terra:blooming_plateau",
     "terra:temperate_highland"
   ]
 }

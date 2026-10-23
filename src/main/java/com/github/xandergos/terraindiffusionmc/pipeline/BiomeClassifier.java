@@ -59,6 +59,8 @@ public final class BiomeClassifier {
     static final short JAGGED_PEAKS = 34, PALE_GARDEN = 36, DAPPLED_FOREST = 37;
     /** Shore biomes, assigned by {@link CoastShaper} after classification. */
     static final short BEACH = 130, SNOWY_BEACH = 131, STONY_SHORE = 132, MANGROVE_SWAMP = 134;
+    /** Mushroom islands (v1.3), set on tagged island land by the tile (see {@code LocalTerrainProvider.mushroomFields}). */
+    static final short MUSHROOM_FIELDS = 133;
 
     /**
      * Classify biomes for a grid of pixels.

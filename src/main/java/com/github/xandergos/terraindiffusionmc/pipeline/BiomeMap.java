@@ -25,7 +25,8 @@ public final class BiomeMap {
         int H = i2 - i1, W = j2 - j1;
         final int M = CoastShaper.PLATFORM_LOOK_PX;
         int HH = H + 2 * M, WW = W + 2 * M;
-        float[][] big = p.get(i1 - M, j1 - M, i2 + M, j2 + M, true);
+        byte[] tagsBig = new byte[HH * WW];
+        float[][] big = p.get(i1 - M, j1 - M, i2 + M, j2 + M, true, tagsBig);
         float[] elevBig = big[0], climBig = big[1];
 
         float[][] elev2D = new float[HH][WW];
@@ -47,6 +48,10 @@ public final class BiomeMap {
                 WorldPipelineModelConfig.nativeResolution(), p.getSeed(), rd == null ? null : rd[0], rd == null ? null : rd[1]);
         float[] elevOut = elev.clone();
         CoastShaper.apply(elev2D, M, M, H, W, 1, i1, j1, climate, elevOut, biomes, null);
+        // Mushroom islands, from the ocean features' surface tags.
+        byte[][] tags2 = new byte[H][W];
+        for (int r = 0; r < H; r++) for (int c = 0; c < W; c++) tags2[r][c] = tagsBig[(r + M) * WW + c + M];
+        LocalTerrainProvider.mushroomFields(tags2, elev, biomes, W);
         return new Result(biomes, elev, climate, H, W);
     }
 

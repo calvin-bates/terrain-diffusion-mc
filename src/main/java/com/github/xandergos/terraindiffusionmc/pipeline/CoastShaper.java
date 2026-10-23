@@ -34,6 +34,16 @@ public final class CoastShaper {
     private static final FastNoiseLite PLATFORM_ZONE = noise(7104, 1f / 1200f);
     private static final FastNoiseLite PLATFORM_WIDTH = noise(7105, 1f / 250f);
     private static final FastNoiseLite PLATFORM_ROUGH = noise(7106, 1f / 35f);
+    // v1.3 shore biomes: zones along the coast.
+    private static final FastNoiseLite SHINGLE_MASK = noise(7107, 1f / 700f);
+    private static final FastNoiseLite SALT_MARSH_MASK = noise(7108, 1f / 1500f);
+    private static final FastNoiseLite TIDAL_MASK = noise(7109, 1f / 2000f);
+    private static final FastNoiseLite WHITE_CLIFF_MASK = noise(7110, 1f / 2500f);
+
+    /** Noise levels (2-octave simplex, roughly -0.7..0.7) above which the v1.3 shore biomes form; higher = rarer. */
+    static final float SHINGLE_LEVEL = 0.3f, SALT_MARSH_LEVEL = 0.15f, TIDAL_LEVEL = 0.25f, WHITE_CLIFF_LEVEL = 0.4f;
+    /** Tidal flats: land below this (metres) and sea shallower than {@link #TIDAL_DEPTH_M}. */
+    static final float TIDAL_LAND_M = 1.5f, TIDAL_DEPTH_M = 2.5f;
 
     /** Share of sea cliffs with a wave-cut platform in front (noise level; lower = more). */
     private static final float PLATFORM_ZONE_LEVEL = 0f;
@@ -149,7 +159,12 @@ public final class CoastShaper {
                             raise *= 1f - smoothstep(0.2f, 0.45f, valley);
                             elevOut[k] += raise;
                             if (raise > CLIFF_MIN_RAISE_M) {
-                                if (raise > STONY_RAISE_M && d <= 0.4f * R + 1) biomes[k] = BiomeClassifier.STONY_SHORE;
+                                // White chalk cliffs in rare temperate zones (calcite and diorite under the soil).
+                                if (temp >= 5f && temp <= 18f && WHITE_CLIFF_MASK.GetNoise(wx, wz) > WHITE_CLIFF_LEVEL) {
+                                    biomes[k] = RegionalBiomes.WHITE_CLIFFS;
+                                } else if (raise > STONY_RAISE_M && d <= 0.4f * R + 1) {
+                                    biomes[k] = BiomeClassifier.STONY_SHORE;
+                                }
                                 continue;   // no beach or mangrove on a cliff
                             }
                         }
@@ -162,6 +177,20 @@ public final class CoastShaper {
                     biomes[k] = BiomeClassifier.MANGROVE_SWAMP;
                     continue;
                 }
+                float gentle = (high - e) / (R * metresPerBlock);
+                // ---- Salt marsh: the cool counterpart of mangroves, on very low, gentle, sheltered shores and river
+                // mouths in temperate climates ----
+                float mouth = riverMouth != null ? riverMouth[k] : 0f;
+                if (temp >= 5f && temp <= 20f && precip >= 500f && e < 2.5f && gentle < 0.08f
+                        && (mouth > 0.3f || SALT_MARSH_MASK.GetNoise(wx, wz) > SALT_MARSH_LEVEL)) {
+                    biomes[k] = RegionalBiomes.SALT_MARSH;
+                    continue;
+                }
+                // ---- Tidal flats: very low, flat land on coasts with very shallow water (the sea side is below) ----
+                if (temp >= 4f && e < TIDAL_LAND_M && gentle < 0.05f && TIDAL_MASK.GetNoise(wx, wz) > TIDAL_LEVEL) {
+                    biomes[k] = RegionalBiomes.TIDAL_FLATS;
+                    continue;
+                }
 
                 // ---- Beaches and stony shores ----
                 float width = (0.7f + 1.3f * (0.5f + 0.5f * BEACH_WIDTH.GetNoise(wx, wz))) * scale;   // 20–60 m
@@ -170,6 +199,10 @@ public final class CoastShaper {
                 float steep = (high - e) / (R * metresPerBlock);
                 if (steep > 0.35f || ROCKY_MASK.GetNoise(wx, wz) > 0.5f) {
                     biomes[k] = BiomeClassifier.STONY_SHORE;
+                } else if (temp >= 2f && temp <= 22f
+                        && (steep > 0.18f || SHINGLE_MASK.GetNoise(wx, wz) > SHINGLE_LEVEL)) {
+                    // Shingle: gravel and cobble beaches below rocky or steepish ground on temperate coasts.
+                    biomes[k] = RegionalBiomes.SHINGLE_BEACH;
                 } else if (temp < 0f || isSnowy(biomes[k])) {
                     biomes[k] = BiomeClassifier.SNOWY_BEACH;
                 } else {
@@ -178,6 +211,33 @@ public final class CoastShaper {
             }
         }
         platforms(smooth, upH, upW, cropI, cropJ, H, W, scale, i1, j1, elevOut, biomes, riverMouth, metresPerBlock);
+        tidalWater(smooth, upH, upW, cropI, cropJ, H, W, scale, i1, j1, climate, elevOut, biomes, metresPerBlock);
+    }
+
+    /**
+     * The sea side of tidal flats: very shallow sea (under {@link #TIDAL_DEPTH_M}) within the shore band of flat land
+     * in a tidal zone takes the tidal flats biome too (mud and clay floors under a block of water), so the flats run
+     * out into the shallows instead of stopping at the waterline.
+     */
+    private static void tidalWater(float[][] smooth, int upH, int upW, int cropI, int cropJ, int H, int W, int scale,
+                                   int i1, int j1, float[] climate, float[] elevOut, short[] biomes, float metresPerBlock) {
+        int R = 2 * scale;
+        for (int r = 0; r < H; r++) {
+            int si = cropI + r;
+            for (int c = 0; c < W; c++) {
+                int sj = cropJ + c, k = r * W + c;
+                float e = smooth[si][sj];
+                if (e >= 0f || e < -TIDAL_DEPTH_M || elevOut[k] >= 0f) continue;
+                float wx = (j1 + c) * metresPerBlock, wz = (i1 + r) * metresPerBlock;
+                if (TIDAL_MASK.GetNoise(wx, wz) <= TIDAL_LEVEL) continue;
+                if (climate != null && climate[k] < 4f) continue;
+                float dl = landDistance(smooth, upH, upW, si, sj, R);
+                if (dl == Float.MAX_VALUE) continue;
+                // Only off flat land: the highest ground within the band stays low.
+                if (highest(smooth, upH, upW, si, sj, R, 0f) > TIDAL_LAND_M + 2f) continue;
+                biomes[k] = RegionalBiomes.TIDAL_FLATS;
+            }
+        }
     }
 
     /**

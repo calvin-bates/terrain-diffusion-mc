@@ -3,11 +3,14 @@
   "values": [
     "terra:aspen_parkland",
     "terra:birch_taiga",
+    "terra:blooming_valley",
     "terra:boreal_forest",
+    "terra:desert_oasis",
     "terra:forested_highland",
     "terra:mediterranean_scrub",
     "terra:polar_desert",
     "terra:rocky_desert",
+    "terra:salt_flats",
     "terra:siberian_taiga",
     "terra:steppe",
     "terra:taiga_clearing",
@@ -15,6 +18,7 @@
     "terra:tallgrass_prairie",
     "terra:treeline",
     "terra:tropical_dry_forest",
-    "terra:tundra"
+    "terra:tundra",
+    "terra:white_cliffs"
   ]
 }

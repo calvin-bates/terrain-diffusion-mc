@@ -92,6 +92,15 @@ public final class OceanFeatures {
     public static final byte TAG_TROUGH = 20;
     /** Strandflat: a low rock plain on a cold coast, strewn with skerries: bare stone, gravel and moss. */
     public static final byte TAG_STRANDFLAT = 21;
+    /** Land of a mushroom island (biomes plan v1.3): the tile turns it into mushroom fields. */
+    public static final byte TAG_MUSHROOM = 22;
+    /**
+     * Mushroom islands: this share of hotspot islands (past the chain's head) and island-arc islands whose sea is at
+     * least {@link #MUSHROOM_MIN_TEMP} °C (never cold or frozen seas). They are already isolated (islands keep clear of
+     * continents, shelves and archipelagos). Plan: about 1 in 8.
+     */
+    static final double MUSHROOM_CHANCE = 0.125;
+    static final float MUSHROOM_MIN_TEMP = 5f;
 
     /** Whether a surface tag is a coral reef of any kind. */
     public static boolean isReef(byte tag) {
@@ -436,6 +445,8 @@ public final class OceanFeatures {
         double guideCrater;
         /** Only the island guide is wanted: skip everything else in {@link #shape}. */
         boolean guideOnly;
+        /** The island about to be added is a mushroom island: tag its land {@link #TAG_MUSHROOM}. */
+        boolean mushroomNext;
         // Coastal cones on young islands (round 4), recorded by the island code; see #coastEdit.
         /** Distance from the nearest tuff ring's centre over its radius (wobbly), or infinity if none is near. */
         double tuffU;
@@ -1090,6 +1101,23 @@ public final class OceanFeatures {
         }
     }
 
+    /** Whether the island with hash {@code h} in a sea of {@code seaTemp} °C is a mushroom island. */
+    static boolean isMushroom(long h, float seaTemp) {
+        return seaTemp >= MUSHROOM_MIN_TEMP && unit(mix(h + 0x3C3CL)) < MUSHROOM_CHANCE;
+    }
+
+    private static boolean isIslandStage(String stage) {
+        return stage.equals("volcanic_island") || stage.equals("flooded_caldera") || stage.equals("barrier_reef_island");
+    }
+
+    /** The island just added ({@code c} metres above its floor here) is a mushroom island: its land takes the tag. */
+    private static void tagMushroom(Ctx ctx, double c) {
+        if (c > ctx.surfaceC) {
+            ctx.surfaceC = c;
+            ctx.surfaceTag = TAG_MUSHROOM;
+        }
+    }
+
     private boolean hasBackArc(long pair) { return unit(mix(pair ^ 0xBACCL)) < BACKARC_CHANCE; }
 
     /**
@@ -1392,6 +1420,9 @@ public final class OceanFeatures {
                     if (!inside(ch.cz[k], ch.cx[k], i0, j0, i1, j1)) continue;
                     float value = stage.equals("raised_coral_island") ? (float) raisedLift(ch.hk[k]) : (float) ch.peak[k];
                     out.add(new Landmark(stage, ch.cz[k], ch.cx[k], value));
+                    if (k > 0 && isIslandStage(stage) && isMushroom(ch.hk[k], coarse.temperature(ch.cz[k], ch.cx[k]))) {
+                        out.add(new Landmark("mushroom_island", ch.cz[k], ch.cx[k], value));
+                    }
                 }
                 if (ch.ridge && ch.count >= 4) {
                     // One marker per aseismic ridge, on its crest between two volcanoes past the islands.
@@ -1498,6 +1529,7 @@ public final class OceanFeatures {
                     if (!inside(c[1], c[0], i0, j0, i1, j1)) continue;
                     String type = extra == ARC_CALDERA ? "flooded_caldera" : (extra == ARC_REEF ? "barrier_reef_island" : "arc_island");
                     out.add(new Landmark(type, c[1], c[0], (float) peak));
+                    if (isMushroom(h, coarse.temperature(c[1], c[0]))) out.add(new Landmark("mushroom_island", c[1], c[0], (float) peak));
                 }
                 // Forearc islands.
                 for (long k = (long) Math.floor(amin / FOREARC_SPACING) - 1; k <= (long) Math.ceil(amax / FOREARC_SPACING) + 1; k++) {
@@ -1906,7 +1938,9 @@ public final class OceanFeatures {
                 int extra = arcExtra(peak, warm, h);
                 double relief = peak - floor;
                 int style = (extra == ARC_CALDERA ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
-                island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
+                double cc = relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief);
+                island(ctx, cc, floor);
+                if (isMushroom(h, coarse.temperature(c[1], c[0]))) tagMushroom(ctx, cc);
                 if (extra == ARC_PLAIN && peak > 150) {
                     crater(ctx, r, ang, (0.3 + 0.5 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 50 + 80 * unit(mix(h + 121))), h);
                 }
@@ -1944,7 +1978,9 @@ public final class OceanFeatures {
                     if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
                     boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
                     String stage = volcanoStage(ch.peak[k], warm, k, ch.hk[k], ch.lift[k]);
+                    ctx.mushroomNext = k > 0 && isMushroom(ch.hk[k], coarse.temperature(ch.cz[k], ch.cx[k]));
                     addVolcano(x, z, ch.cx[k], ch.cz[k], r, ch.radius[k], ch.peak[k], floor, stage, ch.hk[k], k, ctx);
+                    ctx.mushroomNext = false;
                 }
             }
         }
@@ -2181,7 +2217,9 @@ public final class OceanFeatures {
                 double ang = Math.atan2(z - vcz, x - vcx);
                 double relief = peak - floor;
                 int style = (stage.equals("flooded_caldera") ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
-                island(ctx, relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief), floor);
+                double cc = relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief);
+                island(ctx, cc, floor);
+                if (ctx.mushroomNext) tagMushroom(ctx, cc);
                 if (stage.equals("volcanic_island") && peak > 150) {
                     crater(ctx, r, ang, (0.5 + 0.8 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 70 + 110 * unit(mix(h + 121))), h);
                 }

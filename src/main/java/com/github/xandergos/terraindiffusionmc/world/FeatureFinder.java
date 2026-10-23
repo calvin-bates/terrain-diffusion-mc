@@ -58,6 +58,7 @@ public final class FeatureFinder {
         KINDS.put("trench", new String[]{"trench", "trench"});
         KINDS.put("archipelago", new String[]{"archipelago", "archipelago sea"});
         KINDS.put("rift_sea", new String[]{"rift_sea", "young rift sea"});
+        KINDS.put("mushroom_island", new String[]{"mushroom_island", "mushroom island"});
         KINDS.put("active_margin", new String[]{"active_margin", "active continental margin (trench off a coastal range)"});
         KINDS.put("vent_field", new String[]{"vent_field", "hydrothermal vent field"});
         KINDS.put("delta", new String[]{"delta", "river delta"});

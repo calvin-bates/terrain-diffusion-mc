@@ -1,6 +1,8 @@
 {
   "replace": false,
   "values": [
-    "terra:rocky_desert"
+    "terra:desert_oasis",
+    "terra:rocky_desert",
+    "terra:salt_flats"
   ]
 }

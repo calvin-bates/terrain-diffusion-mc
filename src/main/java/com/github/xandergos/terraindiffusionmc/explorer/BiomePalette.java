@@ -90,6 +90,17 @@ public final class BiomePalette {
         put(72, "Cloud Forest", 0x2FA06A);
         put(73, "Tropical Dry Forest", 0xA0A040);
         put(74, "Aspen Grove", 0xE8C840);
+        put(75, "Shingle Beach", 0xB8B2A0);
+        put(76, "Salt Marsh", 0x7FA06A);
+        put(77, "Tidal Flats", 0x8C8466);
+        put(78, "White Cliffs", 0xF0EEE4);
+        put(79, "Painted Mountains", 0xC8603A);
+        put(80, "Desert Oasis", 0x30C0A0);
+        put(81, "Blooming Plateau", 0xE070C0);
+        put(82, "Blooming Valley", 0xF09AD0);
+        put(83, "Lush Valley", 0x40C850);
+        put(84, "Salt Flats", 0xFFFFFF);
+        put(133, "Mushroom Fields", 0xA070B0);
         // Shores
         put(130, "Beach", 0xF5E08A);
         put(131, "Snowy Beach", 0xF2EEDC);

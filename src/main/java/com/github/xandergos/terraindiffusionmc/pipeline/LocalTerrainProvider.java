@@ -557,12 +557,35 @@ public final class LocalTerrainProvider {
                         return region;
                     });
             if (res != null) {
+                saltFlats(res, data.biomeIds);
                 data.surfaceY = res.surfaceY;
                 data.waterY = res.waterY;
                 data.waterIsLake = res.isLake;
             }
         } catch (RuntimeException e) {
             LOG.error("Terra rivers failed for tile at ({}, {}); generating it without rivers", j1, i1, e);
+        }
+    }
+
+    /**
+     * Salt flats (biomes plan v1.3): lakes the hydrology places in arid land (desert, rocky desert, painted mountains)
+     * dry out into flat white ground at the lake's level instead of holding water (Bonneville, Uyuni). The hydrology
+     * is unchanged (streams still end there); only the carver's output is: the lake column's ground rises to its
+     * water level, the water goes, and the biome becomes salt flats. Lakes have one flat level, so the flat is level.
+     */
+    private static void saltFlats(RiverCarver.Result res, short[][] biomes) {
+        if (res.isLake == null || res.waterY == null || res.surfaceY == null) return;
+        int H = biomes.length, W = biomes[0].length;
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                if (!res.isLake[r][c] || res.waterY[r][c] == Short.MIN_VALUE) continue;
+                short b = biomes[r][c];
+                if (b != BiomeClassifier.DESERT && b != RegionalBiomes.ROCKY_DESERT && b != RegionalBiomes.PAINTED_MOUNTAINS) continue;
+                res.surfaceY[r][c] = res.waterY[r][c];
+                res.waterY[r][c] = Short.MIN_VALUE;
+                res.isLake[r][c] = false;
+                biomes[r][c] = RegionalBiomes.SALT_FLATS;
+            }
         }
     }
 
@@ -995,8 +1018,10 @@ public final class LocalTerrainProvider {
         CoastShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
+        byte[][] blockTags1 = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
+        mushroomFields(blockTags1, elevFlat, biomeFlat, W);
         HeightmapData data = buildHeightmapData(elevFlat, biomeFlat, H, W);
-        data.oceanTags = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
+        data.oceanTags = blockTags1;
         return data;
     }
 
@@ -1059,8 +1084,10 @@ public final class LocalTerrainProvider {
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
+        byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
+        mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
         HeightmapData data = buildHeightmapData(elevOut, biomeFlat, H, W);
-        data.oceanTags = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
+        data.oceanTags = blockTagsUp;
         return data;
     }
 
@@ -1126,6 +1153,20 @@ public final class LocalTerrainProvider {
      * wobbles smoothly by up to ~0.7 pixel, so tagged patches get natural edges. The wobble depends only on the
      * block position, so neighbouring tiles agree.
      */
+    /**
+     * Mushroom islands (biomes plan v1.3): land the ocean features tagged {@link OceanFeatures#TAG_MUSHROOM} becomes
+     * mushroom fields, shores included (vanilla's mushroom islands have mycelium to the water).
+     */
+    static void mushroomFields(byte[][] tags, float[] elev, short[] biomes, int W) {
+        if (tags == null) return;
+        for (int r = 0; r < tags.length; r++) {
+            for (int c = 0; c < W; c++) {
+                int k = r * W + c;
+                if (tags[r][c] == OceanFeatures.TAG_MUSHROOM && elev[k] >= 0f) biomes[k] = BiomeClassifier.MUSHROOM_FIELDS;
+            }
+        }
+    }
+
     private static byte[][] blockTags(byte[] tags, int ni0, int nj0, int nH, int nW, int i1, int j1, int H, int W, int scale) {
         boolean any = false;
         for (byte t : tags) if (t != OceanFeatures.TAG_NONE) { any = true; break; }

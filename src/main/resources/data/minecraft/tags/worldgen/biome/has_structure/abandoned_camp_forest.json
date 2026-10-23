@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "terra:floodplain_forest",
+    "terra:lush_valley",
     "terra:riverside_forest"
   ]
 }
