@@ -66,6 +66,7 @@ public final class FeatureFinder {
         KINDS.put("spit", new String[]{"spit", "sand spit"});
         KINDS.put("tombolo", new String[]{"tombolo", "tombolo"});
         KINDS.put("cuspate_foreland", new String[]{"cuspate_foreland", "cuspate foreland"});
+        KINDS.put("barrier_island", new String[]{"barrier_island", "barrier island"});
         KINDS.put("fringing_reef", new String[]{"fringing_reef", "fringing reef"});
         KINDS.put("barrier_reef", new String[]{"barrier_reef", "offshore barrier reef"});
         KINDS.put("carbonate_bank", new String[]{"carbonate_bank", "carbonate bank"});
@@ -117,8 +118,13 @@ public final class FeatureFinder {
             findRia(source, server, pi, pj, scale);
             return 1;
         }
-        if (word.equals("spit") || word.equals("tombolo") || word.equals("cuspate_foreland")) {
-            int k = word.equals("spit") ? CoastPlan.SPIT : (word.equals("tombolo") ? CoastPlan.TOMBOLO : CoastPlan.FORELAND);
+        if (word.equals("spit") || word.equals("tombolo") || word.equals("cuspate_foreland") || word.equals("barrier_island")) {
+            int k = switch (word) {
+                case "spit" -> CoastPlan.SPIT;
+                case "tombolo" -> CoastPlan.TOMBOLO;
+                case "barrier_island" -> CoastPlan.BARRIER;
+                default -> CoastPlan.FORELAND;
+            };
             findCoast(source, server, k, kind[1], pi, pj, scale);
             return 1;
         }

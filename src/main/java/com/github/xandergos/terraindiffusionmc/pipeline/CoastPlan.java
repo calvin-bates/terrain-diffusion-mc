@@ -16,6 +16,9 @@ import java.util.List;
  *       offshore to the mainland, bowed a little by the drift.</li>
  *   <li><b>Cuspate forelands</b> (Dungeness, Cape Hatteras): a triangular point of sand built out from a long, straight,
  *       gentle coast.</li>
+ *   <li><b>Barrier islands</b> (biomes plan v1.3; Outer Banks, Padre Island, the Frisian Islands): a chain of long, low
+ *       sand islands parallel to a straight, gentle coast over a wide shallow shelf, 0.5-1.5 km out, broken by tidal
+ *       inlets, with the shallow sea behind them as a lagoon.</li>
  * </ul>
  *
  * <p>The region stage: region (ri, rj) owns native pixels {@code [ri*SIZE, (ri+1)*SIZE)} on both axes and analyses its
@@ -55,7 +58,13 @@ public final class CoastPlan {
      */
     public static final float RAISE_LOW = -SPIT_MAX_DEPTH - 5.5f, RAISE_HIGH = 5.5f;
 
-    public static final int SPIT = 0, TOMBOLO = 1, FORELAND = 2;
+    public static final int SPIT = 0, TOMBOLO = 1, FORELAND = 2, BARRIER = 3;
+
+    /** Barrier islands: one chain at most per cell of this many pixels (3.8 km), with this chance where a site suits. */
+    private static final int BARRIER_CELL = 128;
+    private static final double BARRIER_CHANCE = 0.6;
+    /** The shelf a chain stands on: never deeper than this (metres) out to the chain and a little past it. */
+    private static final float BARRIER_MAX_DEPTH = 12f;
 
     /** Supplies {elevation, climate} for a native window, as {@link WorldPipeline#get} does. */
     public interface Source {
@@ -429,6 +438,28 @@ public final class CoastPlan {
                 }
             }
         }
+        // Barrier islands: at most one chain per barrier cell.
+        for (int ci = 0; ci < SIZE / BARRIER_CELL; ci++) {
+            for (int cj = 0; cj < SIZE / BARRIER_CELL; cj++) {
+                int best = -1;
+                long bestH = Long.MAX_VALUE;
+                for (int i = own0i + ci * BARRIER_CELL; i < own0i + (ci + 1) * BARRIER_CELL; i += 2) {
+                    for (int j = own0j + cj * BARRIER_CELL; j < own0j + (cj + 1) * BARRIER_CELL; j += 2) {
+                        int k = an.index(i, j);
+                        if (k < 0 || !an.isShore(k)) continue;
+                        if (archipelago.apply((double) i, (double) j) > 0.3f) continue;
+                        long h = mix(seed ^ ((long) i * 0x2545F4914F6CDD1DL) ^ ((long) j * 0x9E3779B97F4A7C15L) ^ 0xBA22L);
+                        if (h >= bestH || !barrierSite(an, k)) continue;
+                        bestH = h;
+                        best = k;
+                    }
+                }
+                if (best < 0) continue;
+                long cellH = mix(seed ^ ((long) (own0i / BARRIER_CELL + ci) * 0x4F1BBCDCBFA53E0BL)
+                        ^ ((long) (own0j / BARRIER_CELL + cj) * 0x632BE59BD9B4E019L) ^ 0xBA23L);
+                if (unit(cellH) < BARRIER_CHANCE) barrierChain(an, best, cellH, bars);
+            }
+        }
         // Tombolos: small islands whose middle lies in this region's own square.
         tombolos(seed, an, own0i, own0j, archipelago, bars);
         return new CoastPlan(Collections.unmodifiableList(bars), Collections.unmodifiableList(forelands), stats);
@@ -523,6 +554,101 @@ public final class CoastPlan {
         float off = 1000f * (float) unit(mix(h + 4));
         return new Foreland(x - n[0] * 2, z - n[1] * 2, n[0], n[1], apexLen + 2, baseLen,
                 1.5f + 1.5f * (float) unit(mix(h + 3)), off, -off);
+    }
+
+    /**
+     * Whether shore pixel k suits a barrier chain: a gentle sandy shore on a straight stretch of coast (the coast's
+     * general line steady for ~1 km either way), with shallow water (no deeper than {@link #BARRIER_MAX_DEPTH}) all the
+     * way out to ~1.8 km.
+     */
+    private static boolean barrierSite(Analysis an, int k) {
+        float[] n = an.normalFar(k);
+        if (n == null || !an.gentleSandy(k, n, 10f, 6f)) return false;
+        float tx = -n[1], tz = n[0];
+        float x = an.j0 + k % an.W + 0.5f, z = an.i0 + k / an.W + 0.5f;
+        for (int s = -36; s <= 36; s += 12) {
+            float f = an.landFarAt(x + tx * s, z + tz * s);
+            if (Float.isNaN(f) || Math.abs(f - 0.5f) > 0.12f) return false;
+        }
+        for (int s = 6; s <= 60; s += 6) {
+            float e = an.elevAt(x + n[0] * s, z + n[1] * s);
+            if (Float.isNaN(e) || e >= 0f || e < -BARRIER_MAX_DEPTH) return false;
+        }
+        return true;
+    }
+
+    /**
+     * A barrier chain from shore pixel k: a line 15-45 pixels out from the local shore along the coast's general line,
+     * 70-120 pixels long, wandering a little, cut by 1-3 tidal inlets (and wherever the water under it gets too deep or is land);
+     * each piece at least 12 pixels long becomes a low sand island 60-150 m wide, narrowing at its ends.
+     */
+    private static void barrierChain(Analysis an, int k, long h, List<Bar> bars) {
+        List<Bar> out = new ArrayList<>();
+        float[] n = an.normalFar(k);
+        float tx = -n[1], tz = n[0];
+        float x0 = an.j0 + k % an.W + 0.5f, z0 = an.i0 + k / an.W + 0.5f;
+        float off = 15 + 30 * (float) unit(mix(h + 1)), len = 70 + 50 * (float) unit(mix(h + 2));
+        float halfW = 2.5f + 2.5f * (float) unit(mix(h + 3)), crest = 2f + 1.5f * (float) unit(mix(h + 4));
+        int inlets = 1 + (int) (2 * unit(mix(h + 5)));
+        float[] gapAt = new float[inlets], gapW = new float[inlets];
+        for (int g = 0; g < inlets; g++) {
+            gapAt[g] = -len / 2 + len * (0.15f + 0.7f * (float) unit(mix(h + 10 + g)));
+            gapW[g] = 3 + 3 * (float) unit(mix(h + 20 + g));
+        }
+        float wobPhase = 100f * (float) unit(mix(h + 6));
+        List<float[]> piece = new ArrayList<>();
+        for (int st = 0; st <= (int) len; st++) {
+            float s = -len / 2 + st;
+            boolean gap = false;
+            for (int g = 0; g < inlets; g++) if (Math.abs(s - gapAt[g]) < gapW[g] / 2) gap = true;
+            // A set distance out from the local shore (marching seaward from well inland), so the chain follows the
+            // coast's bends instead of cutting across them.
+            float bx = x0 + tx * s - n[0] * 30, bz = z0 + tz * s - n[1] * 30, shore = Float.NaN;
+            for (int m = 0; m <= 90; m++) {
+                float em = an.elevAt(bx + n[0] * m, bz + n[1] * m);
+                if (Float.isNaN(em)) break;
+                if (em < 0f) { shore = m; break; }
+            }
+            if (Float.isNaN(shore)) { endIsland(piece, out); continue; }
+            float o = shore + off + 3f * (float) Math.sin((s + wobPhase) / 23f) + 1.5f * (float) Math.sin((s + wobPhase) / 9f);
+            float px = bx + n[0] * o, pz = bz + n[1] * o;
+            float e = an.elevAt(px, pz);
+            if (gap || Float.isNaN(e) || e >= -0.5f || e < -BARRIER_MAX_DEPTH) {
+                endIsland(piece, out);
+                continue;
+            }
+            float c = crest * (0.75f + 0.25f * (float) Math.sin((s + wobPhase) / 7f));
+            piece.add(new float[]{px, pz, halfW, c});
+        }
+        endIsland(piece, out);
+        // One row of islands: give way to a chain this region already has within ~450 m (15 pixels).
+        for (Bar nb : out) {
+            for (Bar ob : bars) {
+                if (ob.kind != BARRIER) continue;
+                for (int i = 0; i < nb.x.length; i += 3) {
+                    for (int j = 0; j < ob.x.length; j += 3) {
+                        float dx = nb.x[i] - ob.x[j], dz = nb.z[i] - ob.z[j];
+                        if (dx * dx + dz * dz < 15 * 15) return;
+                    }
+                }
+            }
+        }
+        bars.addAll(out);
+    }
+
+    /** Turns a run of chain points into an island (narrower and lower toward its ends), if it is long enough. */
+    private static void endIsland(List<float[]> piece, List<Bar> out) {
+        int m = piece.size();
+        if (m >= 12) {
+            List<float[]> pts = new ArrayList<>(m);
+            for (int i = 0; i < m; i++) {
+                float end = Math.min(1f, Math.min(i, m - 1 - i) / 8f);
+                float[] p = piece.get(i);
+                pts.add(new float[]{p[0], p[1], p[2] * (0.4f + 0.6f * end), p[3] * (0.6f + 0.4f * end)});
+            }
+            out.add(new Bar(BARRIER, pts));
+        }
+        piece.clear();
     }
 
     /** Tombolos for the small islands (20-3000 pixels) centred in the region's own square. */
