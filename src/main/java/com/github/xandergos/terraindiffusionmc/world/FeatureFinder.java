@@ -79,6 +79,11 @@ public final class FeatureFinder {
         KINDS.put("salt_domes", new String[]{"salt_domes", "salt dome province"});
         KINDS.put("glacial_trough", new String[]{"glacial_trough", "glacial trough"});
         KINDS.put("strandflat", new String[]{"strandflat", "strandflat with skerries"});
+        KINDS.put("volcano", new String[]{"volcano", "volcano"});
+        KINDS.put("stratovolcano", new String[]{"stratovolcano", "stratovolcano"});
+        KINDS.put("shield_volcano", new String[]{"shield_volcano", "shield volcano"});
+        KINDS.put("caldera", new String[]{"caldera", "volcano with a caldera"});
+        KINDS.put("lava_field", new String[]{"lava_field", "lava field"});
     }
 
     /** Farthest search, in native pixels (1200 km). */
@@ -122,6 +127,11 @@ public final class FeatureFinder {
         }
         if (word.equals("ria")) {
             findRia(source, server, pi, pj, scale);
+            return 1;
+        }
+        if (word.equals("volcano") || word.equals("stratovolcano") || word.equals("shield_volcano") || word.equals("caldera")
+                || word.equals("lava_field")) {
+            findVolcano(source, server, word, kind[1], pi, pj, scale);
             return 1;
         }
         if (word.equals("spit") || word.equals("tombolo") || word.equals("cuspate_foreland") || word.equals("barrier_island")) {
@@ -329,6 +339,36 @@ public final class FeatureFinder {
     /** Farthest coarse search for cold seas (coarse pixels either way: 512 is about 3900 km) and most regions planned. */
     private static final int ICE_COARSE_MAX_HALF = 512, ICE_MAX_CHECKS = 40;
 
+    /** Landform cells (~123 km) searched around the player for volcanoes: about 550 km. */
+    private static final int VOLCANO_RINGS = 4;
+
+    private static void findVolcano(CommandSourceStack source, MinecraftServer server, String word, String name,
+                                    double pi, double pj, int scale) {
+        Thread worker = new Thread(() -> {
+            try {
+                OceanFeatures.Landmark l = LocalTerrainProvider.findNearestVolcano(word, pi, pj, VOLCANO_RINGS, reached -> {
+                    int km = Math.round(reached * 30 / 1000f);
+                    server.execute(() -> source.sendSuccess(() -> Component.literal("…searched about " + km + " km around you")
+                            .withStyle(ChatFormatting.GRAY), false));
+                });
+                server.execute(() -> {
+                    if (l == null) {
+                        source.sendFailure(Component.literal("No " + name + " within about "
+                                + Math.round((VOLCANO_RINGS + 0.5f) * com.github.xandergos.terraindiffusionmc.pipeline.Landforms.cellPx() * 30 / 1000f)
+                                + " km. Stratovolcanoes need prominent mountain peaks, shields broad, gentle high ground."));
+                        return;
+                    }
+                    report(source, name, l, pi, pj, scale);
+                });
+            } catch (Exception e) {
+                LOG.error("terra-find volcano failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
     /** Farthest reef or bank search (600 km) and most spots whose terrain is computed. */
     private static final int SHALLOW_RADIUS_PX = 20_000, SHALLOW_MAX_CHECKS = 25;
 
@@ -532,6 +572,7 @@ public final class FeatureFinder {
         return switch (l.type()) {
             case "volcanic_island", "arc_island", "flooded_caldera", "barrier_reef_island" -> "peak " + v + " m";
             case "landslide_scar" -> "on an island " + v + " m high";
+            case "stratovolcano", "shield_volcano", "caldera" -> "summit about " + v + " m";
             case "atoll" -> "reef at sea level";
             case "raised_coral_island" -> "old reef rim about " + v + " m up";
             case "aseismic_ridge" -> "crest about " + (-v) + " m down";

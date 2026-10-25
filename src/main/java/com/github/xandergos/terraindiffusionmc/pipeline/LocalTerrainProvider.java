@@ -417,6 +417,38 @@ public final class LocalTerrainProvider {
         return new DeltaSearch(best, count, reached);
     }
 
+    /**
+     * The nearest volcano marker of {@code type} ("stratovolcano", "shield_volcano", "caldera", "lava_field", or
+     * "volcano" for any of the first three) to native pixel (pi, pj), searching landform cells ring by ring out to
+     * {@code maxRings}. Each new cell computes the model's terrain around its candidate (seconds), on the inference
+     * thread by itself. Never call this on the server thread. {@code progress} gets the radius searched (pixels).
+     */
+    public static OceanFeatures.Landmark findNearestVolcano(String type, double pi, double pj, int maxRings,
+                                                            java.util.function.IntConsumer progress) throws Exception {
+        int span = Landforms.cellPx();
+        int ci = Math.floorDiv((int) Math.floor(pi), span), cj = Math.floorDiv((int) Math.floor(pj), span);
+        OceanFeatures.Landmark best = null;
+        double bestD = Double.MAX_VALUE;
+        for (int ring = 0; ring <= maxRings; ring++) {
+            if ((ring - 1) * (double) span > bestD) break;
+            for (int gi = ci - ring; gi <= ci + ring; gi++) {
+                for (int gj = cj - ring; gj <= cj + ring; gj++) {
+                    if (Math.max(Math.abs(gi - ci), Math.abs(gj - cj)) != ring) continue;
+                    final int a = gi, b = gj;
+                    List<OceanFeatures.Landmark> ms = submitToInferenceThread(() -> getInstance().pipeline.landforms().cellMarkers(a, b));
+                    for (OceanFeatures.Landmark m : ms) {
+                        boolean ok = type.equals("volcano") ? !m.type().equals("lava_field") : m.type().equals(type);
+                        if (!ok) continue;
+                        double d = Math.hypot(m.i() - pi, m.j() - pj);
+                        if (d < bestD) { bestD = d; best = m; }
+                    }
+                }
+            }
+            progress.accept(ring * span + span / 2);
+        }
+        return best;
+    }
+
     /** A ria: its mouth and where its traced valley ends, in native pixels. */
     public record Ria(float mouthI, float mouthJ, float headI, float headJ) {}
 
@@ -964,6 +996,7 @@ public final class LocalTerrainProvider {
                     : handleUpsampled(i1, j1, i2, j2, scale);
             long tr = TerraPerf.start();
             applyRivers(data, i1, j1, Math.max(1, scale));
+            noWaterOnLava(data);
             TerraPerf.end("tile.rivers", tr);
             long computedWindowCountAfter = pipeline.getTotalComputedWindowCount();
 
@@ -1044,6 +1077,7 @@ public final class LocalTerrainProvider {
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
         byte[][] blockTags1 = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
         mushroomFields(blockTags1, elevFlat, biomeFlat, W);
+        volcanicBiomes(blockTags1, elevFlat, biomeFlat, W);
         HeightmapData data = buildHeightmapData(elevFlat, biomeFlat, H, W);
         data.oceanTags = blockTags1;
         return data;
@@ -1119,6 +1153,7 @@ public final class LocalTerrainProvider {
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
         byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
+        volcanicBiomes(blockTagsUp, elevOut, biomeFlat, W);
         HeightmapData data = buildHeightmapData(elevOut, biomeFlat, H, W);
         data.oceanTags = blockTagsUp;
         TerraPerf.end("tile.deltas", t0);
@@ -1197,6 +1232,44 @@ public final class LocalTerrainProvider {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
                 if (tags[r][c] == OceanFeatures.TAG_MUSHROOM && elev[k] >= 0f) biomes[k] = BiomeClassifier.MUSHROOM_FIELDS;
+            }
+        }
+    }
+
+    /**
+     * Volcanoes (biomes plan v1.4): the bare upper slopes and craters become the volcano biome, lava flows and lava
+     * lakes the lava fields biome, from the landform stage's tags. Snowy ground keeps its snowy biome (a snow cap).
+     */
+    static void volcanicBiomes(byte[][] tags, float[] elev, short[] biomes, int W) {
+        if (tags == null) return;
+        for (int r = 0; r < tags.length; r++) {
+            for (int c = 0; c < W; c++) {
+                int k = r * W + c;
+                byte t = tags[r][c];
+                if (elev[k] < 0f || t < Landforms.TAG_LAVA) continue;
+                boolean cone = t == Landforms.TAG_VOLCANO || t == Landforms.TAG_CRATER;
+                boolean lava = t == Landforms.TAG_LAVA || t == Landforms.TAG_LAVA_CHANNEL || t == Landforms.TAG_LAVA_LAKE;
+                if (!cone && !lava) continue;
+                if (CoastShaper.isSnowy(biomes[k]) && t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL) continue;
+                biomes[k] = cone ? RegionalBiomes.VOLCANO : RegionalBiomes.LAVA_FIELDS;
+            }
+        }
+    }
+
+    /**
+     * Live lava sits in active craters and along fresh flows: the hydrology must not put a lake or a stream there
+     * (an active crater is a closed hollow it would fill).
+     */
+    private static void noWaterOnLava(HeightmapData data) {
+        if (data.oceanTags == null || data.waterY == null) return;
+        // Per column (the active crater's tag covers its rim, so the whole crater lake the hydrology made goes), so
+        // neighbouring tiles agree.
+        for (int r = 0; r < data.height; r++) {
+            for (int c = 0; c < data.width; c++) {
+                byte t = data.oceanTags[r][c];
+                if (t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL) continue;
+                data.waterY[r][c] = RiverCarver.NONE;
+                if (data.waterIsLake != null) data.waterIsLake[r][c] = false;
             }
         }
     }

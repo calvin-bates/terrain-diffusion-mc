@@ -167,6 +167,8 @@ public final class TerrainDiffusionConfig {
      * floats or sinks into hills (see {@code world.StructurePads}).
      */
     public static boolean structurePads() { return readBoolean("structures.terrain_pads", true); }
+    /** Volcanoes, shields and lava fields (biomes plan v1.4 round A). */
+    public static boolean volcanoes() { return readBoolean("landforms.volcanoes", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */

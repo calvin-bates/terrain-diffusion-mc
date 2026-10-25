@@ -4,6 +4,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf;
 import com.github.xandergos.terraindiffusionmc.world.DryCaves;
 import com.github.xandergos.terraindiffusionmc.world.InlandWaterCarving;
 import com.github.xandergos.terraindiffusionmc.world.OceanSurfaces;
+import com.github.xandergos.terraindiffusionmc.world.VolcanicSurfaces;
 import com.github.xandergos.terraindiffusionmc.world.Icebergs;
 import com.github.xandergos.terraindiffusionmc.world.RiverWaterPlacer;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
@@ -58,6 +59,7 @@ public abstract class NoiseBasedChunkGeneratorMixin {
             TerraPerf.end("chunk.riverWater", t0);
             t0 = TerraPerf.start();
             OceanSurfaces.place(built, seaLevel);
+            VolcanicSurfaces.place(built);
             TerraPerf.end("chunk.oceanSurfaces", t0);
             Icebergs.place(built, seaLevel);
             return built;

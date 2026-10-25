@@ -52,6 +52,7 @@ public final class BiomeMap {
         byte[][] tags2 = new byte[H][W];
         for (int r = 0; r < H; r++) for (int c = 0; c < W; c++) tags2[r][c] = tagsBig[(r + M) * WW + c + M];
         LocalTerrainProvider.mushroomFields(tags2, elev, biomes, W);
+        LocalTerrainProvider.volcanicBiomes(tags2, elev, biomes, W);
         return new Result(biomes, elev, climate, H, W);
     }
 

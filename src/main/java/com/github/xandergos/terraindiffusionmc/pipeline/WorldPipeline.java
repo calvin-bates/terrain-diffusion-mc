@@ -72,6 +72,25 @@ public final class WorldPipeline implements AutoCloseable {
     private final boolean ownModels;
     private volatile SyntheticMapFactory syntheticMapFactory;
     private volatile OceanFeatures oceanFeatures;
+    /** Volcanoes and the other carved landforms (biomes plan v1.4). */
+    private volatile Landforms landforms;
+
+    private Landforms newLandforms(long seed) {
+        return new Landforms(seed, new Landforms.Source() {
+            @Override public float[] coarseElevation(int ci0, int cj0, int ci1, int cj1) {
+                return WorldPipeline.this.coarseElevation(ci0, cj0, ci1, cj1);
+            }
+
+            @Override public float[] modelElevation(int i1, int j1, int i2, int j2) {
+                return computeElev(i1, j1, i2, j2);
+            }
+        });
+    }
+
+    /** The landform stage, for markers. */
+    public Landforms landforms() {
+        return landforms;
+    }
     private volatile ArchipelagoShaper archipelagoShaper;
     private volatile long seed;
 
@@ -91,6 +110,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.ownModels = false;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
         this.oceanFeatures = newOceanFeatures(this.seed);
+        this.landforms = newLandforms(this.seed);
         this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
@@ -108,6 +128,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.ownModels = true;
         this.syntheticMapFactory = new SyntheticMapFactory(this.seed);
         this.oceanFeatures = newOceanFeatures(this.seed);
+        this.landforms = newLandforms(this.seed);
         this.archipelagoShaper = new ArchipelagoShaper(this.seed);
         this.tileStore = new MemoryTileStore();
         this.coarse = buildCoarseStage();
@@ -122,6 +143,7 @@ public final class WorldPipeline implements AutoCloseable {
         this.seed = s;
         this.syntheticMapFactory = new SyntheticMapFactory(s);
         this.oceanFeatures = newOceanFeatures(s);
+        this.landforms = newLandforms(s);
         this.archipelagoShaper = new ArchipelagoShaper(s);
         tileStore.clearAllCaches();
     }
@@ -887,6 +909,13 @@ public final class WorldPipeline implements AutoCloseable {
                 }
             }
         }
+        // Landforms (biomes plan v1.4): carved after the ocean features, before the climate, so the lapse rate, rivers
+        // and biomes all follow them.
+        if (TerrainDiffusionConfig.volcanoes()) {
+            List<double[]> vents = TerrainDiffusionConfig.oceanFeatures()
+                    ? oceanFeatures.activeVents(i1, j1, i2, j2, oceanCoarseField(i1, j1, i2, j2)) : null;
+            landforms.apply(elevFlat, i1, j1, H, W, tagsOut, vents);
+        }
         float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
         return new float[][]{elevFlat, climate};
     }
@@ -1009,6 +1038,7 @@ public final class WorldPipeline implements AutoCloseable {
         if (TerrainDiffusionConfig.oceanFeatures()) {
             out.addAll(oceanFeatures.landmarks(i1, j1, i2, j2, field));
         }
+        if (TerrainDiffusionConfig.volcanoes()) out.addAll(landforms.landmarks(i1, j1, i2, j2));
         int S = 32 * LATENT_COMPRESSION, cell = 24;
         SyntheticMapFactory syn = syntheticMapFactory;
         for (int gy = Math.floorDiv(Math.floorDiv(i1, S), cell); gy <= Math.floorDiv(Math.floorDiv(i2, S), cell); gy++) {

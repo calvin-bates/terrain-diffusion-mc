@@ -1446,6 +1446,33 @@ public final class OceanFeatures {
         return i >= i0 && i < i1 && j >= j0 && j < j1;
     }
 
+    /**
+     * The active island volcanoes (each hotspot chain's head, at the volcanic-island stage) whose land may reach the
+     * native window: {z, x, land radius (pixels), peak (m), hash} each. The landform stage runs lava flows down them.
+     */
+    public java.util.List<double[]> activeVents(double i0, double j0, double i1, double j1, CoarseField coarse) {
+        java.util.List<double[]> out = new java.util.ArrayList<>();
+        int gx0 = (int) Math.floor(j0 / HOTSPOT_CELL) - 2, gx1 = (int) Math.floor(j1 / HOTSPOT_CELL) + 2;
+        int gz0 = (int) Math.floor(i0 / HOTSPOT_CELL) - 2, gz1 = (int) Math.floor(i1 / HOTSPOT_CELL) + 2;
+        for (int gz = gz0; gz <= gz1; gz++) {
+            for (int gx = gx0; gx <= gx1; gx++) {
+                Chain ch = chain(gx, gz);
+                if (ch == null || ch.count == 0) continue;
+                int k = 0;
+                float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
+                if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
+                boolean warm = coarse.temperature(ch.cz[k], ch.cx[k]) >= REEF_TEMP;
+                String stage = volcanoStage(ch.peak[k], warm, k, ch.hk[k], ch.lift[k]);
+                if (!stage.equals("volcanic_island") || ch.peak[k] < 150) continue;
+                double landR = islandLandU(stage, ch.hk[k]) * ch.radius[k];
+                double reach = 1.5 * landR;
+                if (ch.cz[k] + reach < i0 || ch.cz[k] - reach > i1 || ch.cx[k] + reach < j0 || ch.cx[k] - reach > j1) continue;
+                out.add(new double[]{ch.cz[k], ch.cx[k], landR, ch.peak[k], ch.hk[k]});
+            }
+        }
+        return out;
+    }
+
     private void hotspotLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out) {
         // A chain reaches at most ~13 x 38 km from its hotspot, so one extra cell on each side covers it.
         int gx0 = (int) Math.floor(j0 / HOTSPOT_CELL) - 2, gx1 = (int) Math.floor(j1 / HOTSPOT_CELL) + 2;

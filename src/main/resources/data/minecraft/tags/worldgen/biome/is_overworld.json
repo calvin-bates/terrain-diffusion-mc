@@ -2,6 +2,8 @@
   "replace": false,
   "values": [
     "terra:dark_forest",
+    "terra:lava_fields",
+    "terra:volcano",
     "terra:arctic",
     "terra:aspen_grove",
     "terra:aspen_parkland",
@@ -14,6 +16,7 @@
     "terra:desert_oasis",
     "terra:floodplain_forest",
     "terra:forested_highland",
+    "terra:lava_fields",
     "terra:lush_valley",
     "terra:marsh",
     "terra:mediterranean_scrub",
@@ -37,6 +40,7 @@
     "terra:treeline",
     "terra:tropical_dry_forest",
     "terra:tundra",
+    "terra:volcano",
     "terra:white_cliffs"
   ]
 }

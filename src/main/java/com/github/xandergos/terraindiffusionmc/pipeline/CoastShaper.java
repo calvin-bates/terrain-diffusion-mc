@@ -519,7 +519,7 @@ public final class CoastShaper {
         return high;
     }
 
-    private static boolean isSnowy(short b) {
+    public static boolean isSnowy(short b) {
         return b == BiomeClassifier.SNOWY_PLAINS || b == BiomeClassifier.SNOWY_TAIGA
                 || b == BiomeClassifier.SNOWY_TAIGA_SPARSE || b == BiomeClassifier.SNOWY_SLOPES
                 || b == BiomeClassifier.FROZEN_PEAKS || b == BiomeClassifier.JAGGED_PEAKS

@@ -643,6 +643,24 @@ V12 = [f"terra:{n}" for n in B]
 MANAGED = V12 + ["minecraft:mushroom_fields"]
 EXTRA_TOP = [("minecraft:mushroom_fields", {"type": "minecraft:block", "result_state": "minecraft:mycelium"})]
 
+# ---- v1.4 round A: volcanoes (set by the tile from the landform stage's tags; pipeline/Landforms) ----
+# Bare upper slopes of stratovolcanoes and shield summits: ash and scoria (tuff, andesite, gravel), basalt outcrops.
+biome("volcano", id=86, base="windswept_gravelly_hills", temp=0.8, downfall=0.2,
+      colors={"grass_color": "#8f9a6a", "foliage_color": "#7d8a5c"},
+      veg=["minecraft:patch_dead_bush_badlands"],
+      top=rule((noise("surface", 0.35), "minecraft:basalt"), (noise("surface", 0.05), "minecraft:tuff"),
+               (noise("surface_secondary", 0.2), GRAVEL), (None, "minecraft:andesite")),
+      under=rule((noise("surface", 0.35), "minecraft:basalt"), (None, "minecraft:tuff")), top_wet=True,
+      no_tags=["has_structure/village_plains", "has_structure/pillager_outpost"])
+# Lava flows: bare blackstone and basalt (VolcanicSurfaces lays the exact flows, live lava and magma on top).
+biome("lava_fields", id=87, base="windswept_gravelly_hills", temp=1.0, downfall=0.1,
+      colors={"grass_color": "#7f8a5e", "foliage_color": "#6f7a50"},
+      veg=[],
+      top=rule((noise("surface", 0.3), "minecraft:smooth_basalt"), (noise("surface", -0.15), "minecraft:basalt"),
+               (None, "minecraft:blackstone")),
+      under=rule((noise("surface", 0.2), "minecraft:basalt"), (None, "minecraft:blackstone")), top_wet=True,
+      no_tags=["has_structure/village_plains", "has_structure/pillager_outpost"])
+
 
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)

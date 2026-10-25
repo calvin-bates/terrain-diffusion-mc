@@ -1318,6 +1318,10 @@
     mushroom_island: { name: 'Mushroom island', color: '#c084fc', on: true },
     active_margin:   { name: 'Active margin',   color: '#e11d48', on: true },
     vent_field:      { name: 'Vent field',      color: '#eab308', on: true },
+    stratovolcano:   { name: 'Stratovolcano',   color: '#dc2626', on: true },
+    caldera:         { name: 'Caldera',         color: '#f97316', on: true },
+    shield_volcano:  { name: 'Shield volcano',  color: '#b45309', on: true },
+    lava_field:      { name: 'Lava field',      color: '#3f3f46', on: true },
   };
   const coarseFeatures = document.getElementById('coarse-features');
   const detailFeatures = document.getElementById('detail-features');
@@ -1352,6 +1356,10 @@
       case 'rift_sea': return `young rift sea; axial trough about ${-v} m deep, spreading axis down the middle`;
       case 'active_margin': return `trench about ${-v} m down off an active margin; coastal range inland`;
       case 'vent_field': return `sulfur chimneys on the ridge axis, about ${-v} m down`;
+      case 'stratovolcano': return `stratovolcano, summit about ${Math.round(v)} m`;
+      case 'caldera': return `volcano with a summit caldera (a crater lake), rim about ${Math.round(v)} m`;
+      case 'shield_volcano': return `broad shield volcano, summit about ${Math.round(v)} m, pit craters along its rift zones`;
+      case 'lava_field': return 'lava flows (basalt and blackstone; live lava on active volcanoes)';
       default: return '';
     }
   }

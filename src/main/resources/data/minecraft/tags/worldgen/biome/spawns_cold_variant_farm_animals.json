@@ -1,10 +1,13 @@
 {
   "replace": false,
   "values": [
+    "terra:lava_fields",
+    "terra:volcano",
     "terra:arctic",
     "terra:birch_taiga",
     "terra:boreal_forest",
     "terra:forested_highland",
+    "terra:lava_fields",
     "terra:moorland",
     "terra:polar_desert",
     "terra:redwoods",
@@ -13,6 +16,7 @@
     "terra:taiga_mountain",
     "terra:temperate_rainforest",
     "terra:treeline",
-    "terra:tundra"
+    "terra:tundra",
+    "terra:volcano"
   ]
 }
