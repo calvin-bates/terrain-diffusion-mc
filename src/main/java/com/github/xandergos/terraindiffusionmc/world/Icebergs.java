@@ -320,6 +320,71 @@ public final class Icebergs {
         }
     }
 
+    /**
+     * After the chunk's features: sea plants (seagrass, kelp, sea pickles, coral) that grew on the ice, and the magma
+     * that vanilla's underwater magma feature and the vents put into it, are taken off again (Calvin, Oct 25: seaweed
+     * and magma on the bergs). Each column is walked down from above the tallest berg to the first ground that is not
+     * ice; anything rooted on ice is cleared to water, magma touching ice becomes packed ice. Only chunks near bergs or
+     * with shelf ice at the waterline are walked.
+     */
+    public static void cleanAfterFeatures(ChunkAccess chunk, int seaLevel) {
+        try {
+            if (!TerrainDiffusionConfig.icebergs()) return;
+            ChunkPos cp = chunk.getPos();
+            int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ(), top = seaLevel - 1, minY = chunk.getMinY();
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            boolean ice = !bergsNear(x0, z0, x0 + 15, z0 + 15).isEmpty();
+            for (int dz = 0; dz < 16 && !ice; dz++)
+                for (int dx = 0; dx < 16 && !ice; dx++)
+                    ice = isIce(chunk.getBlockState(pos.set(x0 + dx, top + 1, z0 + dz)))
+                            || isIce(chunk.getBlockState(pos.set(x0 + dx, top, z0 + dz)));
+            if (!ice) return;
+            int yStart = top, yEnd = Math.max(minY, top - 70);   // plants and magma only come under the water
+            BlockState water = Blocks.WATER.defaultBlockState(), packed = Blocks.PACKED_ICE.defaultBlockState();
+            int[] plants = new int[128];
+            for (int dz = 0; dz < 16; dz++) {
+                for (int dx = 0; dx < 16; dx++) {
+                    int x = x0 + dx, z = z0 + dz, n = 0;
+                    boolean prevIce = false;
+                    for (int y = yStart; y >= yEnd; y--) {
+                        BlockState st = chunk.getBlockState(pos.set(x, y, z));
+                        if (isSeaPlant(st)) {
+                            if (n < plants.length) plants[n++] = y;
+                            prevIce = false;
+                            continue;
+                        }
+                        boolean magma = st.is(Blocks.MAGMA_BLOCK);
+                        boolean onIce = isIce(st)
+                                || magma && (prevIce || isIce(chunk.getBlockState(pos.set(x, y - 1, z))));
+                        if (onIce) {
+                            if (magma) chunk.setBlockState(pos.set(x, y, z), packed, 0);
+                            for (int k = 0; k < n; k++) chunk.setBlockState(pos.set(x, plants[k], z), water, 0);
+                            n = 0;
+                            prevIce = true;
+                            continue;
+                        }
+                        n = 0;
+                        prevIce = false;
+                        // Real ground (not ice, water or air): the sea floor, whose plants stay.
+                        if (!st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.SNOW)) break;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("Terra: iceberg clean-up failed for chunk {}", chunk.getPos(), t);
+        }
+    }
+
+    private static boolean isIce(BlockState st) {
+        return st.is(Blocks.PACKED_ICE) || st.is(Blocks.BLUE_ICE) || st.is(Blocks.ICE) || st.is(Blocks.SNOW_BLOCK);
+    }
+
+    private static boolean isSeaPlant(BlockState st) {
+        return st.is(Blocks.SEAGRASS) || st.is(Blocks.TALL_SEAGRASS) || st.is(Blocks.KELP) || st.is(Blocks.KELP_PLANT)
+                || st.is(Blocks.SEA_PICKLE) || st.is(net.minecraft.tags.BlockTags.CORALS)
+                || st.is(net.minecraft.tags.BlockTags.WALL_CORALS) || st.is(net.minecraft.tags.BlockTags.CORAL_BLOCKS);
+    }
+
     private static void setIfWater(ChunkAccess chunk, BlockPos pos, BlockState st) {
         BlockState old = chunk.getBlockState(pos);
         if (old.isAir() || old.is(Blocks.WATER)) chunk.setBlockState(pos, st, 0);

@@ -28,10 +28,10 @@ public final class IcebergPlan {
 
     /** Region side and analysis margin (native pixels). */
     public static final int REGION_PX = 256, MARGIN_PX = 120;
-    /** One candidate field per cell of this many pixels (1.4 km). */
-    static final int FIELD_CELL_PX = 48;
+    /** One candidate field per cell of this many pixels (1.9 km). */
+    static final int FIELD_CELL_PX = 64;
     /** Chance a fully cold cell right off a calving coast gets a field. */
-    public static final float FIELD_CHANCE = 0.35f;
+    public static final float FIELD_CHANCE = 0.45f;
     /** Chance a region far out in the frozen sea gets one flat ice island. */
     public static final float ICE_ISLAND_CHANCE = 0.12f;
     /** Cold land (calving sources): land colder than this (°C). */
@@ -65,13 +65,15 @@ public final class IcebergPlan {
             p1 = (float) (2 * Math.PI * unit(mix(seed + 1)));
             p2 = (float) (2 * Math.PI * unit(mix(seed + 2)));
             p3 = (float) (2 * Math.PI * unit(mix(seed + 3)));
-            int ns = shape == PINNACLE ? 1 + (int) (3 * unit(mix(seed + 4))) : 0;
+            int ns = shape == PINNACLE ? 2 + (int) (3 * unit(mix(seed + 4))) : 0;
             spireU = new float[ns]; spireV = new float[ns]; spireH = new float[ns];
             for (int s = 0; s < ns; s++) {
-                double a = 2 * Math.PI * unit(mix(seed + 10 + s)), d = 0.15 + 0.35 * unit(mix(seed + 20 + s));
+                // The main spire near the middle, the others around it.
+                double a = 2 * Math.PI * unit(mix(seed + 10 + s)), d = s == 0 ? 0.05 + 0.1 * unit(mix(seed + 20))
+                        : 0.2 + 0.3 * unit(mix(seed + 20 + s));
                 spireU[s] = (float) (Math.cos(a) * d);
                 spireV[s] = (float) (Math.sin(a) * d);
-                spireH[s] = (float) (0.75 + 0.25 * unit(mix(seed + 30 + s)));
+                spireH[s] = s == 0 ? 1f : (float) (0.5 + 0.4 * unit(mix(seed + 30 + s)));
             }
         }
 
@@ -83,8 +85,9 @@ public final class IcebergPlan {
         /** Waterline radius in the direction of (dx, dz) (a wobbly outline). */
         float radiusAt(float dx, float dz) {
             float th = (float) Math.atan2(dz, dx);
-            return r * (1f + 0.14f * (float) Math.sin(3 * th + p1) + 0.08f * (float) Math.sin(5 * th + p2)
-                    + 0.05f * (float) Math.sin(8 * th + p3));
+            float k = shape == TABULAR || shape == ICE_ISLAND ? 1f : 1.6f;   // the others more ragged
+            return r * (1f + k * (0.14f * (float) Math.sin(3 * th + p1) + 0.08f * (float) Math.sin(5 * th + p2)
+                    + 0.05f * (float) Math.sin(8 * th + p3)));
         }
 
         /** Distance from the centre over the waterline radius in that direction (1 at the waterline). */
@@ -95,6 +98,21 @@ public final class IcebergPlan {
 
         /** Freeboard (blocks, ≥ 0) at offset (dx, dz) from the centre, or −1 outside the waterline. */
         public float above(float dx, float dz) {
+            float h = shapeAbove(dx, dz);
+            if (h < 0f || shape == BIT) return h;
+            float wx = cx + dx, wz = cz + dz;
+            if (shape == TABULAR || shape == ICE_ISLAND) {
+                // A flat top with low swells and the odd crevasse cut a third of the way down.
+                float c = Math.abs(CREVASSE.GetNoise(wx, wz));
+                float cut = c < 0.035f ? 0.35f * (1f - c / 0.035f) : 0f;
+                return Math.max(0.5f, h * (1f + 0.06f * ROUGH.GetNoise(wx * 0.5f, wz * 0.5f) - cut));
+            }
+            // Broken, ridged faces: up to a quarter of the height carved out or built up, more toward the top.
+            float rough = ROUGH.GetNoise(wx, wz);
+            return Math.max(0f, h * (1f + 0.25f * rough * Math.min(1f, h / Math.max(1f, 0.3f * freeboard))));
+        }
+
+        private float shapeAbove(float dx, float dz) {
             float q = q(dx, dz);
             if (q >= 1f) return -1f;
             float u = (dx * cosA + dz * sinA) / r, v = (-dx * sinA + dz * cosA) / r;   // heading frame, in radii
@@ -104,14 +122,15 @@ public final class IcebergPlan {
                 case ICE_ISLAND:
                     return F * (1f - 0.15f * (float) Math.pow(q, 8));               // flat top, sheer sides
                 case DOME:
+                    return F * (float) Math.pow(Math.max(0f, 1f - q * q * q), 0.45);   // steep sides, rounded top
                 case BIT:
                     return F * (float) Math.pow(Math.max(0f, 1f - q * q), 0.6);
                 case PINNACLE: {
-                    float h = 0.35f * F * (1f - q * q);
+                    float h = 0.45f * F * (float) Math.pow(Math.max(0f, 1f - q * q), 0.7);
                     for (int s = 0; s < spireU.length; s++) {
                         float du = u - spireU[s], dv = v - spireV[s];
                         float t = 1f - (float) Math.sqrt(du * du + dv * dv) / 0.38f;
-                        if (t > 0f) h = Math.max(h, F * spireH[s] * (float) Math.pow(t, 1.3));
+                        if (t > 0f) h = Math.max(h, F * spireH[s] * (float) Math.pow(t, 0.9));
                     }
                     return h;
                 }
@@ -141,6 +160,20 @@ public final class IcebergPlan {
         }
     }
 
+    /** Surface relief of the bergs (block coordinates): broken tops, ridges and gullies down the faces. */
+    private static final FastNoiseLite ROUGH = noise(91301, 1f / 14f, FastNoiseLite.FractalType.Ridged, 3);
+    /** Crevasses across tabular bergs and ice islands. */
+    private static final FastNoiseLite CREVASSE = noise(91302, 1f / 45f, FastNoiseLite.FractalType.FBm, 2);
+
+    private static FastNoiseLite noise(int seed, float freq, FastNoiseLite.FractalType type, int octaves) {
+        FastNoiseLite n = new FastNoiseLite(seed);
+        n.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        n.SetFrequency(freq);
+        n.SetFractalType(type);
+        n.SetFractalOctaves(octaves);
+        return n;
+    }
+
     /** The keel spreads this much wider than the waterline. */
     public static final float KEEL_WIDE = 1.25f;
 
@@ -166,9 +199,9 @@ public final class IcebergPlan {
     /** Farthest (blocks) a berg reaches from its region's own square, at this scale. */
     public static int reachBlocks(int scale) {
         float m = 30f / scale;
-        // The farthest piece from its field's centre (a bergy bit up to 380 m + 3.8 × 250 m out, ~1.4 km) or an ice
-        // island's keel (900 m × 1.25 × 1.3 ≈ 1.46 km), with a little to spare.
-        return (int) Math.ceil(1550f / m) + 2;
+        // The farthest piece from its field's centre (a bergy bit: 600 m + 1.2 × 800 m + 400 m out, ~2 km; a big berg's
+        // keel: 600 m + 800 m × 1.25 × 1.3 ≈ 1.9 km) or an ice island's keel (1500 m × 1.25 × 1.3 ≈ 2.45 km).
+        return (int) Math.ceil(2500f / m) + 2;
     }
 
     /** Lays out region (ri, rj)'s fields. */
@@ -205,7 +238,7 @@ public final class IcebergPlan {
                 int k = (pi - i0) * span + (pj - j0);
                 float e = elev[k], t = clim[k];
                 if (e > -40f) continue;
-                if (!openWater(elev, span, pi - i0, pj - j0, 12)) continue;
+                if (!openWater(elev, span, pi - i0, pj - j0, 20)) continue;
                 float coldness = 1f - smooth(-7f, 1f, t);
                 if (coldness <= 0f) continue;
                 float d = toSource[k];
@@ -224,7 +257,7 @@ public final class IcebergPlan {
         long rh = mix(seed ^ ((long) ri * 0x632BE59BD9B4E019L) ^ ((long) rj * 0x85EBCA77C2B2AE63L) ^ 0x1CE1L);
         if (bestIsle >= 0 && unit(rh) < ICE_ISLAND_CHANCE) {
             float fx = (j0 + bestIsle % span + 0.5f) * scale, fz = (i0 + bestIsle / span + 0.5f) * scale;
-            float radM = 400f + 500f * (float) unit(mix(rh + 1)), freeM = 4f + 6f * (float) unit(mix(rh + 2));
+            float radM = 600f + 900f * (float) unit(mix(rh + 1)), freeM = 15f + 15f * (float) unit(mix(rh + 2));
             bergs.add(new Berg(fx, fz, radM / mpb, ICE_ISLAND, Math.max(1f, freeM / mpb),
                     (30f + 30f * (float) unit(mix(rh + 3))) / upb, (float) (Math.PI * unit(mix(rh + 4))), mix(rh + 5)));
             fields.add(new Field(fx, fz, true));
@@ -247,7 +280,7 @@ public final class IcebergPlan {
      */
     private static void field(List<Berg> out, float fx, float fz, float temp, float near, float mpb, float upb, int scale,
                               float[] elev, int span, int i0, int j0, long h) {
-        int big = 1 + (int) (3 * unit(mix(h + 1)));
+        int big = 2 + (int) (4 * unit(mix(h + 1)));
         List<Berg> made = new ArrayList<>();
         for (int b = 0; b < big; b++) {
             long bh = mix(h + 100 + b);
@@ -260,32 +293,41 @@ public final class IcebergPlan {
                     : pick < tabular + 0.8 ? DRYDOCK : DOME;
             // Tabular bergs are wide and flat; the others are taller for their width (real pinnacle bergs stand 50-80 m
             // over a base of 100-200 m).
-            float radM = shape == TABULAR ? 80f + 170f * (float) unit(mix(bh + 2)) : 30f + 70f * (float) unit(mix(bh + 2));
+            // Exaggerated for drama (Calvin, Oct 25: "much larger and more dramatic"): real bergs rarely stand over
+            // 75 m, these reach 160 m, and tabular bergs run up to 1.6 km across.
+            float radM = shape == TABULAR ? 250f + 550f * (float) unit(mix(bh + 2)) : 70f + 130f * (float) unit(mix(bh + 2));
             float freeM = switch (shape) {
-                case TABULAR -> 20f + 20f * (float) unit(mix(bh + 3));
-                case PINNACLE -> 35f + 40f * (float) unit(mix(bh + 3));
-                case DOME -> 15f + 25f * (float) unit(mix(bh + 3));
-                default -> 20f + 30f * (float) unit(mix(bh + 3));
+                case TABULAR -> 35f + 25f * (float) unit(mix(bh + 3));
+                case PINNACLE -> 90f + 70f * (float) unit(mix(bh + 3));
+                case DOME -> 45f + 45f * (float) unit(mix(bh + 3));
+                default -> 60f + 60f * (float) unit(mix(bh + 3));
             };
-            double a = 2 * Math.PI * unit(mix(bh + 4)), d = (b == 0 ? 0 : 120 + 260 * unit(mix(bh + 5))) / mpb;
+            double a = 2 * Math.PI * unit(mix(bh + 4)), d = (b == 0 ? 0 : 150 + 450 * unit(mix(bh + 5))) / mpb;
             float x = fx + (float) (Math.cos(a) * d), z = fz + (float) (Math.sin(a) * d);
             if (!overWater(elev, span, i0, j0, x, z, scale)) continue;
-            float keelM = freeM * (4f + 2f * (float) unit(mix(bh + 6)));
-            Berg berg = new Berg(x, z, radM / mpb, shape, Math.max(1f, freeM / mpb), Math.max(2f, keelM / upb),
+            // Big bergs stand apart (overlapping ones merged into shapeless masses).
+            boolean clear = true;
+            for (Berg o : made) {
+                float sep = (float) Math.hypot(o.cx - x, o.cz - z);
+                if (sep < 0.9f * (o.r + radM / mpb)) { clear = false; break; }
+            }
+            if (!clear) continue;
+            float keelM = freeM * (3f + 1.5f * (float) unit(mix(bh + 6)));
+            Berg berg = new Berg(x, z, radM / mpb, shape, Math.max(1f, freeM / mpb), Math.min(60f, Math.max(2f, keelM / upb)),
                     (float) (2 * Math.PI * unit(mix(bh + 7))), mix(bh + 8));
             made.add(berg);
             out.add(berg);
         }
         if (made.isEmpty()) return;
-        int bits = 6 + (int) (15 * unit(mix(h + 2)));
+        int bits = 12 + (int) (24 * unit(mix(h + 2)));
         for (int b = 0; b < bits; b++) {
             long bh = mix(h + 500 + b);
             Berg anchor = made.get((int) (made.size() * unit(mix(bh + 1))));
             double a = 2 * Math.PI * unit(mix(bh + 2));
-            float d = anchor.r * (1.3f + 2.5f * (float) unit(mix(bh + 3)));
+            float d = anchor.r * 1.2f + (40f + 360f * (float) unit(mix(bh + 3))) / mpb;
             float x = anchor.cx + (float) Math.cos(a) * d, z = anchor.cz + (float) Math.sin(a) * d;
             if (!overWater(elev, span, i0, j0, x, z, scale)) continue;
-            float radM = 6f + 19f * (float) unit(mix(bh + 4)), freeM = 2f + 6f * (float) unit(mix(bh + 5));
+            float radM = 8f + 32f * (float) unit(mix(bh + 4)), freeM = 3f + 12f * (float) unit(mix(bh + 5));
             out.add(new Berg(x, z, Math.max(1.2f, radM / mpb), BIT, Math.max(0.6f, freeM / mpb),
                     Math.max(1f, freeM * 4.5f / upb), (float) (2 * Math.PI * unit(mix(bh + 6))), mix(bh + 7)));
         }
