@@ -7,6 +7,7 @@ import com.github.xandergos.terraindiffusionmc.pipeline.IcebergPlan;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import com.github.xandergos.terraindiffusionmc.pipeline.RegionalBiomes;
+import com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
@@ -39,6 +40,7 @@ public final class Icebergs {
     private static final Logger LOG = LoggerFactory.getLogger(Icebergs.class);
 
     private static final Map<Long, IcebergPlan> PLANS = new ConcurrentHashMap<>();
+    private static final Map<Long, java.util.concurrent.CompletableFuture<IcebergPlan>> BUILDING = new ConcurrentHashMap<>();
     private static volatile long plansSeed;
     private static volatile int plansScale;
 
@@ -67,7 +69,9 @@ public final class Icebergs {
     public static void place(ChunkAccess chunk, int seaLevel) {
         try {
             if (!TerrainDiffusionConfig.icebergs()) return;
+            long t0 = TerraPerf.start();
             placeUnchecked(chunk, seaLevel);
+            TerraPerf.end("chunk.icebergs", t0);
         } catch (Throwable t) {
             // Never let this break chunk generation.
             LOG.error("Terra: icebergs failed for chunk {}", chunk.getPos(), t);
@@ -86,10 +90,28 @@ public final class Icebergs {
         long key = ((long) ri << 32) ^ (rj & 0xffffffffL);
         IcebergPlan p = PLANS.get(key);
         if (p != null) return p;
-        p = buildPlan(seed, ri, rj, scale);
-        if (PLANS.size() > 256) PLANS.clear();
-        PLANS.put(key, p);
-        return p;
+        // One thread builds a region's plan; others needing it at the same time wait for that one instead of each
+        // building it again (every build queues terrain work on the single inference thread).
+        java.util.concurrent.CompletableFuture<IcebergPlan> mine = new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture<IcebergPlan> other = BUILDING.putIfAbsent(key, mine);
+        if (other != null) return other.join();
+        try {
+            p = PLANS.get(key);
+            if (p == null) {
+                long t0 = TerraPerf.start();
+                p = buildPlan(seed, ri, rj, scale);
+                TerraPerf.end("chunk.icebergPlan", t0);
+                if (PLANS.size() > 256) PLANS.clear();
+                PLANS.put(key, p);
+            }
+            mine.complete(p);
+            return p;
+        } catch (Throwable t) {
+            mine.complete(IcebergPlan.EMPTY);
+            throw t;
+        } finally {
+            BUILDING.remove(key, mine);
+        }
     }
 
     private static IcebergPlan buildPlan(long seed, int ri, int rj, int scale) {

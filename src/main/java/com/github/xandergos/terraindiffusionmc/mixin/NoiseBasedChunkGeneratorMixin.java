@@ -1,5 +1,6 @@
 package com.github.xandergos.terraindiffusionmc.mixin;
 
+import com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf;
 import com.github.xandergos.terraindiffusionmc.world.DryCaves;
 import com.github.xandergos.terraindiffusionmc.world.InlandWaterCarving;
 import com.github.xandergos.terraindiffusionmc.world.OceanSurfaces;
@@ -52,11 +53,56 @@ public abstract class NoiseBasedChunkGeneratorMixin {
         }
         int seaLevel = ((NoiseBasedChunkGenerator) (Object) this).getSeaLevel();
         cir.setReturnValue(cir.getReturnValue().thenApply(built -> {
+            long t0 = TerraPerf.start();
             RiverWaterPlacer.place(built);
+            TerraPerf.end("chunk.riverWater", t0);
+            t0 = TerraPerf.start();
             OceanSurfaces.place(built, seaLevel);
+            TerraPerf.end("chunk.oceanSurfaces", t0);
             Icebergs.place(built, seaLevel);
             return built;
         }));
+    }
+
+    /** Start times of this thread's current terrain stages ({@link TerraPerf}): fill, surface, carvers. */
+    private static final ThreadLocal<long[]> TERRA$STAGE_START = ThreadLocal.withInitial(() -> new long[3]);
+
+    @Inject(method = "doFill", at = @At("HEAD"), require = 0)
+    private void terra$fillStart(NoiseChunk noiseChunk, ChunkAccess chunk, CallbackInfo ci) {
+        TERRA$STAGE_START.get()[0] = TerraPerf.start();
+    }
+
+    @Inject(method = "doFill", at = @At("RETURN"), require = 0)
+    private void terra$fillEnd(NoiseChunk noiseChunk, ChunkAccess chunk, CallbackInfo ci) {
+        TerraPerf.end("chunk.fill (blocks from density)", TERRA$STAGE_START.get()[0]);
+    }
+
+    @Inject(method = "buildSurface(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;Ljava/util/Set;Lnet/minecraft/world/level/levelgen/material/rule/MaterialRule;)V",
+            at = @At("HEAD"), require = 0)
+    private void terra$surfaceStart(ChunkAccess chunk, NoiseChunk noiseChunk, RandomState randomState, BiomeManager biomeManager,
+                                    Set<Holder<Biome>> possibleBiomes, MaterialRule materialRule, CallbackInfo ci) {
+        TERRA$STAGE_START.get()[1] = TerraPerf.start();
+    }
+
+    @Inject(method = "buildSurface(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;Ljava/util/Set;Lnet/minecraft/world/level/levelgen/material/rule/MaterialRule;)V",
+            at = @At("RETURN"), require = 0)
+    private void terra$surfaceEnd(ChunkAccess chunk, NoiseChunk noiseChunk, RandomState randomState, BiomeManager biomeManager,
+                                  Set<Holder<Biome>> possibleBiomes, MaterialRule materialRule, CallbackInfo ci) {
+        TerraPerf.end("chunk.surface (surface rules)", TERRA$STAGE_START.get()[1]);
+    }
+
+    @Inject(method = "generateCarvers", at = @At("HEAD"), require = 0)
+    private void terra$carversStart(ChunkAccess chunk, Blender blender, NoiseChunk noiseChunk, RandomState randomState,
+                                    BiomeManager biomeManager, WorldGenRegion carverBiomeRegion, MaterialRule materialRule,
+                                    CallbackInfo ci) {
+        TERRA$STAGE_START.get()[2] = TerraPerf.start();
+    }
+
+    @Inject(method = "generateCarvers", at = @At("RETURN"), require = 0)
+    private void terra$carversEnd(ChunkAccess chunk, Blender blender, NoiseChunk noiseChunk, RandomState randomState,
+                                  BiomeManager biomeManager, WorldGenRegion carverBiomeRegion, MaterialRule materialRule,
+                                  CallbackInfo ci) {
+        TerraPerf.end("chunk.carvers", TERRA$STAGE_START.get()[2]);
     }
 
     /**

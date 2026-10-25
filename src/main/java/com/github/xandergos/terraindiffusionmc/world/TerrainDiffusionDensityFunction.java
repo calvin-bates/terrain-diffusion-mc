@@ -75,12 +75,21 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
             return LOCAL.get();
         }
 
-        /** Returns the terrain surface height in Minecraft Y for the given block column. */
-        int surfaceHeight(int x, int z, int fallbackY) {
-            if (x < blockStartX || x >= blockEndX || z < blockStartZ || z >= blockEndZ) {
+        /** The provider's cache generation the tile was loaded in (a new seed or world reloads it). */
+        int generation = Integer.MIN_VALUE;
+
+        /** The tile holding block column (x, z), loading it if this thread's last tile was another. */
+        HeightmapData tile(int x, int z) {
+            if (x < blockStartX || x >= blockEndX || z < blockStartZ || z >= blockEndZ
+                    || generation != LocalTerrainProvider.cacheGeneration()) {
                 load(x, z);
             }
-            HeightmapData tile = this.data;
+            return this.data;
+        }
+
+        /** Returns the terrain surface height in Minecraft Y for the given block column. */
+        int surfaceHeight(int x, int z, int fallbackY) {
+            HeightmapData tile = tile(x, z);
             if (tile == null || tile.heightmap == null) {
                 return fallbackY;
             }
@@ -96,6 +105,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
         }
 
         private void load(int x, int z) {
+            this.generation = LocalTerrainProvider.cacheGeneration();
             int tileSize = TerrainDiffusionConfig.tileSize();
             int tileShift = Integer.numberOfTrailingZeros(tileSize);
             int tileX = x >> tileShift;
@@ -112,12 +122,44 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
     private static final class Sampler implements DensitySampler {
         @Override
         public float sampleValue(SamplerContext context, int x, int y, int z) {
-            // When no tile is available, behave like empty air above y=0: density = -y.
+            return (float) (columnTarget(context, TileCache.get(), padBeardifier(context), x, z) - y);
+        }
+
+        /**
+         * The whole chunk volume (16 x 2096 x 16 at once in the terrain pass, one 2096-block column for height queries):
+         * the value only depends on the column, so the column's surface is looked up once and the column filled with
+         * {@code target - y}, rather than looking the surface up again at each of its 2096 blocks.
+         */
+        @Override
+        public void sampleVolume(SamplerContext context, DensityBuffer buffer, DensityVolume volume) {
+            long t0 = volume.sizeX() * volume.sizeZ() >= 256 ? com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.start() : 0L;
             TileCache cache = TileCache.get();
+            Beardifier beardifier = padBeardifier(context);
+            int sizeY = volume.sizeY(), minY = volume.minBlockY(), stepY = volume.stepBlockY();
+            int index = 0;
+            for (int z = 0; z < volume.sizeZ(); z++) {
+                int blockZ = volume.blockZ(z);
+                for (int x = 0; x < volume.sizeX(); x++) {
+                    int target = columnTarget(context, cache, beardifier, volume.blockX(x), blockZ);
+                    for (int y = 0; y < sizeY; y++) buffer.set(index++, (float) (target - (minY + y * stepY)));
+                }
+            }
+            com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.end("chunk.terrainDensity (incl. any tile.wait)", t0);
+        }
+
+        /** The chunk's beardifier when structure pads are on and it has pieces, else null. */
+        private static Beardifier padBeardifier(SamplerContext context) {
+            if (!TerrainDiffusionConfig.structurePads()) return null;
+            Beardifier b = context.getField(Beardifier.CONTEXT_KEY);
+            return b == Beardifier.EMPTY ? null : b;
+        }
+
+        /** First air block Y of column (x, z): the terrain surface, pulled to any structure pad there. */
+        private static int columnTarget(SamplerContext context, TileCache cache, Beardifier beardifier, int x, int z) {
+            // When no tile is available, behave like empty air above y=0: density = -y.
             int target = cache.surfaceHeight(x, z, 0);
             // Ground pads under village houses and outposts (see StructurePads), from the chunk's beardifier.
-            Beardifier beardifier = TerrainDiffusionConfig.structurePads() ? context.getField(Beardifier.CONTEXT_KEY) : null;
-            if (beardifier != null && beardifier != Beardifier.EMPTY) {
+            if (beardifier != null) {
                 if (cache.padBeardifier != beardifier || cache.padX != x || cache.padZ != z || cache.padNatural != target) {
                     cache.padBeardifier = beardifier;
                     cache.padX = x;
@@ -127,12 +169,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                 }
                 target = cache.padTarget;
             }
-            return (float) (target - y);
-        }
-
-        @Override
-        public void sampleVolume(SamplerContext context, DensityBuffer buffer, DensityVolume volume) {
-            DensitySampler.sampleVolumeNaive(context, buffer, volume, this);
+            return target;
         }
     }
 }

@@ -125,6 +125,7 @@ public final class LocalTerrainProvider {
         } else if (instanceSeed != seed) {
             INSTANCE.pipeline.setSeed(seed);
             instanceSeed = seed;
+            cacheGeneration++;
             CACHE.clear();
             PENDING.clear();
             clearRivers();
@@ -156,7 +157,18 @@ public final class LocalTerrainProvider {
         return p == null ? null : p.pipeline.oceanFeatures();
     }
 
+    /**
+     * Bumped whenever the tile cache is cleared (new seed, new world), so per-thread copies of tiles
+     * ({@code TerrainDiffusionDensityFunction.TileCache}) know to reload.
+     */
+    private static volatile int cacheGeneration;
+
+    public static int cacheGeneration() {
+        return cacheGeneration;
+    }
+
     public static void clearCache() {
+        cacheGeneration++;
         CACHE.clear();
         PENDING.clear();
         clearRivers();
@@ -208,6 +220,7 @@ public final class LocalTerrainProvider {
             LocalTerrainProvider provider = getInstance();
             provider.pipeline.setSeed(newSeed);
             instanceSeed = newSeed;
+            cacheGeneration++;
             CACHE.clear();
             PENDING.clear();
             clearRivers();
@@ -549,7 +562,9 @@ public final class LocalTerrainProvider {
                         boolean cached = svc.isCached(ri, rj);
                         if (!cached) LOG.info("Terra rivers: computing region ({}, {})...", ri, rj);
                         long t0 = System.nanoTime();
+                        long tp = cached ? 0L : TerraPerf.start();
                         RiverService.Region region = svc.region(ri, rj, source);
+                        TerraPerf.end("riverRegion (part of tile.rivers)", tp);
                         if (!cached) {
                             LOG.info("Terra rivers: region ({}, {}) ready in {} ms", ri, rj,
                                     (System.nanoTime() - t0) / 1_000_000L);
@@ -684,7 +699,9 @@ public final class LocalTerrainProvider {
         long key = ((long) ri << 32) ^ (rj & 0xFFFFFFFFL);
         CoastPlan p = COAST_PLANS.get(key);
         if (p != null) return p;
+        long tp = TerraPerf.start();
         p = CoastPlan.build(seed, ri, rj, (a, b, c, d) -> pipeline.get(a, b, c, d, true), pipeline::archipelagoAt);
+        TerraPerf.end("coastPlan (part of tile.shape)", tp);
         COAST_PLANS.put(key, p);
         return p;
     }
@@ -941,18 +958,22 @@ public final class LocalTerrainProvider {
         int scale = WorldScaleManager.getCurrentScale();
         FutureTask<HeightmapData> task = new FutureTask<>(() -> {
             long computedWindowCountBefore = pipeline.getTotalComputedWindowCount();
+            long tBuild = System.nanoTime();
             HeightmapData data = scale <= 1
                     ? handle1x(i1, j1, i2, j2)
                     : handleUpsampled(i1, j1, i2, j2, scale);
+            long tr = TerraPerf.start();
             applyRivers(data, i1, j1, Math.max(1, scale));
+            TerraPerf.end("tile.rivers", tr);
             long computedWindowCountAfter = pipeline.getTotalComputedWindowCount();
 
             long newlyComputedWindowCount = computedWindowCountAfter - computedWindowCountBefore;
             int regionWidth = j2 - j1;
             int regionHeight = i2 - i1;
             LOG.info(
-                    "Terrain Diffusion ({}) finished generating region {}x{} ({} newly computed windows)",
-                    OnnxModel.getResolvedInferenceProvider(), regionWidth, regionHeight, newlyComputedWindowCount);
+                    "Terrain Diffusion ({}) finished generating region {}x{} ({} newly computed windows) in {} ms",
+                    OnnxModel.getResolvedInferenceProvider(), regionWidth, regionHeight, newlyComputedWindowCount,
+                    (System.nanoTime() - tBuild) / 1_000_000L);
             CACHE.put(key, new CacheEntry(data, new AtomicLong(CACHE_CLOCK.incrementAndGet())));
             evictLruTo(MAX_CACHE_SIZE);
             PENDING.remove(key);
@@ -968,11 +989,14 @@ public final class LocalTerrainProvider {
                     OnnxModel.getResolvedInferenceProvider(), j1, i1, j2, i2, regionWidth, regionHeight);
             INFERENCE_EXECUTOR.submit(toRun);
         }
+        long tw = TerraPerf.start();
         try {
             return toRun.get();
         } catch (Exception e) {
             PENDING.remove(key);
             throw new RuntimeException("Terrain tile failed: " + key, e);
+        } finally {
+            TerraPerf.end("tile.wait", tw);
         }
     }
 
@@ -1051,7 +1075,10 @@ public final class LocalTerrainProvider {
         int nH = i2p - i1p, nW = j2p - j1p;
 
         byte[] tagsNative = new byte[nH * nW];
+        long t0 = TerraPerf.start();
         float[][] out = pipeline.get(i1p, j1p, i2p, j2p, true, tagsNative);
+        TerraPerf.end("tile.model", t0);
+        t0 = TerraPerf.start();
         float[] elevNativeFlat    = out[0];
         float[] climateNativeFlat = out[1];
 
@@ -1077,17 +1104,24 @@ public final class LocalTerrainProvider {
         float[] climate = upsampleClimate(climateNativeFlat, nH, nW, cropI1, cropJ1, H, W, scale, nH * scale, nW * scale);
 
         float[] elevOut = addElevationNoise(elevSmooth, elevPadded, i1, j1, H, W, pixelSizeM);
+        TerraPerf.end("tile.shape", t0);
 
+        t0 = TerraPerf.start();
         float[][] rd = riverDistances(elevSmooth, i1, j1, H, W, scale);
         short[] biomeFlat = BiomeClassifier.classify(elevSmooth, climate, i1, j1, elevPadded, H, W, pixelSizeM, getSeed(),
                 rd == null ? null : rd[0], rd == null ? null : rd[1]);
+        TerraPerf.end("tile.biomes", t0);
+        t0 = TerraPerf.start();
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
+        TerraPerf.end("tile.coast", t0);
+        t0 = TerraPerf.start();
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
         byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
         HeightmapData data = buildHeightmapData(elevOut, biomeFlat, H, W);
         data.oceanTags = blockTagsUp;
+        TerraPerf.end("tile.deltas", t0);
         return data;
     }
 

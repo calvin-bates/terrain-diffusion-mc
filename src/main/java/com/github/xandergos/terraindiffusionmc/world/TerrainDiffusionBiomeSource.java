@@ -138,34 +138,41 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
         return this::getNoiseBiome;
     }
 
-    private Holder<Biome> getNoiseBiome(int x, int y, int z) {
-        requireBiomeIdMap();
-        Holder<Biome> defaultEntry = biomeIdMap.get((short) 1);
+    /**
+     * Biome holders indexed by Terra's biome id, built once from {@link #biomeIdMap}. The game asks for a biome at every
+     * 4x4x4 cell of every chunk (over 8000 per chunk in a 2096-block world), so the lookup is an array read in the
+     * calling thread's current tile ({@link TerrainDiffusionDensityFunction.TileCache}), not a map lookup per call.
+     */
+    private volatile Holder<Biome>[] biomeById;
 
+    @SuppressWarnings("unchecked")
+    private Holder<Biome>[] biomeById() {
+        Holder<Biome>[] a = biomeById;
+        if (a == null) {
+            requireBiomeIdMap();
+            int max = 0;
+            for (short id : biomeIdMap.keySet()) max = Math.max(max, id);
+            a = (Holder<Biome>[]) new Holder[max + 1];
+            for (Map.Entry<Short, Holder<Biome>> e : biomeIdMap.entrySet()) if (e.getKey() >= 0) a[e.getKey()] = e.getValue();
+            biomeById = a;
+        }
+        return a;
+    }
+
+    private Holder<Biome> getNoiseBiome(int x, int y, int z) {
+        Holder<Biome>[] byId = biomeById();
         // x, y, z are in quart coordinates (block / 4)
         int blockX = QuartPos.toBlock(x);
         int blockZ = QuartPos.toBlock(z);
-
-        int tileSize = TerrainDiffusionConfig.tileSize();
-        int tileShift = Integer.numberOfTrailingZeros(tileSize);
-
-        int tileX = blockX >> tileShift;
-        int tileZ = blockZ >> tileShift;
-
-        int blockStartX = tileX << tileShift;
-        int blockStartZ = tileZ << tileShift;
-        int blockEndX = blockStartX + tileSize;
-        int blockEndZ = blockStartZ + tileSize;
-
-        HeightmapData data = LocalTerrainProvider.getInstance().fetchHeightmap(blockStartZ, blockStartX, blockEndZ, blockEndX);
+        TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
+        HeightmapData data = cache.tile(blockX, blockZ);
         if (data != null && data.biomeIds != null) {
-            int localX = Math.max(0, Math.min(data.width  - 1, blockX - blockStartX));
-            int localZ = Math.max(0, Math.min(data.height - 1, blockZ - blockStartZ));
-            Holder<Biome> entry = biomeIdMap.get(data.biomeIds[localZ][localX]);
-            if (entry != null) return entry;
+            int localX = Math.max(0, Math.min(data.width - 1, blockX - cache.blockStartX));
+            int localZ = Math.max(0, Math.min(data.height - 1, blockZ - cache.blockStartZ));
+            short id = data.biomeIds[localZ][localX];
+            if (id >= 0 && id < byId.length && byId[id] != null) return byId[id];
         }
-
-        return defaultEntry;
+        return byId[1];
     }
 
     // The Terrain Diffusion biome layout is not searchable through vanilla's climate search, so

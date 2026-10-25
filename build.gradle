@@ -44,6 +44,11 @@ loom {
     runs {
         configureEach {
             ideConfigGenerated true
+            // .\gradlew.bat runClient -Pprofile records a Java Flight Recorder profile of the whole session to
+            // run/terra-profile.jfr (written when the game closes), for finding what slows chunk generation.
+            if (project.hasProperty('profile')) {
+                vmArg "-XX:StartFlightRecording=settings=profile,dumponexit=true,filename=${file('run/terra-profile.jfr').absolutePath}"
+            }
         }
     }
 }

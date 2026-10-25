@@ -4,13 +4,19 @@
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%d{HH:mm:ss} [%t] %-5level %logger{36} - %msg%n" />
         </Console>
+        <!-- The same output, saved to run/logs/terra-latest.log (replaced each run) so it can be read after a test. -->
+        <File name="File" fileName="logs/terra-latest.log" append="false">
+            <PatternLayout pattern="%d{HH:mm:ss} [%t] %-5level %logger{36} - %msg%n" />
+        </File>
     </Appenders>
     <Loggers>
         <Logger name="com.github.xandergos.terraindiffusionmc" level="debug" additivity="false">
             <AppenderRef ref="Console" />
+            <AppenderRef ref="File" />
         </Logger>
         <Root level="info">
             <AppenderRef ref="Console" />
+            <AppenderRef ref="File" />
         </Root>
     </Loggers>
 </Configuration>
