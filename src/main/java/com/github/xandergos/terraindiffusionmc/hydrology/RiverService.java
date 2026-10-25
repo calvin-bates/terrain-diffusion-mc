@@ -95,6 +95,58 @@ public final class RiverService {
             return q >= 0 && lakeComplete[q] && owns(lakeAnchorI[q], lakeAnchorJ[q]);
         }
 
+        private volatile float[] seaDist;
+
+        /**
+         * Per pixel, the distance (native pixels) to the nearest sea pixel (ground at or below 0 m), capped at
+         * {@link #SEA_DIST_CAP}; computed on first use. Within the cap it depends only on ground the window holds (the
+         * margin is wider), so regions agree where they overlap.
+         */
+        public float[] seaDistance() {
+            float[] d = seaDist;
+            if (d != null) return d;
+            synchronized (this) {
+                if (seaDist != null) return seaDist;
+                int n = height * width;
+                d = new float[n];
+                final float INF = SEA_DIST_CAP * 4f;
+                for (int k = 0; k < n; k++) d[k] = elev == null || elev[k] <= 0f ? 0f : INF;
+                // Two-pass chamfer (1, sqrt 2): within a few percent of the true distance.
+                final float D1 = 1f, D2 = 1.41421356f;
+                for (int r = 0; r < height; r++) {
+                    for (int c = 0; c < width; c++) {
+                        int k = r * width + c;
+                        float v = d[k];
+                        if (v == 0f) continue;
+                        if (c > 0) v = Math.min(v, d[k - 1] + D1);
+                        if (r > 0) {
+                            v = Math.min(v, d[k - width] + D1);
+                            if (c > 0) v = Math.min(v, d[k - width - 1] + D2);
+                            if (c < width - 1) v = Math.min(v, d[k - width + 1] + D2);
+                        }
+                        d[k] = v;
+                    }
+                }
+                for (int r = height - 1; r >= 0; r--) {
+                    for (int c = width - 1; c >= 0; c--) {
+                        int k = r * width + c;
+                        float v = d[k];
+                        if (v == 0f) continue;
+                        if (c < width - 1) v = Math.min(v, d[k + 1] + D1);
+                        if (r < height - 1) {
+                            v = Math.min(v, d[k + width] + D1);
+                            if (c < width - 1) v = Math.min(v, d[k + width + 1] + D2);
+                            if (c > 0) v = Math.min(v, d[k + width - 1] + D2);
+                        }
+                        d[k] = v;
+                    }
+                }
+                for (int k = 0; k < n; k++) d[k] = Math.min(d[k], SEA_DIST_CAP);
+                seaDist = d;
+                return d;
+            }
+        }
+
         /** Index of native pixel (pi, pj), or -1 if it is outside this region's window. */
         public int index(int pi, int pj) {
             int r = pi - i0, c = pj - j0;
@@ -104,6 +156,8 @@ public final class RiverService {
     }
 
     private static final int MAX_REGIONS = 12;
+    /** Farthest (native pixels) {@link Region#seaDistance} measures. */
+    public static final float SEA_DIST_CAP = 48f;
 
     private final int size;
     private final int margin;

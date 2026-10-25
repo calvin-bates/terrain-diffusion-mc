@@ -60,6 +60,7 @@ public abstract class NoiseBasedChunkGeneratorMixin {
             t0 = TerraPerf.start();
             OceanSurfaces.place(built, seaLevel);
             VolcanicSurfaces.place(built);
+            com.github.xandergos.terraindiffusionmc.world.Glaciers.place(built);
             TerraPerf.end("chunk.oceanSurfaces", t0);
             Icebergs.place(built, seaLevel);
             return built;

@@ -19,14 +19,35 @@ import java.util.WeakHashMap;
  * stem, or behind a ridge from it, is left alone. A ria and a delta never share a mouth: deltas form on flat coastal
  * plains, rias on hilly coasts.
  *
+ * <p>On cold (under {@link #MIN_TEMP}), mountainous coasts the same plan makes a <b>fjord</b> instead: a valley a glacier
+ * scoured into a U-shaped trough before the sea came in (Norway, Patagonia, British Columbia). It is longer (up to ~6 km), wider (1-1.7 km),
+ * much deeper (60-150 m below the old floor), with walls that rise steeply from the water, a shallower sill at the
+ * mouth, and a head where the trough climbs out of the sea and carries on a little way as a dry U-shaped valley.
+ *
  * <p>Coordinates are native pixels (x east, z south), pixel centres at {@code +0.5}.
  */
 public final class RiaPlan {
 
     /** Share of qualifying river mouths that are rias. */
     public static final float RIA_CHANCE = 0.35f;
-    /** Mouths colder than this (deg C) are left for fjords. */
-    private static final float MIN_TEMP = 8f;
+    /** Mouths colder than this (deg C) become fjords instead of rias. */
+    public static final float MIN_TEMP = 8f;
+    /** Share of qualifying cold river mouths that are fjords. */
+    public static final float FJORD_CHANCE = 0.65f;
+    /** Like {@link #MIN_RELIEF}, for fjords: they are cut into mountains. */
+    private static final float FJORD_MIN_RELIEF = 150f;
+    /** Shortest fjord (pixels, 1.5 km) of drowned trough. */
+    private static final float FJORD_MIN_INLET_PX = 50f;
+    /** Longest fjord (pixels). */
+    private static final int FJORD_MAX_LENGTH_PX = 200;
+    /** How far (pixels) above the drowned depth the trough's floor fades back to the river's (the dry valley past the head). */
+    private static final float FJORD_DRY_FADE_M = 60f;
+    /** How high (m) above the trough's floor its walls are cut before they meet the untouched mountainside. */
+    private static final float FJORD_WALL_M = 500f;
+    /** Widest a fjord's trough reaches (half-width, pixels) at its mouth; with {@link #EDGE_WOBBLE_PX} and the fade. */
+    private static final float FJORD_MAX_HALF_WIDTH_PX = 28f;
+    /** Ground lower than this (m) near a cold window may be a fjord's: the deepest floor plus its dry fade. */
+    public static final float FJORD_LOW_M = 150f + FJORD_DRY_FADE_M;
     /**
      * Average height (m) of the valley sides over the river (the highest ground within ~540 m) along the lower 3 km of
      * the valley that makes a coast "hilly".
@@ -43,6 +64,8 @@ public final class RiaPlan {
      * above the depth within a pixel or two).
      */
     private static final float DRY_FADE_M = 10f;
+    /** How far (pixels) the edges of the drowned area wander in and out. */
+    private static final float EDGE_WOBBLE_PX = 5f;
     /** How far (pixels) the drowning reaches sideways from the stem. */
     private static final float REACH_PX = 30f;
     /** Longest ria (pixels). */
@@ -51,10 +74,11 @@ public final class RiaPlan {
      * Farthest a ria reaches from its mouth (pixels): its length plus its sideways reach. Every tile near a coast looks
      * for rias in all hydrology regions within this distance, like deltas.
      */
-    public static final int MAX_REACH_PX = MAX_LENGTH_PX + (int) REACH_PX + 10;
+    public static final int MAX_REACH_PX = Math.max(MAX_LENGTH_PX + (int) REACH_PX,
+            FJORD_MAX_LENGTH_PX + (int) (1.5f * FJORD_MAX_HALF_WIDTH_PX + EDGE_WOBBLE_PX)) + 10;
+    /** Farthest (pixels) a ria or fjord changes ground sideways from its stem. */
+    public static final int MAX_SIDE_REACH_PX = (int) Math.max(REACH_PX, 1.5f * FJORD_MAX_HALF_WIDTH_PX) + (int) EDGE_WOBBLE_PX + 2;
 
-    /** How far (pixels) the edges of the drowned area wander in and out. */
-    private static final float EDGE_WOBBLE_PX = 5f;
     /** Low banks and hollows on a drowned valley floor (native pixels; ~300 m features). */
     private static final com.github.xandergos.terraindiffusionmc.pipeline.FastNoiseLite FLOOR_NOISE = floorNoise();
 
@@ -74,6 +98,10 @@ public final class RiaPlan {
     public float headZ() { return pz[pz.length - 1]; }
     private final float[] px, pz, cum, surf;
     private final float length, depth0, height0;
+    /** Whether this is a fjord (see the class comment). */
+    public final boolean fjord;
+    /** How far (pixels) the drowning reaches sideways from the stem; for a fjord, its trough's half-width at the mouth. */
+    private final float reach, halfWidth0;
     /** Bounding box of everything the ria can touch (pixels). */
     private final float bx0, bz0, bx1, bz1;
 
@@ -86,7 +114,8 @@ public final class RiaPlan {
     private final float[] regElev;
     private final int regI0, regJ0, regW, regH;
 
-    private RiaPlan(RiverService.Region reg, List<int[]> stem, long h) {
+    private RiaPlan(RiverService.Region reg, List<int[]> stem, long h, boolean fjord) {
+        this.fjord = fjord;
         regElev = reg.elev;
         regI0 = reg.i0; regJ0 = reg.j0; regW = reg.width; regH = reg.height;
         int n = stem.size();
@@ -104,14 +133,23 @@ public final class RiaPlan {
         mouthX = px[0];
         mouthZ = pz[0];
         length = cum[n - 1];
-        depth0 = 10f + 30f * u(h, 1);
-        height0 = depth0 + 10f + 15f * u(h, 2);
+        if (fjord) {
+            depth0 = 60f + 90f * u(h, 1);
+            height0 = depth0 + FJORD_WALL_M;
+            halfWidth0 = FJORD_MAX_HALF_WIDTH_PX * (0.65f + 0.35f * u(h, 2));
+            reach = 1.5f * halfWidth0;
+        } else {
+            depth0 = 10f + 30f * u(h, 1);
+            height0 = depth0 + 10f + 15f * u(h, 2);
+            halfWidth0 = REACH_PX;
+            reach = REACH_PX;
+        }
         float x0 = Float.MAX_VALUE, z0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, z1 = -Float.MAX_VALUE;
         for (int i = 0; i < n; i++) {
             x0 = Math.min(x0, px[i]); x1 = Math.max(x1, px[i]);
             z0 = Math.min(z0, pz[i]); z1 = Math.max(z1, pz[i]);
         }
-        float pad = REACH_PX + EDGE_WOBBLE_PX + 2;      // the wobbled edge reaches EDGE_WOBBLE_PX past REACH_PX
+        float pad = reach + EDGE_WOBBLE_PX + 2;      // the wobbled edge reaches EDGE_WOBBLE_PX past REACH_PX
         bx0 = x0 - pad; bz0 = z0 - pad; bx1 = x1 + pad; bz1 = z1 + pad;
     }
 
@@ -127,6 +165,7 @@ public final class RiaPlan {
     public float drown(float x, float z, float e) {
         if (!near(x, z, 0)) return e;
         if (gridD == null) buildGrid();
+        if (fjord) return drownFjord(x, z, e);
         float fx = x - 0.5f - gx0, fz = z - 0.5f - gz0;
         int c0 = (int) Math.floor(fx), r0 = (int) Math.floor(fz);
         if (c0 < 0 || r0 < 0 || c0 + 1 >= gw || r0 + 1 >= gh) return e;
@@ -160,11 +199,51 @@ public final class RiaPlan {
         return Math.min(e, lowered);
     }
 
+    /**
+     * A fjord: the ground cut down to a U-shaped trough around the stem, {@code depth(s)} under the old valley floor at
+     * the stem and rising as the cube of the distance across (a flat-bottomed U), to {@link #FJORD_WALL_M} over the floor
+     * at the trough's half-width; ground already lower is left alone. The cut fades out sideways past 1.2-1.5 half-widths, out
+     * to sea past the mouth, and up the valley where the old floor climbs above the drowned depth.
+     */
+    private float drownFjord(float x, float z, float e) {
+        float fx = x - 0.5f - gx0, fz = z - 0.5f - gz0;
+        int c0 = (int) Math.floor(fx), r0 = (int) Math.floor(fz);
+        if (c0 < 0 || r0 < 0 || c0 + 1 >= gw || r0 + 1 >= gh) return e;
+        float tx = fx - c0, tz = fz - r0;
+        float d = bilerp(gridD, r0, c0, tx, tz) + EDGE_WOBBLE_PX * FLOOR_NOISE.GetNoise(x * 0.6f + 400, z * 0.6f - 170);
+        if (d >= reach) return e;
+        d = Math.max(0f, d);
+        float s = bilerp(gridS, r0, c0, tx, tz);
+        float beyond = Math.max(0f, bilerp(gridBeyond, r0, c0, tx, tz) + 3f * FLOOR_NOISE.GetNoise(x * 0.6f - 900, z * 0.6f + 35));
+        float floor = surfAt(s);
+        float D = fjordDepth(s);
+        float w = (1 - smooth(0.8f * reach, reach, d)) * (1 - smooth(4f, 18f, beyond))
+                * (1 - smooth(D, D + FJORD_DRY_FADE_M, floor));
+        if (w <= 0f) return e;
+        float t = Math.max(0f, Math.min(1f, s / length));
+        float half = halfWidth0 * (1 - 0.45f * t);
+        float a = d / half;
+        // Gentle low mounds on the drowned floor only (above the sea they would leave pits for the rivers).
+        float bed = floor - D;
+        float bumps = bed < 0f ? (1f + 0.04f * D) * FLOOR_NOISE.GetNoise(x, z) * smooth(0f, 6f, -bed) : 0f;
+        float u = bed + bumps + (D + FJORD_WALL_M) * a * a * a;
+        if (u >= e) return e;
+        return e - (e - u) * w;
+    }
+
+    /** The fjord's depth (m) under the old valley floor at arc length s: a sill at the mouth, deep most of the way, rising at the head. */
+    private float fjordDepth(float s) {
+        float t = Math.max(0f, Math.min(1f, s / length));
+        float sill = 0.4f * (1 - smooth(4f, 16f, s));
+        return depth0 * (1 - (float) Math.pow(t, 2.5)) * (1 - sill);
+    }
+
     /** How far (pixels) up the stem the valley floor stays at or below the drowning depth: the inlet's length. */
     float inletLength() {
         for (int i = 0; i < cum.length; i++) {
             float t = Math.max(0f, Math.min(1f, cum[i] / length));
-            if (surf[i] > depth0 * (1 - (float) Math.pow(t, 1.6))) return cum[i];
+            float depth = fjord ? fjordDepth(cum[i]) : depth0 * (1 - (float) Math.pow(t, 1.6));
+            if (surf[i] > depth) return cum[i];
         }
         return length;
     }
@@ -204,8 +283,8 @@ public final class RiaPlan {
                 float beyond = Math.max(0f, (x - px[0]) * dirX + (z - pz[0]) * dirZ);
                 if (bs > 0.5f) beyond = 0f;
                 // Ground behind a ridge from the stem is a different valley: leave it alone.
-                if (best < REACH_PX && blocked(x, z, bxp, bzp, bs)) best = Float.MAX_VALUE;
-                gd[r * gw + c] = Math.min(best, 2 * REACH_PX);
+                if (best < reach && blocked(x, z, bxp, bzp, bs)) best = Float.MAX_VALUE;
+                gd[r * gw + c] = Math.min(best, 2 * reach);
                 gs[r * gw + c] = bs;
                 gb[r * gw + c] = beyond;
             }
@@ -261,8 +340,8 @@ public final class RiaPlan {
     }
 
     /** Names of the {@link #stats} entries: why river mouths did not become rias. */
-    public static final String[] REASONS = {"river mouths", "too cold (fjord country)", "skipped by chance",
-            "river too short", "coast not hilly", "valley too steep for an inlet", "rias"};
+    public static final String[] REASONS = {"river mouths", "fjords", "skipped by chance",
+            "river too short", "coast not hilly (mountainous for fjords)", "valley too steep for an inlet", "rias"};
 
     /**
      * Counts, for the river mouths in region (ri, rj)'s own square, why each did or did not become a ria (indices into
@@ -276,11 +355,11 @@ public final class RiaPlan {
                 int k = reg.index(i, j);
                 if (k < 0) continue;
                 int[] why = new int[1];
-                tryMouth(reg, k, i, j, why);
+                RiaPlan p = tryMouth(reg, k, i, j, why);
                 if (why[0] < 0) continue;
                 out[0]++;
                 if (why[0] > 0) out[why[0]]++;
-                else out[REASONS.length - 1]++;
+                else out[p != null && p.fjord ? 1 : REASONS.length - 1]++;
             }
         }
         return out;
@@ -299,9 +378,9 @@ public final class RiaPlan {
         int d = reg.downstream[k];
         if (d < 0 || reg.elev[d] > 0f) return null;                          // not the last land pixel
         long h = (long) i * 73856093L ^ (long) j * 19349663L ^ 0x41A5L;
-        if (reg.temp[k] < MIN_TEMP) { why[0] = 1; return null; }
-        if (u(h, 0) > RIA_CHANCE) { why[0] = 2; return null; }
-        int target = 100 + (int) (83 * u(h, 3));
+        boolean fjord = reg.temp[k] < MIN_TEMP;
+        if (u(h, 0) > (fjord ? FJORD_CHANCE : RIA_CHANCE)) { why[0] = 2; return null; }
+        int target = fjord ? 130 + (int) ((FJORD_MAX_LENGTH_PX - 130) * u(h, 3)) : 100 + (int) (83 * u(h, 3));
         List<int[]> stem = new ArrayList<>();
         stem.add(new int[]{k});
         int cur = k;
@@ -331,9 +410,9 @@ public final class RiaPlan {
             relief += hi - reg.elev[q];
             samples++;
         }
-        if (samples == 0 || relief / samples < MIN_RELIEF) { why[0] = 4; return null; }
-        RiaPlan plan = new RiaPlan(reg, stem, h);
-        if (plan.inletLength() < MIN_INLET_PX) { why[0] = 5; return null; }
+        if (samples == 0 || relief / samples < (fjord ? FJORD_MIN_RELIEF : MIN_RELIEF)) { why[0] = 4; return null; }
+        RiaPlan plan = new RiaPlan(reg, stem, h, fjord);
+        if (plan.inletLength() < (fjord ? FJORD_MIN_INLET_PX : MIN_INLET_PX)) { why[0] = 5; return null; }
         why[0] = 0;
         return plan;
     }

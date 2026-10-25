@@ -3,10 +3,13 @@
   "values": [
     "terra:lava_fields",
     "terra:volcano",
+    "terra:lava_fields",
+    "terra:volcano",
     "terra:arctic",
     "terra:birch_taiga",
     "terra:boreal_forest",
     "terra:forested_highland",
+    "terra:glacier",
     "terra:lava_fields",
     "terra:moorland",
     "terra:polar_desert",

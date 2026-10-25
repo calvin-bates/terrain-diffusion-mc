@@ -74,6 +74,10 @@ public final class LocalTerrainProvider {
         public short[][] waterY;
         /** True where the water at that column is a lake rather than a river. */
         public boolean[][] waterIsLake;
+        /** Glacier ice surface per column (metres, or {@link GlacierShaper#NO_ICE}); null if the tile has no glacier. */
+        public short[][] iceTop;
+        /** Glacier kind per column ({@link GlacierShaper#ICE_SNOW} and so on); null if the tile has no glacier. */
+        public byte[][] glacier;
         /**
          * Ocean surface tag per column ({@link OceanFeatures#TAG_REEF} and so on: where coral, seagrass and limestone
          * go); null if the tile has none.
@@ -461,6 +465,12 @@ public final class LocalTerrainProvider {
      */
     public static RiaSearch findNearestRia(double pi, double pj, int maxRings, java.util.function.IntConsumer progress)
             throws Exception {
+        return findNearestRia(pi, pj, maxRings, false, progress);
+    }
+
+    /** As above, for fjords ({@code fjord}) or rias only. */
+    public static RiaSearch findNearestRia(double pi, double pj, int maxRings, boolean fjord,
+                                           java.util.function.IntConsumer progress) throws Exception {
         int size = rivers().regionSize();
         int ci = Math.floorDiv((int) Math.floor(pi), size), cj = Math.floorDiv((int) Math.floor(pj), size);
         Ria best = null;
@@ -479,6 +489,7 @@ public final class LocalTerrainProvider {
                         return RiaPlan.of(reg, fri, frj, size);
                     });
                     for (RiaPlan p : plans) {
+                        if (p.fjord != fjord) continue;
                         count++;
                         double d = Math.hypot(p.mouthZ - pi, p.mouthX - pj);
                         if (d < bestD) { bestD = d; best = new Ria(p.mouthZ, p.mouthX, p.headZ(), p.headX()); }
@@ -676,13 +687,11 @@ public final class LocalTerrainProvider {
      */
     private List<RiaPlan> riaPlansNear(float[] elevNative, int pi0, int pj0, int pi1, int pj1) {
         if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.oceanFeatures()) return List.of();
-        boolean low = false;
-        for (float e : elevNative) if (e < 45f) { low = true; break; }
-        if (!low) return List.of();
         try {
             RiverService svc = rivers();
             int size = svc.regionSize();
             RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            if (!mayHaveInlet(svc, source, elevNative, pi0, pj0, pi1, pj1)) return List.of();
             int pad = RiaPlan.MAX_REACH_PX;
             List<RiaPlan> out = new ArrayList<>();
             float cx = (pj0 + pj1) / 2f, cz = (pi0 + pi1) / 2f, half = Math.max(pi1 - pi0, pj1 - pj0) / 2f;
@@ -698,6 +707,38 @@ public final class LocalTerrainProvider {
             LOG.warn("Terra: rias unavailable for ({}, {}): {}", pj0, pi0, e.toString());
             return List.of();
         }
+    }
+
+    /**
+     * Whether a ria or fjord could change ground in native window [pi0, pi1) x [pj0, pj1): ground low enough for one lies
+     * within their sideways reach of it. Checked on the hydrology regions there (rivers need them anyway), so a tile
+     * showing only a fjord's high walls still finds the fjord. Rias are at most
+     * ~50 m up their valley floor, fjords (only where the river region is cold) up to {@link RiaPlan#FJORD_LOW_M}.
+     */
+    private static boolean mayHaveInlet(RiverService svc, RiverService.Source source, float[] elevNative,
+                                        int pi0, int pj0, int pi1, int pj1) {
+        for (float e : elevNative) if (e < 45f) return true;
+        int R = RiaPlan.MAX_SIDE_REACH_PX, size = svc.regionSize();
+        int a0 = pi0 - R, a1 = pi1 + R, b0 = pj0 - R, b1 = pj1 + R;
+        for (int ri = Math.floorDiv(a0, size); ri <= Math.floorDiv(a1 - 1, size); ri++) {
+            for (int rj = Math.floorDiv(b0, size); rj <= Math.floorDiv(b1 - 1, size); rj++) {
+                RiverService.Region reg = svc.region(ri, rj, source);
+                if (reg.elev == null) continue;
+                // This region's own square, within the window and its reach.
+                int i0 = Math.max(a0, ri * size), i1 = Math.min(a1, (ri + 1) * size);
+                int j0 = Math.max(b0, rj * size), j1 = Math.min(b1, (rj + 1) * size);
+                for (int i = i0; i < i1; i += 2) {
+                    for (int j = j0; j < j1; j += 2) {
+                        int k = reg.index(i, j);
+                        if (k < 0) continue;
+                        float e = reg.elev[k];
+                        if (e < 55f) return true;
+                        if (e < RiaPlan.FJORD_LOW_M && reg.temp != null && reg.temp[k] < RiaPlan.MIN_TEMP + 1f) return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -997,6 +1038,7 @@ public final class LocalTerrainProvider {
             long tr = TerraPerf.start();
             applyRivers(data, i1, j1, Math.max(1, scale));
             noWaterOnLava(data);
+            noWaterUnderIce(data);
             TerraPerf.end("tile.rivers", tr);
             long computedWindowCountAfter = pipeline.getTotalComputedWindowCount();
 
@@ -1078,8 +1120,15 @@ public final class LocalTerrainProvider {
         byte[][] blockTags1 = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
         mushroomFields(blockTags1, elevFlat, biomeFlat, W);
         volcanicBiomes(blockTags1, elevFlat, biomeFlat, W);
+        GlacierShaper.Result ice = TerrainDiffusionConfig.glaciers()
+                ? GlacierShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat, blockTags1)
+                : null;
         HeightmapData data = buildHeightmapData(elevFlat, biomeFlat, H, W);
         data.oceanTags = blockTags1;
+        if (ice != null) {
+            data.iceTop = ice.iceTop();
+            data.glacier = ice.kind();
+        }
         return data;
     }
 
@@ -1148,16 +1197,70 @@ public final class LocalTerrainProvider {
         t0 = TerraPerf.start();
         CoastShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat,
                 riverMouthMask(elevOut, i1, j1, H, W, scale));
+        marineTerraces(elevOut, biomeFlat, i1, j1, H, W, scale);
         TerraPerf.end("tile.coast", t0);
         t0 = TerraPerf.start();
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
         byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
         volcanicBiomes(blockTagsUp, elevOut, biomeFlat, W);
+        GlacierShaper.Result ice = TerrainDiffusionConfig.glaciers()
+                ? GlacierShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat, blockTagsUp)
+                : null;
         HeightmapData data = buildHeightmapData(elevOut, biomeFlat, H, W);
         data.oceanTags = blockTagsUp;
+        if (ice != null) {
+            data.iceTop = ice.iceTop();
+            data.glacier = ice.kind();
+        }
         TerraPerf.end("tile.deltas", t0);
         return data;
+    }
+
+    /** Raised marine terraces ({@link MarineTerraces}) on the tile's ground, where a terrace zone meets the sea. */
+    private void marineTerraces(float[] elevOut, short[] biomes, int i1, int j1, int H, int W, int scale) {
+        if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.oceanFeatures()) return;
+        float mpb = WorldPipelineModelConfig.nativeResolution() / scale;
+        if (!MarineTerraces.mayApply(i1, j1, H, W, mpb)) return;
+        boolean land = false;
+        for (float e : elevOut) if (e > 5f) { land = true; break; }
+        if (!land) return;
+        try {
+            // Sea distance on the native pixels under the tile (plus one for interpolation), from the hydrology regions.
+            int pi0 = Math.floorDiv(i1, scale) - 1, pj0 = Math.floorDiv(j1, scale) - 1;
+            int pi1 = Math.floorDiv(i1 + H - 1, scale) + 2, pj1 = Math.floorDiv(j1 + W - 1, scale) + 2;
+            int nh = pi1 - pi0 + 1, nw = pj1 - pj0 + 1;
+            float[] nat = new float[nh * nw];
+            RiverService svc = rivers();
+            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+            boolean near = false;
+            for (int r = 0; r < nh; r++) {
+                for (int c = 0; c < nw; c++) {
+                    RiverService.Region reg = svc.regionOfPixel(pi0 + r, pj0 + c, source);
+                    int k = reg.index(pi0 + r, pj0 + c);
+                    float d = k >= 0 ? reg.seaDistance()[k] : RiverService.SEA_DIST_CAP;
+                    nat[r * nw + c] = d;
+                    if (d < MarineTerraces.REACH_PX) near = true;
+                }
+            }
+            if (!near) return;
+            float[] dist = new float[H * W];
+            for (int r = 0; r < H; r++) {
+                float fz = (i1 + r + 0.5f) / scale - 0.5f - pi0;
+                int z0 = (int) Math.floor(fz);
+                float tz = fz - z0;
+                for (int c = 0; c < W; c++) {
+                    float fx = (j1 + c + 0.5f) / scale - 0.5f - pj0;
+                    int x0 = (int) Math.floor(fx);
+                    float tx = fx - x0;
+                    float a = nat[z0 * nw + x0], b = nat[z0 * nw + x0 + 1], cc = nat[(z0 + 1) * nw + x0], dd = nat[(z0 + 1) * nw + x0 + 1];
+                    dist[r * W + c] = (a * (1 - tx) + b * tx) * (1 - tz) + (cc * (1 - tx) + dd * tx) * tz;
+                }
+            }
+            MarineTerraces.apply(elevOut, dist, biomes, i1, j1, H, W, mpb);
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: marine terraces unavailable for ({}, {}): {}", j1, i1, e.toString());
+        }
     }
 
     /**
@@ -1268,6 +1371,19 @@ public final class LocalTerrainProvider {
             for (int c = 0; c < data.width; c++) {
                 byte t = data.oceanTags[r][c];
                 if (t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL && t != Landforms.TAG_HOT_CRATER) continue;
+                data.waterY[r][c] = RiverCarver.NONE;
+                if (data.waterIsLake != null) data.waterIsLake[r][c] = false;
+            }
+        }
+    }
+
+    /** Rivers and lakes run under a glacier's ice, not through it: no water where ice lies (the river leaves the snout). */
+    private static void noWaterUnderIce(HeightmapData data) {
+        if (data.glacier == null || data.waterY == null) return;
+        for (int r = 0; r < data.height; r++) {
+            for (int c = 0; c < data.width; c++) {
+                byte g = data.glacier[r][c];
+                if (g != GlacierShaper.ICE_SNOW && g != GlacierShaper.ICE_BARE) continue;
                 data.waterY[r][c] = RiverCarver.NONE;
                 if (data.waterIsLake != null) data.waterIsLake[r][c] = false;
             }

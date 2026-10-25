@@ -53,6 +53,10 @@ public final class BiomeMap {
         for (int r = 0; r < H; r++) for (int c = 0; c < W; c++) tags2[r][c] = tagsBig[(r + M) * WW + c + M];
         LocalTerrainProvider.mushroomFields(tags2, elev, biomes, W);
         LocalTerrainProvider.volcanicBiomes(tags2, elev, biomes, W);
+        // Glaciers, at native resolution (the margin is just wide enough for its filters).
+        if (com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig.glaciers()) {
+            GlacierShaper.apply(elev2D, M, M, H, W, 1, i1, j1, climate, elevOut, biomes, tags2);
+        }
         return new Result(biomes, elev, climate, H, W);
     }
 

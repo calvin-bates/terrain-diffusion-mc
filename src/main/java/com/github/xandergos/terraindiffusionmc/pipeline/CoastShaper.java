@@ -28,6 +28,7 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  *       30-90 m off rocky and cliffed coasts.</li>
  *   <li><b>Coastal dunes</b> (v1.3): low sand ridges parallel to the shore behind sandy beaches, out to ~150 m inland,
  *       a block or two high (only ever raise the ground).</li>
+ *   <li><b>Sea stacks</b> (v1.4): pillars of rock 25-75 m tall standing just off cliffed coasts.</li>
  * </ul>
  *
  * <p>The platform pass looks up to {@link #PLATFORM_LOOK_PX} native pixels landward from a sea column, and the dunes
@@ -61,6 +62,12 @@ public final class CoastShaper {
     private static final FastNoiseLite DUNE_ZONE = noise(7116, 1f / 2000f);
     private static final FastNoiseLite DUNE_WARP = noise(7117, 1f / 320f);
     private static final FastNoiseLite DUNE_AMP = noise(7118, 1f / 300f);
+    // v1.4 sea stacks.
+    private static final FastNoiseLite STACK_ZONE = noise(7119, 1f / 1800f);
+    private static final FastNoiseLite STACK_EDGE = noise(7120, 1f / 9f);
+
+    /** Sea stacks: zone level (higher = rarer), chance per 90 m cell, how far out they stand (native pixels). */
+    static final float STACK_ZONE_LEVEL = -0.1f, STACK_CHANCE = 0.55f, STACK_NEAR_PX = 0.4f, STACK_FAR_PX = 2.5f;
 
     /** Tide pools: share of platforms in pool zones (noise level; higher = fewer) and of the bench that is pools. */
     static final float TIDE_ZONE_LEVEL = 0f, TIDE_POOL_LEVEL = 0.35f;
@@ -243,6 +250,7 @@ public final class CoastShaper {
         float[] toSea = distanceField(smooth, upH, upW, true), toLand = distanceField(smooth, upH, upW, false);
         offshoreRocks(smooth, upH, upW, cropI, cropJ, H, W, scale, i1, j1, elevOut, biomes, riverMouth, metresPerBlock,
                 toLand);
+        seaStacks(smooth, upH, upW, cropI, cropJ, H, W, scale, i1, j1, elevOut, biomes, metresPerBlock, toLand);
         dunes(smooth, upW, cropI, cropJ, H, W, scale, i1, j1, climate, elevOut, biomes, riverMouth, metresPerBlock, toSea);
     }
 
@@ -286,6 +294,73 @@ public final class CoastShaper {
                 if (elevOut[k] > -0.5f * shelfMetresPerBlock(metresPerBlock)) biomes[k] = BiomeClassifier.STONY_SHORE;
             }
         }
+    }
+
+    /**
+     * Sea stacks (v1.4): pillars of rock standing in the sea off steep, cliffed coasts, where the waves have cut the
+     * cliff back around a harder core (the Twelve Apostles, Old Harry Rocks, Bedruthan). One candidate per 90 m cell of
+     * the world grid, at a random point in it, in stack zones on cliffed coasts; it stands if the sea floor there is
+     * shallow and land is 0.4-2.5 native pixels away with high ground behind it. Every test is made at the stack's centre
+     * on ground the tile margin holds, so neighbouring tiles agree. A stack is 15-40 m across, 25-75 m tall (a quarter are
+     * worn-down stumps), never taller than the land behind, with near-vertical sides and a slightly domed top; only raises.
+     */
+    private static void seaStacks(float[][] smooth, int upH, int upW, int cropI, int cropJ, int H, int W, int scale,
+                                  int i1, int j1, float[] elevOut, short[] biomes, float metresPerBlock, float[] toLand) {
+        int cell = 3 * scale, R = 2 * scale;
+        float maxR = (20f / metresPerBlock + 0.5f) * 1.3f + 1f;
+        int m = (int) Math.ceil(maxR);
+        for (int gi = Math.floorDiv(i1 - m, cell); gi <= Math.floorDiv(i1 + H + m, cell); gi++) {
+            for (int gj = Math.floorDiv(j1 - m, cell); gj <= Math.floorDiv(j1 + W + m, cell); gj++) {
+                long h = stackHash(gi, gj);
+                if (unit(h, 1) > STACK_CHANCE) continue;
+                float radius = (15f + 25f * unit(h, 2)) / metresPerBlock * 0.5f + 0.5f;   // blocks
+                float inner = Math.max(0f, cell - 2 * (radius + 1));
+                float cz = gi * cell + radius + 1 + inner * unit(h, 3), cx = gj * cell + radius + 1 + inner * unit(h, 4);
+                if (cz + radius < i1 || cz - radius > i1 + H || cx + radius < j1 || cx - radius > j1 + W) continue;
+                int si = cropI + (int) Math.floor(cz) - i1, sj = cropJ + (int) Math.floor(cx) - j1;
+                if (si < R || sj < R || si >= upH - R || sj >= upW - R) continue;
+                float e = smooth[si][sj];
+                if (e >= -1f || e < -35f) continue;
+                float wx = cx * metresPerBlock, wz = cz * metresPerBlock;
+                if (STACK_ZONE.GetNoise(wx, wz) < STACK_ZONE_LEVEL || CLIFF_MASK.GetNoise(wx, wz) < 0f) continue;
+                float dl = toLand[si * upW + sj];
+                if (dl < STACK_NEAR_PX * scale || dl > STACK_FAR_PX * scale) continue;
+                float high = highest(smooth, upH, upW, si, sj, (int) Math.ceil(dl) + R, 0f);
+                if (high / (R * metresPerBlock) < 0.3f) continue;          // steep, high ground behind: a cliffed coast
+                float top = unit(h, 5) < 0.25f ? 5f + 7f * unit(h, 6) : 25f + 50f * unit(h, 6);
+                top = Math.min(top, 0.9f * high);
+                for (int r = Math.max(0, (int) Math.floor(cz - radius - 1) - i1); r <= Math.min(H - 1, (int) Math.ceil(cz + radius + 1) - i1); r++) {
+                    for (int c = Math.max(0, (int) Math.floor(cx - radius - 1) - j1); c <= Math.min(W - 1, (int) Math.ceil(cx + radius + 1) - j1); c++) {
+                        float bx = j1 + c + 0.5f, bz = i1 + r + 0.5f;
+                        float rr = radius * (1f + 0.3f * STACK_EDGE.GetNoise(bx * metresPerBlock, bz * metresPerBlock));
+                        float d = (float) Math.sqrt((bx - cx) * (bx - cx) + (bz - cz) * (bz - cz));
+                        if (d >= rr) continue;
+                        int k = r * W + c;
+                        float f = d / rr;
+                        // Sides fall sheer over the outer fifth (still a block or two of footing at the waterline).
+                        float hgt = top * (1f - 0.12f * f * f) * (f < 0.8f ? 1f : 0.35f + 0.65f * (1f - smoothstep(0.8f, 1f, f)));
+                        if (hgt > elevOut[k]) {
+                            elevOut[k] = hgt;
+                            biomes[k] = BiomeClassifier.STONY_SHORE;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static long stackHash(int gi, int gj) {
+        long z = (long) gi * 0x9E3779B97F4A7C15L ^ (long) gj * 0xC2B2AE3D27D4EB4FL ^ 0x57ACL;
+        return z;
+    }
+
+    /** Uniform [0, 1) from hash h and a salt. */
+    private static float unit(long h, long salt) {
+        long z = h + salt * 0x9E3779B97F4A7C15L;
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        z ^= z >>> 31;
+        return (z >>> 40) / (float) (1L << 24);
     }
 
     /**
@@ -524,7 +599,7 @@ public final class CoastShaper {
                 || b == BiomeClassifier.SNOWY_TAIGA_SPARSE || b == BiomeClassifier.SNOWY_SLOPES
                 || b == BiomeClassifier.FROZEN_PEAKS || b == BiomeClassifier.JAGGED_PEAKS
                 || b == RegionalBiomes.TUNDRA || b == RegionalBiomes.POLAR_DESERT
-                || b == RegionalBiomes.ARCTIC;
+                || b == RegionalBiomes.ARCTIC || b == RegionalBiomes.GLACIER;
     }
 
     private static float smoothstep(float e0, float e1, float v) {

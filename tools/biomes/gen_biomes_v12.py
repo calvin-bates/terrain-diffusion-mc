@@ -661,6 +661,16 @@ biome("lava_fields", id=87, base="windswept_gravelly_hills", temp=1.0, downfall=
       under=rule((noise("surface", 0.2), "minecraft:basalt"), (None, "minecraft:blackstone")), top_wet=True,
       no_tags=["has_structure/village_plains", "has_structure/pillager_outpost"])
 
+# ---- v1.4 round B: land glaciers (set by the tile where GlacierShaper lays ice; world/Glaciers places the ice) ----
+# The ground under and between the ice: scoured rock and gravel; snow and polar bears from frozen peaks, no trees.
+biome("glacier", id=88, base="frozen_peaks", temp=-0.7, downfall=0.6,
+      colors={"grass_color": "#b8ccc4", "foliage_color": "#9cb4ac", "water_color": "#3d57d6"},
+      veg=[],
+      top=rule((noise("surface", 0.25), GRAVEL), (None, "minecraft:stone")),
+      under=rule((None, "minecraft:stone")), top_wet=True,
+      no_tags=["has_structure/village_snowy", "has_structure/pillager_outpost"])
+
+
 
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
