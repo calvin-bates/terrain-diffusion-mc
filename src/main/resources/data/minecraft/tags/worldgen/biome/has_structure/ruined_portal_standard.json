@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
+    "terra:arctic",
     "terra:aspen_parkland",
     "terra:blooming_valley",
     "terra:mediterranean_scrub",

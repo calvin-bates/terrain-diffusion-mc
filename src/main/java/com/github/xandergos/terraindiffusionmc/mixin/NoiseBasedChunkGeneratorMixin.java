@@ -3,6 +3,7 @@ package com.github.xandergos.terraindiffusionmc.mixin;
 import com.github.xandergos.terraindiffusionmc.world.DryCaves;
 import com.github.xandergos.terraindiffusionmc.world.InlandWaterCarving;
 import com.github.xandergos.terraindiffusionmc.world.OceanSurfaces;
+import com.github.xandergos.terraindiffusionmc.world.Icebergs;
 import com.github.xandergos.terraindiffusionmc.world.RiverWaterPlacer;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import net.minecraft.core.BlockPos;
@@ -53,6 +54,7 @@ public abstract class NoiseBasedChunkGeneratorMixin {
         cir.setReturnValue(cir.getReturnValue().thenApply(built -> {
             RiverWaterPlacer.place(built);
             OceanSurfaces.place(built, seaLevel);
+            Icebergs.place(built, seaLevel);
             return built;
         }));
     }

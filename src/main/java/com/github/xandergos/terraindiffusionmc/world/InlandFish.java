@@ -40,7 +40,7 @@ public final class InlandFish {
             "taiga_sparse", "snowy_taiga_sparse", "grove", "snowy_slopes", "snowy_plains", "ice_spikes", "frozen_peaks",
             "jagged_peaks", "stony_peaks", "meadow", "windswept_hills", "windswept_gravelly_hills", "windswept_forest",
             "tundra", "polar_desert", "treeline", "boreal_forest", "siberian_taiga", "birch_taiga", "taiga_mountain",
-            "taiga_clearing", "bog", "moorland", "temperate_rainforest", "redwoods", "aspen_parkland", "forested_highland", "aspen_grove");
+            "taiga_clearing", "bog", "moorland", "temperate_rainforest", "redwoods", "aspen_parkland", "forested_highland", "aspen_grove", "arctic");
 
     private InlandFish() {
     }

@@ -628,6 +628,16 @@ biome("salt_flats", id=84, base="desert", temp=2.0, downfall=0.0, precip=False,
       top=rule((noise("surface", 0.3), "minecraft:calcite"), (None, "minecraft:white_terracotta")),
       under=rule((None, "minecraft:white_terracotta")), top_wet=True)
 
+# Ice-capped islands in frozen seas (v1.3 round C): snow over packed ice, bare ice in patches, polar bears and snow
+# from snowy plains; no villages or outposts on the ice cap.
+biome("arctic", id=85, base="snowy_plains", temp=-0.7, downfall=0.4,
+      colors={"grass_color": "#c8d8d0", "foliage_color": "#a8c0b8", "water_color": "#3d57d6"},
+      veg=[],
+      top=rule((noise("surface", 0.35), "minecraft:packed_ice"), (noise("surface_secondary", 0.55), "minecraft:blue_ice"),
+               (None, "minecraft:snow_block")),
+      under=rule((None, "minecraft:packed_ice")), top_wet=True,
+      no_tags=["has_structure/village_snowy", "has_structure/pillager_outpost"])
+
 V12 = [f"terra:{n}" for n in B]
 # Vanilla biomes whose surface rules this script also owns (Terra places them; vanilla's rule tree isn't used).
 MANAGED = V12 + ["minecraft:mushroom_fields"]
@@ -699,6 +709,8 @@ def main():
     for name, d in B.items():
         for t in ["is_overworld"] + d.get("tags", []):
             members.setdefault(t, set()).add(f"terra:{name}")
+        for t in d.get("no_tags", []):
+            members.get(t, set()).discard(f"terra:{name}")
     # Rewrite every tag file this script owns or adds to, keeping other entries (e.g. terra:dark_forest).
     for root, _, files in os.walk(MC_TAGS):
         for fn in files:
@@ -752,6 +764,10 @@ def main():
     i4 = next(i for i, r in enumerate(seq) if is_depth(r, 4))
     seq[i4 + 1:i4 + 1] = deep_after
     write(MATERIAL_RULE, mr)
+    # Vanilla's icebergs are replaced by Terra's iceberg fields (world/Icebergs): never place them.
+    for f in ("iceberg_packed", "iceberg_blue"):
+        write(f"{RES}/minecraft/worldgen/placed_feature/{f}.json",
+              {"feature": f"minecraft:{f}", "placement": [{"type": "minecraft:count", "count": 0}]})
     print(f"{len(B)} biomes, {len(FEATURES) + len(SELECTORS)} features, {len(PLACED)} placed features, "
           f"{len(members)} tag files")
 

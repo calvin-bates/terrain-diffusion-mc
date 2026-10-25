@@ -847,7 +847,9 @@ public final class WorldPipeline implements AutoCloseable {
      *
      * @return float[2]: [0] = elev (H*W flat), [1] = climate (6*H*W flat, or null): temperature (°C), temperature
      *         seasonality (std × 100), precipitation (mm/yr), precipitation CV, lapse rate, and the signed coastal
-     *         current ({@link CoastalCurrents#signedCurrent}: negative for cold upwelling, positive for a warm current)
+     *         current ({@link CoastalCurrents#signedCurrent}: negative for cold upwelling, positive for a warm current),
+     *         and the coarse model's elevation there (metres, 7.7 km pixels: land too small for it, an island, sits on
+     *         coarse sea floor)
      */
     public float[][] get(int i1, int j1, int i2, int j2, boolean withClimate) {
         return get(i1, j1, i2, j2, withClimate, null);
@@ -1162,7 +1164,7 @@ public final class WorldPipeline implements AutoCloseable {
                 ? currentExposure(ci1 - 1, cj1 - 1, cenH, cenW) : null;
 
         // Bilinear upsample to native resolution
-        float[] climate = new float[6 * H * W];
+        float[] climate = new float[7 * H * W];
         for (int r = 0; r < H; r++) {
             // fractional index into lbt/centralCoarse arrays (matches Python's u = (ii+0.5)/S - ci1 + 0.5)
             float gridY    = (i1 + r + 0.5f) / S - ci1 + 0.5f;
@@ -1192,6 +1194,8 @@ public final class WorldPipeline implements AutoCloseable {
                 climate[3 * H * W + r * W + c] = bilinearSample2D(centralCoarse[5], cenH, cenW, cenGridY, cenGridX);
                 climate[4 * H * W + r * W + c] = beta;
                 climate[5 * H * W + r * W + c] = current;
+                float ce = bilinearSample2D(centralCoarse[0], cenH, cenW, cenGridY, cenGridX);
+                climate[6 * H * W + r * W + c] = Math.signum(ce) * ce * ce;
             }
         }
         return climate;

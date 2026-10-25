@@ -67,6 +67,8 @@ public final class FeatureFinder {
         KINDS.put("tombolo", new String[]{"tombolo", "tombolo"});
         KINDS.put("cuspate_foreland", new String[]{"cuspate_foreland", "cuspate foreland"});
         KINDS.put("barrier_island", new String[]{"barrier_island", "barrier island"});
+        KINDS.put("iceberg_field", new String[]{"iceberg_field", "iceberg field"});
+        KINDS.put("ice_island", new String[]{"ice_island", "ice island"});
         KINDS.put("fringing_reef", new String[]{"fringing_reef", "fringing reef"});
         KINDS.put("barrier_reef", new String[]{"barrier_reef", "offshore barrier reef"});
         KINDS.put("carbonate_bank", new String[]{"carbonate_bank", "carbonate bank"});
@@ -112,6 +114,10 @@ public final class FeatureFinder {
 
         if (word.equals("delta")) {
             findDelta(source, server, pi, pj, scale);
+            return 1;
+        }
+        if (word.equals("iceberg_field") || word.equals("ice_island")) {
+            findIce(source, server, word.equals("ice_island"), kind[1], pos.x, pos.z, scale);
             return 1;
         }
         if (word.equals("ria")) {
@@ -223,6 +229,52 @@ public final class FeatureFinder {
         source.sendSuccess(() -> Component.literal("Nearest " + name + ": " + x + ", " + z + " (" + blocks + " blocks, "
                         + km + " km" + edge + ") ")
                 .append(teleport).append(" ").append(copy), false);
+    }
+
+    /** Rings of iceberg regions (7.7 km each) searched around the player. */
+    private static final int ICE_RINGS = 4;
+
+    /** Iceberg fields and ice islands come from the iceberg plans, searched region by region near the player. */
+    private static void findIce(CommandSourceStack source, MinecraftServer server, boolean island, String name,
+                                double bx, double bz, int scale) {
+        Thread worker = new Thread(() -> {
+            try {
+                int regionBlocks = com.github.xandergos.terraindiffusionmc.pipeline.IcebergPlan.REGION_PX * scale;
+                int cri = Math.floorDiv((int) Math.floor(bz), regionBlocks), crj = Math.floorDiv((int) Math.floor(bx), regionBlocks);
+                double best = Double.MAX_VALUE, fx = 0, fz = 0;
+                int searched = 0;
+                for (int k = 0; k <= ICE_RINGS; k++) {
+                    if ((k - 1) * (double) regionBlocks > best) break;
+                    for (int di = -k; di <= k; di++) {
+                        for (int dj = -k; dj <= k; dj++) {
+                            if (Math.max(Math.abs(di), Math.abs(dj)) != k) continue;
+                            for (var f : Icebergs.plan(cri + di, crj + dj).fields) {
+                                if (f.iceIsland() != island) continue;
+                                double d = Math.hypot(f.x() - bx, f.z() - bz);
+                                if (d < best) { best = d; fx = f.x(); fz = f.z(); }
+                            }
+                        }
+                    }
+                    searched = k;
+                }
+                final double bd = best, x = fx, z = fz;
+                final int km = Math.round((searched + 0.5f) * regionBlocks / (float) scale * 30 / 1000f);
+                server.execute(() -> {
+                    if (bd == Double.MAX_VALUE) {
+                        source.sendFailure(Component.literal("No " + name + " within about " + km + " km. Icebergs need a frozen "
+                                + "or cold sea (they crowd coasts where cold land meets it); ice islands lie far out in frozen seas."));
+                        return;
+                    }
+                    report(source, name, new OceanFeatures.Landmark(island ? "ice_island" : "iceberg_field",
+                            z / scale, x / scale, 0f), bz / scale, bx / scale, scale);
+                });
+            } catch (Exception e) {
+                LOG.error("terra-find ice failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     /** Farthest reef or bank search (600 km) and most spots whose terrain is computed. */

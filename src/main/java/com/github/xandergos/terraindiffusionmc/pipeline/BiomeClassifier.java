@@ -41,6 +41,8 @@ public final class BiomeClassifier {
     static final short LUKEWARM_OCEAN = 42, DEEP_LUKEWARM_OCEAN = 43, DEEP_OCEAN = 45;
     static final short DEEP_COLD_OCEAN = 47, DEEP_FROZEN_OCEAN = 49;
 
+    /** Arctic islands: land colder than this (°C) where the coarse map's ground is below {@link #ARCTIC_COARSE_M}. */
+    static final float ARCTIC_TEMP_C = -4f, ARCTIC_COARSE_M = -50f;
     /** Upwelling (0..1) above which a rainless, treeless coast at 10-20 °C is desert rather than dry grassland. */
     static final float UPWELLING_DESERT = 0.3f;
     /** Water deeper than this (metres) gets the deep ocean variant: roughly past the continental slope's top. */
@@ -121,6 +123,7 @@ public final class BiomeClassifier {
         // Compute slope from padded elevation using Sobel (divide by pixelSizeM for ratio)
         float[] slopeRatio = computeSlopeRatio(elevPadded, H, W, pixelSizeM);
         boolean hasCurrents = climate.length >= 6 * H * W;
+        boolean hasCoarse = climate.length >= 7 * H * W;
         BiomePatches patches = BiomePatches.forSeed(seed);
         RegionalBiomes regional = RegionalBiomes.forSeed(seed);
         RegionalBiomes.Px px = new RegionalBiomes.Px();
@@ -263,8 +266,14 @@ public final class BiomeClassifier {
                     biome = hasSnow ? FROZEN_PEAKS : STONY_PEAKS;
                 }
 
+                // Arctic (v1.3): islands in frozen seas (land too small for the coarse map, which sees sea floor there)
+                // carry an ice cap, whatever the classifier made of them.
+                boolean arctic = !isOcean && hasCoarse && temp < ARCTIC_TEMP_C
+                        && climate[6 * H * W + idx] < ARCTIC_COARSE_M;
+                if (arctic) biome = RegionalBiomes.ARCTIC;
+
                 // Sub-biome patches inside the biome chosen above (world metres, so the same at every scale).
-                if (!isOcean) {
+                if (!isOcean && !arctic) {
                     float xm = (j0 + c) * pixelSizeM, zm = (i0 + r) * pixelSizeM;
                     short base = biome;
                     biome = patches.apply(biome, xm, zm, altM, slope, temp, treeMoisture, effTreeMoisture, bareThreshold);

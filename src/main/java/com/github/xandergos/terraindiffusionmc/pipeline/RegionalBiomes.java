@@ -30,6 +30,8 @@ public final class RegionalBiomes {
     static final short SHINGLE_BEACH = 75, SALT_MARSH = 76, TIDAL_FLATS = 77, WHITE_CLIFFS = 78;
     static final short PAINTED_MOUNTAINS = 79, DESERT_OASIS = 80, BLOOMING_PLATEAU = 81, BLOOMING_VALLEY = 82;
     static final short LUSH_VALLEY = 83, SALT_FLATS = 84;
+    /** Ice-capped islands in frozen seas (v1.3 round C), set by the classifier. */
+    public static final short ARCTIC = 85;
 
     /** Id → biome name in the {@code terra} namespace, for the biome source and the explorer. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -39,7 +41,7 @@ public final class RegionalBiomes {
                 "tallgrass_prairie", "steppe", "marsh", "riverside_forest", "floodplain_forest", "redwoods",
                 "mediterranean_scrub", "forested_highland", "temperate_highland", "rocky_desert", "cloud_forest",
                 "tropical_dry_forest", "aspen_grove", "shingle_beach", "salt_marsh", "tidal_flats", "white_cliffs",
-                "painted_mountains", "desert_oasis", "blooming_plateau", "blooming_valley", "lush_valley", "salt_flats"};
+                "painted_mountains", "desert_oasis", "blooming_plateau", "blooming_valley", "lush_valley", "salt_flats", "arctic"};
         for (int k = 0; k < n.length; k++) NAMES.put((short) (TUNDRA + k), n[k]);
     }
 

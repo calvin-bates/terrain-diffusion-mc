@@ -2,6 +2,7 @@ package com.github.xandergos.terraindiffusionmc.mixin;
 
 import com.github.xandergos.terraindiffusionmc.world.HydrothermalVents;
 import com.github.xandergos.terraindiffusionmc.world.OceanFlora;
+import com.github.xandergos.terraindiffusionmc.world.SeaIce;
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
@@ -26,6 +27,11 @@ public abstract class ChunkGeneratorMixin {
         if (!(self.getBiomeSource() instanceof TerrainDiffusionBiomeSource)) return;
         try {
             OceanFlora.trimDeepPlants(chunk, self.getSeaLevel());
+        } catch (RuntimeException e) {
+            // never let this break chunk generation
+        }
+        try {
+            SeaIce.place(chunk, self.getSeaLevel());
         } catch (RuntimeException e) {
             // never let this break chunk generation
         }

@@ -169,6 +169,8 @@ public final class TerrainDiffusionConfig {
     public static boolean structurePads() { return readBoolean("structures.terrain_pads", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */
     public static float biomeSize() { return Math.max(0.25f, Math.min(10f, readFloat("biomes.size", 2.5f))); }
+    /** Terra's iceberg fields, ice islands, arctic ice shelves and sea ice detail (vanilla's icebergs are off). */
+    public static boolean icebergs() { return readBoolean("oceans.icebergs", true); }
     public static boolean coastalCurrents() { return readBoolean("climate.coastal_currents", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */
     public static boolean activeMargins() { return readBoolean("oceans.active_margins", true); }
