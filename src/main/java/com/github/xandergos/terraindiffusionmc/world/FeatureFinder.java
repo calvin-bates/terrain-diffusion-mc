@@ -232,7 +232,7 @@ public final class FeatureFinder {
     }
 
     /** Rings of iceberg regions (7.7 km each) searched around the player. */
-    private static final int ICE_RINGS = 4;
+    private static final int ICE_RINGS = 3;
 
     /** Iceberg fields and ice islands come from the iceberg plans, searched region by region near the player. */
     private static void findIce(CommandSourceStack source, MinecraftServer server, boolean island, String name,
@@ -241,24 +241,64 @@ public final class FeatureFinder {
             try {
                 int regionBlocks = com.github.xandergos.terraindiffusionmc.pipeline.IcebergPlan.REGION_PX * scale;
                 int cri = Math.floorDiv((int) Math.floor(bz), regionBlocks), crj = Math.floorDiv((int) Math.floor(bx), regionBlocks);
-                double best = Double.MAX_VALUE, fx = 0, fz = 0;
-                int searched = 0;
+                double[] best = {Double.MAX_VALUE, 0, 0};
+                // Nearby first: the plans around the player, ring by ring.
                 for (int k = 0; k <= ICE_RINGS; k++) {
-                    if ((k - 1) * (double) regionBlocks > best) break;
+                    if ((k - 1) * (double) regionBlocks > best[0]) break;
                     for (int di = -k; di <= k; di++) {
                         for (int dj = -k; dj <= k; dj++) {
                             if (Math.max(Math.abs(di), Math.abs(dj)) != k) continue;
-                            for (var f : Icebergs.plan(cri + di, crj + dj).fields) {
-                                if (f.iceIsland() != island) continue;
-                                double d = Math.hypot(f.x() - bx, f.z() - bz);
-                                if (d < best) { best = d; fx = f.x(); fz = f.z(); }
-                            }
+                            nearestField(cri + di, crj + dj, island, bx, bz, best);
                         }
                     }
-                    searched = k;
                 }
-                final double bd = best, x = fx, z = fz;
-                final int km = Math.round((searched + 0.5f) * regionBlocks / (float) scale * 30 / 1000f);
+                int searchedKm = Math.round((ICE_RINGS + 0.5f) * regionBlocks / (float) scale * 30 / 1000f);
+                if (best[0] == Double.MAX_VALUE) {
+                    // Farther: cold seas are often hundreds or thousands of km away. Pick the cold sea from the coarse map
+                    // (one coarse pixel per iceberg region, cheap) in squares of growing size, then build the plans of the
+                    // nearest candidate regions until one has the feature.
+                    int checked = 0;
+                    java.util.Set<Long> done = new java.util.HashSet<>();
+                    for (int half = 16; half <= ICE_COARSE_MAX_HALF && best[0] == Double.MAX_VALUE && checked < ICE_MAX_CHECKS; half *= 2) {
+                        final int h = half;
+                        server.execute(() -> source.sendSuccess(() -> Component.literal("…looking for a cold enough sea within about "
+                                + Math.round(h * 256 * 30 / 1000f) + " km").withStyle(ChatFormatting.GRAY), false));
+                        int n = 2 * half + 1;
+                        java.util.List<int[]> cands = new java.util.ArrayList<>();
+                        // In blocks of 128 coarse pixels, each on the inference thread by itself, so chunk generation keeps
+                        // going between them.
+                        for (int r0 = 0; r0 < n; r0 += 128) {
+                            for (int c0 = 0; c0 < n; c0 += 128) {
+                                int bh = Math.min(128, n - r0), bw = Math.min(128, n - c0), np = bh * bw;
+                                int gi = cri - half + r0, gj = crj - half + c0;
+                                com.github.xandergos.terraindiffusionmc.infinitetensor.FloatTensor co =
+                                        LocalTerrainProvider.getPipelineCoarse(gi, gj, gi + bh, gj + bw);
+                                for (int r = 0; r < bh; r++) {
+                                    for (int c = 0; c < bw; c++) {
+                                        int px = r * bw + c;
+                                        float w = co.data[6 * np + px];
+                                        if (w <= 1e-6f) continue;
+                                        float e = co.data[px] / w, t = co.data[2 * np + px] / w;   // e: signed sqrt of metres
+                                        boolean ok = island ? e < -14f && t < -7f : e < 0f && t < 0f;
+                                        if (ok) cands.add(new int[]{gi + r, gj + c});
+                                    }
+                                }
+                            }
+                        }
+                        cands.sort(java.util.Comparator.comparingDouble(q -> Math.hypot(q[0] - cri, q[1] - crj)));
+                        for (int[] q : cands) {
+                            if (checked >= ICE_MAX_CHECKS) break;
+                            if (!done.add(((long) q[0] << 32) ^ (q[1] & 0xffffffffL))) continue;
+                            // Once something is found, only regions that could still be closer.
+                            if (best[0] != Double.MAX_VALUE && (Math.hypot(q[0] - cri, q[1] - crj) - 1.5) * regionBlocks > best[0]) break;
+                            checked++;
+                            nearestField(q[0], q[1], island, bx, bz, best);
+                        }
+                        searchedKm = Math.round(half * 256 * 30 / 1000f);
+                    }
+                }
+                final double bd = best[0], x = best[1], z = best[2];
+                final int km = searchedKm;
                 server.execute(() -> {
                     if (bd == Double.MAX_VALUE) {
                         source.sendFailure(Component.literal("No " + name + " within about " + km + " km. Icebergs need a frozen "
@@ -276,6 +316,18 @@ public final class FeatureFinder {
         worker.setDaemon(true);
         worker.start();
     }
+
+    /** Keeps in {@code best} ({distance, x, z}, blocks) the nearest field of the wanted kind in iceberg region (ri, rj). */
+    private static void nearestField(int ri, int rj, boolean island, double bx, double bz, double[] best) {
+        for (var f : Icebergs.plan(ri, rj).fields) {
+            if (f.iceIsland() != island) continue;
+            double d = Math.hypot(f.x() - bx, f.z() - bz);
+            if (d < best[0]) { best[0] = d; best[1] = f.x(); best[2] = f.z(); }
+        }
+    }
+
+    /** Farthest coarse search for cold seas (coarse pixels either way: 512 is about 3900 km) and most regions planned. */
+    private static final int ICE_COARSE_MAX_HALF = 512, ICE_MAX_CHECKS = 40;
 
     /** Farthest reef or bank search (600 km) and most spots whose terrain is computed. */
     private static final int SHALLOW_RADIUS_PX = 20_000, SHALLOW_MAX_CHECKS = 25;

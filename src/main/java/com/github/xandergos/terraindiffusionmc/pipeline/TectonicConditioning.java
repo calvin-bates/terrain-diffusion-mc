@@ -97,7 +97,7 @@ public final class TectonicConditioning {
 
     /** The rift seeded in cell (cxi, cyi), or {@link #NONE}. Cached; depends only on the seed and the base map. */
     Rift rift(int cxi, int cyi, Base base) {
-        long key = ((long) cxi << 32) ^ (cyi & 0xFFFFFFFFL);
+        long key = mix(((long) cxi << 32) ^ (cyi & 0xFFFFFFFFL));   // mixed: Long's own hash collides along diagonals
         Rift r = riftCache.get(key);
         if (r != null) return r;
         r = makeRift(cxi, cyi, base);

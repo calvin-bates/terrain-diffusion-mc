@@ -282,8 +282,24 @@ public final class OceanFeatures {
         // A tile inside a model-drawn island has no sea but still needs the island's crater.
         if (!anyOcean && !modelIslands) return;
 
+        // Every pixel is independent, so big windows (river regions, coast and iceberg plans: up to ~250,000 pixels) are
+        // shared out over the cores in bands of rows, each with its own context.
+        if ((long) H * W < PARALLEL_MIN_PX) {
+            applyRows(elev, i1, j1, W, coarse, tags, 0, H);
+        } else {
+            int bands = (H + PARALLEL_BAND - 1) / PARALLEL_BAND;
+            java.util.stream.IntStream.range(0, bands).parallel().forEach(b ->
+                    applyRows(elev, i1, j1, W, coarse, tags, b * PARALLEL_BAND, Math.min(H, (b + 1) * PARALLEL_BAND)));
+        }
+    }
+
+    /** Windows at least this big (pixels) are applied in parallel, in bands of this many rows. */
+    private static final int PARALLEL_MIN_PX = 16384, PARALLEL_BAND = 8;
+
+    /** {@link #apply} for rows [r0, r1) of the window. */
+    private void applyRows(float[] elev, int i1, int j1, int W, CoarseField coarse, byte[] tags, int r0, int r1) {
         Ctx ctx = new Ctx();
-        for (int r = 0; r < H; r++) {
+        for (int r = r0; r < r1; r++) {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
                 float raw = elev[k];
@@ -561,7 +577,7 @@ public final class OceanFeatures {
             double ds = (qx - mx) * nx + (qz - mz) * nz;     // signed distance, negative toward the lo plate
             double along = (qx - mx) * tx + (qz - mz) * tz;   // position along the boundary
             double bx = qx - ds * nx, bz = qz - ds * nz;      // nearest point on the boundary line
-            double beyond = Math.hypot(bx - sx[iZ], bz - sz[iZ]) - Math.hypot(bx - sx[iX], bz - sz[iX]);
+            double beyond = len(bx - sx[iZ], bz - sz[iZ]) - len(bx - sx[iX], bz - sz[iX]);
             if (beyond < -JUNCTION_TAPER) continue;
             int type = boundaryType(pair);
             if (type == BOUNDARY_RIDGE) {
@@ -734,7 +750,7 @@ public final class OceanFeatures {
         if (canyonW <= 0 && fanW <= 0) return raw;
         double gx = coarse.elevation(z, x + SLOPE_SPAN) - coarse.elevation(z, x - SLOPE_SPAN);
         double gz = coarse.elevation(z + SLOPE_SPAN, x) - coarse.elevation(z - SLOPE_SPAN, x);
-        double g = Math.hypot(gx, gz) / (2 * SLOPE_SPAN);                    // metres per pixel
+        double g = len(gx, gz) / (2 * SLOPE_SPAN);                    // metres per pixel
         if (g < 0.05) return raw;
         double down = Math.atan2(-gz, -gx);                                     // downslope direction
 
@@ -873,7 +889,7 @@ public final class OceanFeatures {
                     if (unit(h) > POCK_CHANCE) continue;
                     double px = (cx + dx + 0.15 + 0.7 * unit(mix(h))) * cell, pzz = (cz + dz + 0.15 + 0.7 * unit(mix(h + 1))) * cell;
                     double rad = (0.05 + 0.1 * unit(mix(h + 2))) * KM;
-                    double rr = Math.hypot(x - px, z - pzz) / rad;
+                    double rr = len(x - px, z - pzz) / rad;
                     if (rr < 1.6) {
                         // A bowl with a faint rim.
                         double v = rr < 1 ? (1 - rr * rr) : -0.12 * Math.sin(Math.PI * (rr - 1) / 0.6);
@@ -957,7 +973,7 @@ public final class OceanFeatures {
             for (int dx = -1; dx <= 1; dx++) {
                 MudVolcano mv = mudVolcano(cx + dx, cz + dz);
                 if (mv == null) continue;
-                double r = Math.hypot(x - mv.x, z - mv.z) / mv.radius;
+                double r = len(x - mv.x, z - mv.z) / mv.radius;
                 if (r >= 1.6) continue;
                 double depth = -raw;
                 if (depth < 400 || depth > 3000) continue;
@@ -991,7 +1007,7 @@ public final class OceanFeatures {
         double v = orientedNoise(n, kx, kz, dir, acrossKm, alongKm, wanderKm);
         double vx = orientedNoise(n, kx + h, kz, dir, acrossKm, alongKm, wanderKm);
         double vz = orientedNoise(n, kx, kz + h, dir, acrossKm, alongKm, wanderKm);
-        double g = Math.hypot(vx - v, vz - v) / h;
+        double g = len(vx - v, vz - v) / h;
         return g < 1e-6 ? Double.MAX_VALUE : Math.abs(v) / g;
     }
 
@@ -1036,8 +1052,9 @@ public final class OceanFeatures {
 
     /** The plateau of cell (gx, gz), or null. Cached. */
     Plateau plateau(int gx, int gz) {
-        long key = ((long) gx << 32) ^ (gz & 0xFFFFFFFFL);
-        Plateau p = plateauCache.computeIfAbsent(key, k -> buildPlateau(gx, gz));
+        long key = cellKey(gx, gz);
+        Plateau p = plateauCache.get(key);
+        if (p == null) p = plateauCache.computeIfAbsent(key, k -> buildPlateau(gx, gz));
         return p == NO_PLATEAU ? null : p;
     }
 
@@ -1061,7 +1078,7 @@ public final class OceanFeatures {
             for (int dx = -1; dx <= 1; dx++) {
                 Plateau p = plateau(cx + dx, cz + dz);
                 if (p == null) continue;
-                double r = Math.hypot(x - p.x, z - p.z);
+                double r = len(x - p.x, z - p.z);
                 if (r > p.radius * 1.35) continue;
                 float floor = coarse.elevation(p.z, p.x);
                 if (floor > -PLATEAU_MIN_DEPTH || !clearOfLand(p.x, p.z, p.radius, coarse)) continue;
@@ -1115,7 +1132,7 @@ public final class OceanFeatures {
             if (strength < FOREARC_MIN_STRENGTH) continue;
             double across = FOREARC_AT + (unit(mix(h + 1)) - 0.5) * 12 * KM;
             double radius = (6 + 8 * unit(mix(h + 2))) * KM;
-            double r = Math.hypot(along - ak, xo - across);
+            double r = len(along - ak, xo - across);
             if (r > radius * 1.3) continue;
             double[] c = unwarp(mx + tx * ak + ox * across, mz + tz * ak + oz * across);
             float floor = coarse.elevation(c[1], c[0]);
@@ -1712,11 +1729,11 @@ public final class OceanFeatures {
 
     /** How much of the A-B plate edge exists at boundary point (bx, bz): 0 past a triple junction, 1 along it. */
     private static double edgeWeightAt(double bx, double bz, int ia, int ib, double[] seedX, double[] seedZ) {
-        double da = Math.hypot(bx - seedX[ia], bz - seedZ[ia]);
+        double da = len(bx - seedX[ia], bz - seedZ[ia]);
         double nearestOther = Double.MAX_VALUE;
         for (int c = 0; c < seedX.length; c++) {
             if (c == ia || c == ib) continue;
-            nearestOther = Math.min(nearestOther, Math.hypot(bx - seedX[c], bz - seedZ[c]));
+            nearestOther = Math.min(nearestOther, len(bx - seedX[c], bz - seedZ[c]));
         }
         return smoothstep(-JUNCTION_TAPER, JUNCTION_TAPER, nearestOther - da);
     }
@@ -1755,7 +1772,7 @@ public final class OceanFeatures {
                 long h = hash(salt, gx, gz);
                 double sx = (gx + 0.1 + 0.8 * unit(h)) * cell;
                 double sz = (gz + 0.1 + 0.8 * unit(mix(h))) * cell;
-                double d = Math.hypot(x - sx, z - sz);
+                double d = len(x - sx, z - sz);
                 long id = hash(salt ^ 0x1D, gx, gz);
                 if (d < ctx.d1) {
                     ctx.d3 = ctx.d2; ctx.id3 = ctx.id2; ctx.s3x = ctx.s2x; ctx.s3z = ctx.s2z;
@@ -1882,7 +1899,7 @@ public final class OceanFeatures {
             double ds = (qx - mx) * nx + (qz - mz) * nz;
             double along = (qx - mx) * tx + (qz - mz) * tz;
             double bx = qx - ds * nx, bz = qz - ds * nz;
-            double beyond = Math.hypot(bx - sx[iZ], bz - sz[iZ]) - Math.hypot(bx - sx[iX], bz - sz[iX]);
+            double beyond = len(bx - sx[iZ], bz - sz[iZ]) - len(bx - sx[iX], bz - sz[iX]);
             if (type == BOUNDARY_RIDGE) {
                 double w = smoothstep(-JUNCTION_TAPER, 0, beyond);
                 if (w > 0) ridge = Math.max(ridge, w * ventField(ds, along, pair));
@@ -1898,7 +1915,7 @@ public final class OceanFeatures {
                     double ak = arcAlong(k, h), across = arcAcross(h), radius = arcRadius(h);
                     double strength = trenchStrength(ak, pair) * w;
                     if (strength <= 0.05 || arcPeak(strength, h) <= 0) continue;
-                    double r = Math.hypot(along - ak, xo - across);
+                    double r = len(along - ak, xo - across);
                     volcanic = Math.max(volcanic, 1 - smoothstep(0.45, 0.9, r / radius));
                 }
             }
@@ -1911,7 +1928,7 @@ public final class OceanFeatures {
                 // Only the young end of the chain is still active: the head and the island behind it.
                 for (int k = 0; k < Math.min(2, ch.count); k++) {
                     if (ch.peak[k] <= 40) continue;
-                    double r = Math.hypot(x - ch.cx[k], z - ch.cz[k]);
+                    double r = len(x - ch.cx[k], z - ch.cz[k]);
                     volcanic = Math.max(volcanic, 1 - smoothstep(0.45, 0.9, r / ch.radius[k]));
                 }
             }
@@ -1950,7 +1967,7 @@ public final class OceanFeatures {
             long h = hash(pair, k, 0xA2C);
             if (!arcExists(h)) continue;
             double ak = arcAlong(k, h), across = arcAcross(h), radius = arcRadius(h);
-            double r = Math.hypot(along - ak, xo - across);
+            double r = len(along - ak, xo - across);
             if (r > radius * 2.8) continue;
             double strength = trenchStrength(ak, pair) * edgeWeight;
             if (strength <= 0.05) continue;
@@ -2011,7 +2028,7 @@ public final class OceanFeatures {
                 int kmin = Math.max(0, (int) Math.floor(t / ch.spacing) - 2);
                 int kmax = Math.min(ch.count - 1, kmin + 4);
                 for (int k = kmin; k <= kmax; k++) {
-                    double r = Math.hypot(x - ch.cx[k], z - ch.cz[k]);
+                    double r = len(x - ch.cx[k], z - ch.cz[k]);
                     if (r > ch.radius[k] * 1.3) continue;
                     float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
                     if (floor > -VOLCANO_MIN_DEPTH || !clearOfLand(ch.cx[k], ch.cz[k], ch.radius[k], coarse)) continue;
@@ -2066,7 +2083,7 @@ public final class OceanFeatures {
                 int kmin = Math.max(0, (int) Math.floor((t - reach) / ch.spacing) - 1);
                 int kmax = Math.min(ch.count - 1, (int) Math.ceil((t + reach) / ch.spacing) + 1);
                 for (int k = kmin; k <= kmax; k++) {
-                    double r = Math.hypot(x - ch.cx[k], z - ch.cz[k]);
+                    double r = len(x - ch.cx[k], z - ch.cz[k]);
                     double u0 = r / ch.radius[k];
                     if (u0 > 2.9 || ch.peak[k] < -1500) continue;
                     float floor = coarse.elevation(ch.cz[k], ch.cx[k]);
@@ -2090,7 +2107,7 @@ public final class OceanFeatures {
                         else { bx = ax + ch.vx * 30 * KM; bz = az + ch.vz * 30 * KM; taper = 1; }
                         double ex = bx - ax, ez = bz - az, el2 = ex * ex + ez * ez;
                         double s = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / el2));
-                        double dist = Math.hypot(x - (ax + s * ex), z - (az + s * ez));
+                        double dist = len(x - (ax + s * ex), z - (az + s * ez));
                         float kx = (float) (x / KM * 0.35), kz = (float) (z / KM * 0.35);
                         dist *= 1 + 0.18 * coastShape.GetNoise(kx + 503, kz + (ch.hk[0] & 0xFF));
                         double core = (2.6 + 1.2 * unit(mix(ch.hk[0] + 7))) * KM;
@@ -2143,8 +2160,9 @@ public final class OceanFeatures {
 
     /** The hotspot chain of hotspot cell (gx, gz), or null if the cell has none. Cached. */
     Chain chain(int gx, int gz) {
-        long key = ((long) gx << 32) ^ (gz & 0xFFFFFFFFL);
-        Chain c = chains.computeIfAbsent(key, k -> buildChain(gx, gz));
+        long key = cellKey(gx, gz);
+        Chain c = chains.get(key);
+        if (c == null) c = chains.computeIfAbsent(key, k -> buildChain(gx, gz));
         return c == NO_CHAIN ? null : c;
     }
 
@@ -2209,7 +2227,7 @@ public final class OceanFeatures {
             double ds = (qx - mx) * nx + (qz - mz) * nz;
             double along = (qx - mx) * tx + (qz - mz) * tz;
             double bx = qx - ds * nx, bz = qz - ds * nz;
-            double beyond = Math.hypot(bx - sx[iZ], bz - sz[iZ]) - Math.hypot(bx - sx[iX], bz - sz[iX]);
+            double beyond = len(bx - sx[iZ], bz - sz[iZ]) - len(bx - sx[iX], bz - sz[iX]);
             double w = smoothstep(-JUNCTION_TAPER, JUNCTION_TAPER, beyond);
             if (w <= 0) continue;
             boolean subHi = (pair & 1L) == 0;
@@ -2230,7 +2248,7 @@ public final class OceanFeatures {
                 double sx = (gx + 0.1 + 0.8 * unit(mix(h))) * SEAMOUNT_CELL;
                 double sz = (gz + 0.1 + 0.8 * unit(mix(h + 1))) * SEAMOUNT_CELL;
                 double radius = (4 + 7 * unit(mix(h + 2))) * KM * SUBMERGED_SHRINK * 1.5;
-                double r = Math.hypot(x - sx, z - sz);
+                double r = len(x - sx, z - sz);
                 if (r > radius * 1.3) continue;
                 float floor = coarse.elevation(sz, sx);
                 if (floor > -SEAMOUNT_MIN_DEPTH) continue;
@@ -2511,7 +2529,7 @@ public final class OceanFeatures {
         // The bay sits off-centre, so the ring is broad on one side and thin on the other.
         double offAng = unit(mix(h + 66)) * 2 * Math.PI, off = 0.4 * cu * radius * unit(mix(h + 67));
         double px0 = r * Math.cos(ang) - off * Math.cos(offAng), pz0 = r * Math.sin(ang) - off * Math.sin(offAng);
-        double rb = Math.hypot(px0, pz0);
+        double rb = len(px0, pz0);
         double ub = r > 1e-6 ? u * rb / r : rb / radius;               // same roughening as the island outline
         double angB = Math.atan2(pz0, px0);
         float ca = (float) Math.cos(angB), sa = (float) Math.sin(angB);
@@ -2541,7 +2559,7 @@ public final class OceanFeatures {
             double px = px0 - dOff * Math.cos(dAng), pz = pz0 - dOff * Math.sin(dAng);
             double dr = 0.3 * cr * radius;
             float kx = (float) (x / KM * 1.7) + (h & 0xFF), kz = (float) (z / KM * 1.7);
-            double dd = Math.hypot(px, pz) * (1 + 0.18 * coastShape.GetNoise(kx, kz));
+            double dd = len(px, pz) * (1 + 0.18 * coastShape.GetNoise(kx, kz));
             if (dd < dr) {
                 double sTop = sea + (40 + 80 * unit(mix(h + 63))) / relief;
                 s = Math.max(s, sFloor + (sTop - sFloor) * Math.pow(1 - sq(dd / dr), 1.5));
@@ -2566,7 +2584,7 @@ public final class OceanFeatures {
         double ex = Math.cos(sAng), ez = Math.sin(sAng);
         double a = px * ex + pz * ez, b = -px * ez + pz * ex;          // along the scar (outward) and across it
         float kx = (float) (x / KM * 0.9) + 211, kz = (float) (z / KM * 0.9) - (h & 0xFF);
-        double ds = Math.hypot(a - dc, b) * (1 + 0.1 * coastShape.GetNoise(kx, kz));
+        double ds = len(a - dc, b) * (1 + 0.1 * coastShape.GetNoise(kx, kz));
         double wall = 0.14 * rs;
         if (ds > rs || a < dc - rs - wall) return s;
         // Height of the old flank at the head of the scar, in metres above the sea.
@@ -2668,7 +2686,7 @@ public final class OceanFeatures {
         // Oval (stretched along a rift), with a wobbly, scalloped wall: sampled by direction on a circle, no seam.
         double axis = unit(mix(h + 122)) * Math.PI, stretch = 1 + 0.6 * unit(mix(h + 123));
         double da = ang - axis;
-        double ell = Math.hypot(Math.cos(da) / stretch, Math.sin(da));
+        double ell = len(Math.cos(da) / stretch, Math.sin(da));
         float ca = (float) Math.cos(ang), sa = (float) Math.sin(ang);
         double wob = 0.18 * coastShape.GetNoise(ca * 1.6f + (h & 0xFF), sa * 1.6f - 59)
                 + 0.08 * coastShape.GetNoise(ca * 5f - 17, sa * 5f + (h & 0x7F));
@@ -2740,7 +2758,7 @@ public final class OceanFeatures {
                               double radius, double landU, long h, double peak,
                               java.util.function.BiFunction<Double, Double, double[]> toWorld) {
         if (peak < 100) return;
-        double dx = px - cx, dz = pz - cz, r = Math.hypot(dx, dz);
+        double dx = px - cx, dz = pz - cz, r = len(dx, dz);
         double landR = landU * radius;
         if (r > landR * 1.6 + 2.5 * KM) return;
         int n = tuffCount(h);
@@ -2748,7 +2766,7 @@ public final class OceanFeatures {
             TuffRing t = tuffRing(h, i);
             double[] c = ringCentre(t, i, cx, cz, radius, landU, h, toWorld);
             double ex = px - c[0], ez = pz - c[1];
-            double d = Math.hypot(ex, ez);
+            double d = len(ex, ez);
             if (d > 2.3 * t.radius) continue;
             // A wobbly, slightly lobed ring: sampled by direction around its centre, so there is no seam.
             double pa = Math.atan2(ez, ex);
@@ -2826,6 +2844,19 @@ public final class OceanFeatures {
         }
     }
 
+    /**
+     * sqrt(x² + z²). Math.hypot guards against overflow these distances never reach, at many times the cost: it was
+     * a third of the inference thread's time (Calvin's profile, Oct 25).
+     */
+    private static double len(double x, double z) {
+        return Math.sqrt(x * x + z * z);
+    }
+
+    /** A well-mixed map key for cell (gx, gz) (Long's own hash collides for cells along diagonals). */
+    private static long cellKey(int gx, int gz) {
+        return mix(((long) gx << 32) ^ (gz & 0xFFFFFFFFL));
+    }
+
     /** max(a, b) for non-negative heights, rounded where they are close; exactly the max when either is 0. */
     private static double smoothUnion(double a, double b) {
         double k = Math.min(300, 0.5 * Math.min(a, b));
@@ -2846,7 +2877,7 @@ public final class OceanFeatures {
     private double applyOp(double v, int o, double x, double z, Ctx ctx) {
         boolean warped = ctx.opWarped[o];
         double px = warped ? ctx.qx : x, pz = warped ? ctx.qz : z;
-        double r = Math.hypot(px - ctx.opX[o], pz - ctx.opZ[o]);
+        double r = len(px - ctx.opX[o], pz - ctx.opZ[o]);
         if (ctx.opType[o] == OP_GUYOT) {
             // The planed-off top belongs to this guyot only: where another volcano stands higher (an island it sits
             // beside), leave that one alone instead of cutting a flat notch through it.
@@ -2883,7 +2914,7 @@ public final class OceanFeatures {
         double ca = Math.cos(axis), sa = Math.sin(axis);
         double ux = (dx * ca + dz * sa) / stretch, uz = -dx * sa + dz * ca;
         float kx = (float) (x / KM), kz = (float) (z / KM);
-        double re = Math.hypot(ux, uz) * (1 + 0.12 * coastShape.GetNoise(kx * 0.6f + 31, kz * 0.6f))
+        double re = len(ux, uz) * (1 + 0.12 * coastShape.GetNoise(kx * 0.6f + 31, kz * 0.6f))
                 + 0.25 * KM * coastShape.GetNoise(kx * 3.3f + 57, kz * 3.3f - 13);
         double rim = ctx.opA[o];
         double t = rim - re;                                  // distance in from the reef edge (pixels)
@@ -2991,7 +3022,7 @@ public final class OceanFeatures {
         double pa = windDir + Math.PI + (unit(mix(h + 20)) - 0.5) * 2.6 - axis;
         double ca = Math.cos(axis), sa = Math.sin(axis);
         double pux = Math.cos(pa) * stretch, puz = Math.sin(pa);
-        double gx = pux * ca - puz * sa, gz = pux * sa + puz * ca, gl = Math.hypot(gx, gz);
+        double gx = pux * ca - puz * sa, gz = pux * sa + puz * ca, gl = len(gx, gz);
         gx /= gl; gz /= gl;
         // Basin floor: below the rim by about half the uplift, tilted down toward the gorge.
         double dIn = (0.35 + 0.25 * unit(mix(h + 46))) * lift, tilt = 0.25 * lift;
