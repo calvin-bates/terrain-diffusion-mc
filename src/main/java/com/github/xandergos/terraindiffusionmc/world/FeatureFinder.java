@@ -84,6 +84,7 @@ public final class FeatureFinder {
         KINDS.put("shield_volcano", new String[]{"shield_volcano", "shield volcano"});
         KINDS.put("caldera", new String[]{"caldera", "volcano with a caldera"});
         KINDS.put("lava_field", new String[]{"lava_field", "lava field"});
+        KINDS.put("active_island", new String[]{"active_island", "active island volcano"});
     }
 
     /** Farthest search, in native pixels (1200 km). */
@@ -573,6 +574,7 @@ public final class FeatureFinder {
             case "volcanic_island", "arc_island", "flooded_caldera", "barrier_reef_island" -> "peak " + v + " m";
             case "landslide_scar" -> "on an island " + v + " m high";
             case "stratovolcano", "shield_volcano", "caldera" -> "summit about " + v + " m";
+            case "active_island" -> "lava lake in the summit crater, lava flows to the coast; peak about " + v + " m";
             case "atoll" -> "reef at sea level";
             case "raised_coral_island" -> "old reef rim about " + v + " m up";
             case "aseismic_ridge" -> "crest about " + (-v) + " m down";

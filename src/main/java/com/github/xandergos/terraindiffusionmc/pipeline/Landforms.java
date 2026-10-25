@@ -160,10 +160,26 @@ public final class Landforms {
                     e = out[0];
                     tag = (byte) out[1];
                 }
+                if (islandVents != null) {
+                    for (double[] v : islandVents) {
+                        // The summit crater: a lava lake on a flat floor in its middle, hot bare rock (never water) out
+                        // over the rim.
+                        double rr = Math.hypot(z - v[0], x - v[1]) / v[5];
+                        if (rr >= 1.1) continue;
+                        double level = islandLakeLevel(v);
+                        if (Double.isNaN(level) || e <= 0f) continue;
+                        if (rr < ISLAND_LAKE) {
+                            e = (float) Math.min(e, level);
+                            tag = TAG_LAVA_LAKE;
+                        } else if (tag != TAG_LAVA_LAKE) {
+                            tag = TAG_HOT_CRATER;
+                        }
+                    }
+                }
                 for (Lobe l : islandLobes) {
                     if (e <= 0f) break;
                     float[] out = {e, tag};
-                    lobe(l, x, z, out, false);
+                    lobe(l, x, z, out, true);
                     e = out[0];
                     tag = (byte) out[1];
                 }
@@ -475,16 +491,50 @@ public final class Landforms {
                 Collections.unmodifiableList(lobes), Collections.unmodifiableList(pits));
     }
 
-    /** Lava flows down the active island volcanoes ({z, x, land radius, peak, hash} each, from the ocean features). */
+    /** An active island's lava lake: this fraction of its summit crater's radius (inside the crater's flat floor). */
+    static final double ISLAND_LAKE = 0.45;
+    private final Map<Long, Double> islandLakes = new ConcurrentHashMap<>();
+
+    /**
+     * The lava lake's level (metres) in an active island's crater, or NaN for none: the lowest the model drew the
+     * island's summit over the lake's disc, less the crater's depth (as the ocean features cut it), so the lake's floor
+     * is flat and inside the crater. None where the model drew no island there (its summit under 30 m).
+     */
+    private double islandLakeLevel(double[] v) {
+        long key = Double.doubleToLongBits(v[4]);
+        Double cached = islandLakes.get(key);
+        if (cached != null) return cached;
+        int rad = (int) Math.ceil(ISLAND_LAKE * v[5]) + 1;
+        int ci = (int) Math.floor(v[0]), cj = (int) Math.floor(v[1]), w = 2 * rad + 1;
+        float[] me = source.modelElevation(ci - rad, cj - rad, ci + rad + 1, cj + rad + 1);
+        double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;
+        for (int r = 0; r < w; r++) {
+            for (int c = 0; c < w; c++) {
+                if (Math.hypot(r - rad, c - rad) > rad) continue;
+                min = Math.min(min, me[r * w + c]);
+                max = Math.max(max, me[r * w + c]);
+            }
+        }
+        double level = max < 30 ? Double.NaN : min - v[6] - 5;
+        if (level < 5) level = Double.NaN;
+        if (islandLakes.size() > 4096) islandLakes.clear();
+        islandLakes.put(key, level);
+        return level;
+    }
+
+    /**
+     * Lava flows down the active island volcanoes ({z, x, land radius, peak, hash, crater radius, crater depth} each,
+     * from the ocean features), starting outside the summit crater.
+     */
     private List<Lobe> islandLobes(List<double[]> vents) {
         if (vents == null || vents.isEmpty()) return List.of();
         List<Lobe> out = new ArrayList<>();
         for (double[] v : vents) {
-            long h = mix((long) v[4] ^ 0x1A7AL);
+            long h = mix(Double.doubleToLongBits(v[4]) ^ 0x1A7AL);
             int nl = 3 + (int) (4 * unit(mix(h + 1)));
             for (int l = 0; l < nl; l++) {
                 long lh = mix(h + 10 + l);
-                out.add(new Lobe(v[0], v[1], 2 * Math.PI * unit(mix(lh + 1)), 0.1 * v[2], (0.8 + 0.5 * unit(mix(lh + 2))) * v[2],
+                out.add(new Lobe(v[0], v[1], 2 * Math.PI * unit(mix(lh + 1)), Math.max(0.1 * v[2], 1.15 * v[5]), (0.8 + 0.5 * unit(mix(lh + 2))) * v[2],
                         6 + 6 * unit(mix(lh + 3)), 0.12 + 0.12 * unit(mix(lh + 4)), 2 + 4 * unit(mix(lh + 5)), l < 2,
                         (float) (unit(mix(lh + 6)) * 1000)));
             }

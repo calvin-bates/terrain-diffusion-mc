@@ -1405,7 +1405,11 @@ public final class OceanFeatures {
         java.util.List<Landmark> out = new java.util.ArrayList<>();
         hotspotLandmarks(i0, j0, i1, j1, coarse, out);
         seamountLandmarks(i0, j0, i1, j1, coarse, out);
-        subductionLandmarks(i0, j0, i1, j1, coarse, out);
+        subductionLandmarks(i0, j0, i1, j1, coarse, out, null);
+        // Active island volcanoes (lava lakes and flows; see Landforms).
+        for (double[] v : activeVents(i0, j0, i1, j1, coarse)) {
+            if (inside(v[0], v[1], i0, j0, i1, j1)) out.add(new Landmark("active_island", v[0], v[1], (float) v[3]));
+        }
         ventLandmarks(i0, j0, i1, j1, coarse, out);
         plateauLandmarks(i0, j0, i1, j1, coarse, out);
         mudVolcanoLandmarks(i0, j0, i1, j1, coarse, out);
@@ -1446,9 +1450,14 @@ public final class OceanFeatures {
         return i >= i0 && i < i1 && j >= j0 && j < j1;
     }
 
+    /** Share of plain island-arc volcanoes (with a summit crater) that are active. */
+    static final double ARC_ACTIVE_CHANCE = 0.35;
+
     /**
-     * The active island volcanoes (each hotspot chain's head, at the volcanic-island stage) whose land may reach the
-     * native window: {z, x, land radius (pixels), peak (m), hash} each. The landform stage runs lava flows down them.
+     * The active island volcanoes whose land may reach the native window: each hotspot chain's head (at the
+     * volcanic-island stage, peak at least 150 m) and {@link #ARC_ACTIVE_CHANCE} of the plain island-arc volcanoes. Each
+     * is {z, x, land radius (pixels), peak (m), hash, summit crater radius (pixels), crater depth (m)}, the crater as
+     * {@link #crater} cuts it. The landform stage runs lava flows down them and puts a lava lake in the crater.
      */
     public java.util.List<double[]> activeVents(double i0, double j0, double i1, double j1, CoarseField coarse) {
         java.util.List<double[]> out = new java.util.ArrayList<>();
@@ -1467,8 +1476,17 @@ public final class OceanFeatures {
                 double landR = islandLandU(stage, ch.hk[k]) * ch.radius[k];
                 double reach = 1.5 * landR;
                 if (ch.cz[k] + reach < i0 || ch.cz[k] - reach > i1 || ch.cx[k] + reach < j0 || ch.cx[k] - reach > j1) continue;
-                out.add(new double[]{ch.cz[k], ch.cx[k], landR, ch.peak[k], ch.hk[k]});
+                long h = ch.hk[k];
+                double cr = (0.5 + 0.8 * unit(mix(h + 120))) * KM, cd = Math.min(0.2 * ch.peak[k], 70 + 110 * unit(mix(h + 121)));
+                out.add(new double[]{ch.cz[k], ch.cx[k], landR, ch.peak[k], h, cr, cd});
             }
+        }
+        java.util.List<double[]> arcs = new java.util.ArrayList<>();
+        subductionLandmarks(i0 - 40 * KM, j0 - 40 * KM, i1 + 40 * KM, j1 + 40 * KM, coarse, null, arcs);
+        for (double[] v : arcs) {
+            double reach = 1.5 * v[2];
+            if (v[0] + reach < i0 || v[0] - reach > i1 || v[1] + reach < j0 || v[1] - reach > j1) continue;
+            out.add(v);
         }
         return out;
     }
@@ -1538,7 +1556,8 @@ public final class OceanFeatures {
     }
 
     /** Island-arc volcanoes that break the surface, and one marker at the deepest part of each trench arc. */
-    private void subductionLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out) {
+    private void subductionLandmarks(double i0, double j0, double i1, double j1, CoarseField coarse, java.util.List<Landmark> out,
+                                     java.util.List<double[]> arcVents) {
         // Plate seeds in warped space around the window.
         double pad = 2 * PLATE;
         int gx0 = (int) Math.floor((j0 - pad) / PLATE), gx1 = (int) Math.floor((j1 + pad) / PLATE);
@@ -1596,6 +1615,15 @@ public final class OceanFeatures {
                     if (!clearOfLand(c[0], c[1], arcRadius(h), coarse)) continue;
                     boolean warm = coarse.temperature(c[1], c[0]) >= REEF_TEMP;
                     int extra = arcExtra(peak, warm, h);
+                    if (arcVents != null) {
+                        // Active arc volcanoes: plain arc islands with a summit crater, ARC_ACTIVE_CHANCE of them.
+                        if (extra == ARC_PLAIN && peak > 150 && !isMushroom(h, coarse.temperature(c[1], c[0]))
+                                && unit(mix(h + 0xAC7L)) < ARC_ACTIVE_CHANCE) {
+                            double cr = (0.3 + 0.5 * unit(mix(h + 120))) * KM, cd = Math.min(0.2 * peak, 50 + 80 * unit(mix(h + 121)));
+                            arcVents.add(new double[]{c[1], c[0], arcLandU(h) * arcRadius(h), peak, h, cr, cd});
+                        }
+                        continue;
+                    }
                     if (hasScar(peak, h)) {
                         // Marker at the mouth of the scar, on the old coast (in the arc's frame, like the island).
                         double landR = arcLandU(h) * arcRadius(h), sa = scarAngle(h);
@@ -1613,6 +1641,7 @@ public final class OceanFeatures {
                     out.add(new Landmark(type, c[1], c[0], (float) peak));
                     if (isMushroom(h, coarse.temperature(c[1], c[0]))) out.add(new Landmark("mushroom_island", c[1], c[0], (float) peak));
                 }
+                if (arcVents != null) continue;   // only the active arc volcanoes were wanted
                 // Forearc islands.
                 for (long k = (long) Math.floor(amin / FOREARC_SPACING) - 1; k <= (long) Math.ceil(amax / FOREARC_SPACING) + 1; k++) {
                     long h = hash(pair, k, 0xF0AEL);
