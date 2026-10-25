@@ -244,6 +244,9 @@ public final class RegionalBiomes {
     /** Floodplain forest reaches this far (native pixels, ~210 m) from a river or main river, plus jitter. */
     static final float FLOODPLAIN_PX = 7f, FLOODPLAIN_JITTER_PX = 3f;
 
+    /** River forests only below this temperature (°C, ± ~2 by noise). */
+    static final float RIVER_FOREST_MAX_TEMP = 20f;
+
     /** Biomes dry enough that rivers through them grow a strip of trees. */
     private static boolean dryLand(short b) {
         return b == SAVANNA || b == GROVE || b == DESERT || b == STEPPE || b == ROCKY_DESERT || b == MEDITERRANEAN_SCRUB
@@ -254,7 +257,7 @@ public final class RegionalBiomes {
     /** Wet-climate lowland biomes where big rivers get a floodplain forest. */
     private static boolean wetLowland(short b) {
         return b == FOREST || b == FOREST_SPARSE || b == PLAINS || b == SWAMP || b == TAIGA || b == TAIGA_SPARSE
-                || b == JUNGLE || b == BiomeClassifier.BIRCH_FOREST || b == BiomeClassifier.FLOWER_FOREST
+                || b == BiomeClassifier.BIRCH_FOREST || b == BiomeClassifier.FLOWER_FOREST
                 || b == BOREAL_FOREST || b == BIRCH_TAIGA || b == TALLGRASS_PRAIRIE || b == MARSH;
     }
 
@@ -268,6 +271,9 @@ public final class RegionalBiomes {
                       float treeMoisture, float temp) {
         if (temp < 0f) return b;
         float j = riverJitter.GetNoise(xm, zm);
+        // Both are temperate woods (oak, poplar, swamp oak, birch): none in the tropics, where they looked pasted into
+        // jungle and savanna (Calvin, Oct 25). The limit wanders by a couple of degrees.
+        if (temp + 2f * j >= RIVER_FOREST_MAX_TEMP) return b;
         if (dryLand(b) && distRiver <= RIVERSIDE_PX + RIVERSIDE_JITTER_PX * j) return RIVERSIDE_FOREST;
         if (wetLowland(b) && treeMoisture > 0.5f && altM < 300f && slope < 0.08f
                 && distMain <= FLOODPLAIN_PX + FLOODPLAIN_JITTER_PX * j) return FLOODPLAIN_FOREST;

@@ -44,6 +44,13 @@ public final class RiverMap {
 
         /** Terrain elevation in metres (before filling), or null. */
         public final float[] elev;
+        /**
+         * Channel size per cell, a continuous version of the class: 1 for the smallest stream, 2 where a stream becomes a
+         * river, 3 where a river becomes a main river (log of the discharge between the thresholds), never smaller
+         * downstream; 0 off the channels. Channel width and depth follow it, so a stream widens gradually into a river
+         * instead of jumping from a few blocks to a wide river at one pixel. Null for results built without it.
+         */
+        public float[] size;
 
         Result(byte[] cls, int[] downstream, float[] surface) {
             this(cls, downstream, surface, null);
@@ -237,7 +244,51 @@ public final class RiverMap {
             if (!reached) continue;
             for (int k = 0; k < len; k++) if (out[path[k]] == NONE) out[path[k]] = STREAM;
         }
-        return new Result(out, net.downstream, net.filled, elev);
+        Result result = new Result(out, net.downstream, net.filled, elev);
+        result.size = channelSize(out, q, elev, net.downstream, p);
+        return result;
+    }
+
+    /** Elevations (metres) over which the size cap eases from a main river's down to a river's (rivers stop at 1500 m). */
+    private static final float SIZE_CAP_FROM_M = 1350f, SIZE_CAP_TO_M = 1500f;
+
+    /** See {@link Result#size}. */
+    static float[] channelSize(byte[] cls, float[] q, float[] elev, int[] downstream, Params p) {
+        int n = cls.length;
+        float[] size = new float[n];
+        float lnSR = (float) Math.log(p.riverQ / p.streamQ), lnRM = (float) Math.log(p.mainQ / p.riverQ);
+        for (int i = 0; i < n; i++) {
+            byte c = cls[i];
+            if (c < STREAM || c > MAIN) continue;
+            float d = q[i], s;
+            if (d <= p.streamQ) s = 1f;
+            else if (d < p.riverQ) s = 1f + (float) Math.log(d / p.streamQ) / lnSR;
+            else if (d < p.mainQ) s = 2f + (float) Math.log(d / p.riverQ) / lnRM;
+            else s = 3f;
+            size[i] = fitSize(s, c, elev[i]);
+        }
+        // Never smaller downstream (the windowed discharge can dip), except where the altitude caps it.
+        for (int s0 = 0; s0 < n; s0++) {
+            if (size[s0] <= 0f) continue;
+            int i = s0;
+            for (int steps = 0; steps < 400; steps++) {
+                int j = downstream[i];
+                if (j < 0 || cls[j] < STREAM || cls[j] > MAIN) break;
+                float v = fitSize(size[i], cls[j], elev[j]);
+                if (size[j] >= v) break;
+                size[j] = v;
+                i = j;
+            }
+        }
+        return size;
+    }
+
+    /** A size kept inside its class's band and under the altitude cap (big rivers only in the lowlands). */
+    private static float fitSize(float s, byte cls, float e) {
+        float cap = e <= SIZE_CAP_FROM_M ? 3f : e >= SIZE_CAP_TO_M ? 1.999f
+                : 3f - (e - SIZE_CAP_FROM_M) / (SIZE_CAP_TO_M - SIZE_CAP_FROM_M);
+        s = Math.min(s, cap);
+        return cls >= MAIN ? Math.max(3f, s) : Math.max(cls, Math.min(cls + 0.999f, s));
     }
 
     /** Collects the connected depression cells (filled ones, on land) around s into members; returns how many. */

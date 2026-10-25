@@ -574,7 +574,21 @@ public final class CoastPlan {
             float e = an.elevAt(x + n[0] * s, z + n[1] * s);
             if (Float.isNaN(e) || e >= 0f || e < -BARRIER_MAX_DEPTH) return false;
         }
-        return true;
+        // Open water in front along the whole stretch (no islands or headlands in the chain's way: chains wrapped round
+        // small islands into forks and stubs, Calvin's X -20411 Z 11909), and solid mainland behind it.
+        int land = 0, total = 0;
+        for (int s = -60; s <= 60; s += 10) {
+            for (int m = 16; m <= 60; m += 8) {
+                float e = an.elevAt(x + tx * s + n[0] * m, z + tz * s + n[1] * m);
+                if (Float.isNaN(e) || e >= 0f) return false;
+            }
+            for (int m = 8; m <= 40; m += 8) {
+                float e = an.elevAt(x + tx * s - n[0] * m, z + tz * s - n[1] * m);
+                total++;
+                if (!Float.isNaN(e) && e >= 0f) land++;
+            }
+        }
+        return land >= 0.85f * total;
     }
 
     /**
@@ -597,6 +611,7 @@ public final class CoastPlan {
         }
         float wobPhase = 100f * (float) unit(mix(h + 6));
         List<float[]> piece = new ArrayList<>();
+        float prevShore = Float.NaN;
         for (int st = 0; st <= (int) len; st++) {
             float s = -len / 2 + st;
             boolean gap = false;
@@ -607,9 +622,12 @@ public final class CoastPlan {
             for (int m = 0; m <= 90; m++) {
                 float em = an.elevAt(bx + n[0] * m, bz + n[1] * m);
                 if (Float.isNaN(em)) break;
-                if (em < 0f) { shore = m; break; }
+                if (em < 0f) { if (m > 0) shore = m; break; }   // starting in water (a bay) gives no shore
             }
-            if (Float.isNaN(shore)) { endIsland(piece, out); continue; }
+            // The shore jumping (a bay, a headland or an island in front) ends the island here rather than bending it.
+            boolean jump = !Float.isNaN(shore) && !Float.isNaN(prevShore) && Math.abs(shore - prevShore) > 3f;
+            prevShore = shore;
+            if (Float.isNaN(shore) || jump) { endIsland(piece, out); continue; }
             float o = shore + off + 3f * (float) Math.sin((s + wobPhase) / 23f) + 1.5f * (float) Math.sin((s + wobPhase) / 9f);
             float px = bx + n[0] * o, pz = bz + n[1] * o;
             float e = an.elevAt(px, pz);

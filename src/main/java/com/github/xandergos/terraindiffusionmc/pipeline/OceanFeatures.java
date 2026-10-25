@@ -288,12 +288,15 @@ public final class OceanFeatures {
                 int k = r * W + c;
                 float raw = elev[k];
                 byte coastTag = TAG_NONE;
-                if (modelIslands && raw > -ISLAND_EDIT_DEEP && coarse.elevation(i1 + r, j1 + c) < -500f) {
+                boolean mushroomShore = false;
+                if (modelIslands && raw > -ISLAND_FALLBACK_DEEP && coarse.elevation(i1 + r, j1 + c) < -500f) {
                     // Model-drawn islands: a summit crater and a ragged coast (both too small for the model to draw),
                     // tuff rings on young islands' coasts, and on land their island rock (forearc
                     // islands' limestone).
                     islandGuide(i1 + r, j1 + c, coarse, ctx);
-                    if (ctx.guideTop > -1500) {
+                    raw = (float) islandFallback(raw, ctx);
+                    mushroomShore = ctx.surfaceTag == TAG_MUSHROOM && ctx.guideTop > -30;
+                    if (ctx.guideTop > -1500 && raw > -ISLAND_EDIT_DEEP) {
                         raw -= (float) ctx.guideCrater;
                         if (raw < ISLAND_COAST_HIGH) raw = (float) islandCoast(raw, i1 + r, j1 + c, smoothstep(-1500, -500, ctx.guideTop));
                         if (hasCoastEdit(ctx)) {
@@ -304,6 +307,13 @@ public final class OceanFeatures {
                         if (raw >= 0f && tags != null && ctx.surfaceTag != TAG_NONE && ctx.guideTop > -30) tags[k] = ctx.surfaceTag;
                         if (raw >= 0f && tags != null && coastTag != TAG_NONE) tags[k] = coastTag;
                     }
+                    elev[k] = raw;
+                }
+                // A mushroom island is mycelium down to the water, as in vanilla: its land and the shallows around it
+                // (so the blocks along the shore, which may take a sea pixel's tag, are included) carry the tag.
+                if (mushroomShore && tags != null && raw > -30f) {
+                    tags[k] = TAG_MUSHROOM;
+                    if (raw >= 0f) continue;
                 }
                 if (raw >= 0f) continue;
                 ctx.tag = TAG_NONE;
@@ -312,9 +322,35 @@ public final class OceanFeatures {
                 // Reefs and banks in warm shallow water, away from the atolls and barrier reefs drawn above.
                 if (!ctx.reefOp && v < 0 && v > -SHALLOW_MAX_M && coastTag == TAG_NONE) v = shallowSeas(v, i1 + r, j1 + c, coarse, ctx);
                 elev[k] = (float) v;
-                if (tags != null) tags[k] = coastTag != TAG_NONE ? coastTag : ctx.tag;
+                if (tags != null) tags[k] = mushroomShore && v > -30 ? TAG_MUSHROOM : coastTag != TAG_NONE ? coastTag : ctx.tag;
             }
         }
+    }
+
+    /** Model ground (m) deeper than this is never part of a model-drawn island, not even a failed one. */
+    private static final float ISLAND_FALLBACK_DEEP = 6000f;
+    /**
+     * Where the model failed to draw a guided island (it sometimes leaves a low or sinking island under the sea: a
+     * flooded caldera vanished on Oct 20, a mushroom island on Oct 25), the island is put back from its guide: below
+     * {@link #FALLBACK_LOW_M} the guide's own shape, above it a quarter of the guide's height, so a failed island comes
+     * out as a low, gentle island rather than one of the old tall cones.
+     */
+    private static final double FALLBACK_LOW_M = 20, FALLBACK_SQUASH = 0.25;
+
+    /**
+     * {@code raw} raised toward the fallback island where the model reached less than about a third of the guide's
+     * relief (fully below a fifth), on guide islands standing over 300 m above their floor (fully over 800 m, so
+     * there is no ring at the guide's edge); unchanged elsewhere and wherever the model drew the island itself. Never
+     * lowers. Pointwise in the model's ground and the guide, so tiles agree.
+     */
+    private static double islandFallback(double raw, Ctx ctx) {
+        double g = ctx.guideTop, c = ctx.guideC;
+        if (g == Double.NEGATIVE_INFINITY || c <= 300) return raw;
+        double target = g <= FALLBACK_LOW_M ? g : FALLBACK_LOW_M + FALLBACK_SQUASH * (g - FALLBACK_LOW_M);
+        if (target <= raw) return raw;
+        double missing = (g - raw) / c;   // share of the island's relief the model left out here
+        double w = smoothstep(0.65, 0.8, missing) * smoothstep(300, 800, c);
+        return raw + w * (target - raw);
     }
 
     // =========================================================================
@@ -1413,7 +1449,9 @@ public final class OceanFeatures {
                         double si = ch.cz[k] + Math.sin(a) * landR, sj = ch.cx[k] + Math.cos(a) * landR;
                         if (inside(si, sj, i0, j0, i1, j1)) out.add(new Landmark("landslide_scar", si, sj, (float) ch.peak[k]));
                     }
-                    if (stage.equals("volcanic_island") && k <= 1) {
+                    boolean mushroomIsle = k > 0 && isIslandStage(stage)
+                            && isMushroom(ch.hk[k], coarse.temperature(ch.cz[k], ch.cx[k]));
+                    if (stage.equals("volcanic_island") && k <= 1 && !mushroomIsle) {
                         coneLandmarks(ch.hk[k], ch.peak[k], ch.radius[k], islandLandU(stage, ch.hk[k]), ch.cx[k], ch.cz[k],
                                 IDENTITY, i0, j0, i1, j1, out);
                     }
@@ -1521,7 +1559,7 @@ public final class OceanFeatures {
                                 mz + tz * (ak + Math.cos(sa) * landR) + oz * (across + Math.sin(sa) * landR));
                         if (inside(sw[1], sw[0], i0, j0, i1, j1)) out.add(new Landmark("landslide_scar", sw[1], sw[0], (float) peak));
                     }
-                    if (extra == ARC_PLAIN) {
+                    if (extra == ARC_PLAIN && !isMushroom(h, coarse.temperature(c[1], c[0]))) {
                         // In the arc's frame (along, across), as the island is shaped.
                         coneLandmarks(h, peak, arcRadius(h), arcLandU(h), ak, across, arcFrame(mx, mz, tx, tz, ox, oz),
                                 i0, j0, i1, j1, out);
@@ -1940,11 +1978,12 @@ public final class OceanFeatures {
                 int style = (extra == ARC_CALDERA ? STYLE_CALDERA : 0) | (hasScar(peak, h) ? STYLE_SCAR : 0);
                 double cc = relief * islandCone(r, radius, -floor / relief, landU, ang, x, z, h, style, relief);
                 island(ctx, cc, floor);
-                if (isMushroom(h, coarse.temperature(c[1], c[0]))) tagMushroom(ctx, cc);
+                boolean mushroom = isMushroom(h, coarse.temperature(c[1], c[0]));
+                if (mushroom) tagMushroom(ctx, cc);
                 if (extra == ARC_PLAIN && peak > 150) {
                     crater(ctx, r, ang, (0.3 + 0.5 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 50 + 80 * unit(mix(h + 121))), h);
                 }
-                if (extra == ARC_PLAIN) coastalCones(ctx, along, xo, ak, across, x, z, radius, landU, h, peak, arcFrame(mx, mz, tx, tz, ox, oz));
+                if (extra == ARC_PLAIN && !mushroom) coastalCones(ctx, along, xo, ak, across, x, z, radius, landU, h, peak, arcFrame(mx, mz, tx, tz, ox, oz));
                 if (extra == ARC_REEF) {
                     // The reef ring is placed in warped space too, so it stays centred on the island.
                     double landR = landU * radius;
@@ -2223,8 +2262,9 @@ public final class OceanFeatures {
                 if (stage.equals("volcanic_island") && peak > 150) {
                     crater(ctx, r, ang, (0.5 + 0.8 * unit(mix(h + 120))) * KM, Math.min(0.2 * peak, 70 + 110 * unit(mix(h + 121))), h);
                 }
-                // Young islands (the head and the one behind it) have tuff rings on their coasts.
-                if (stage.equals("volcanic_island") && k <= 1) {
+                // Young islands (the head and the one behind it) have tuff rings on their coasts (not mushroom islands:
+                // their whole island is mycelium, as in vanilla).
+                if (stage.equals("volcanic_island") && k <= 1 && !ctx.mushroomNext) {
                     coastalCones(ctx, x, z, vcx, vcz, x, z, radius, landU, h, peak, IDENTITY);
                 }
                 if (stage.equals("barrier_reef_island")) {

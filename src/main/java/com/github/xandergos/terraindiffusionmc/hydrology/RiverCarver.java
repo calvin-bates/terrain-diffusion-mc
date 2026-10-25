@@ -59,11 +59,33 @@ public final class RiverCarver {
     private static final int[] DEPTH = {0, 1, 3, 5};   // rivers deeper (were 2 and 3) so boats can use them
 
     /** Water depth of a channel column: rivers deepen from 1 block at the edge to their full depth in the middle. */
-    private static int channelDepth(byte cls, float sc, float hw) {
-        int d = DEPTH[cls];
-        if (d <= 1) return d;
+    private static int channelDepth(float size, float sc, float hw) {
+        float d = depthAt(size);
+        if (d <= 1f) return 1;
         float frac = Math.max(0f, Math.min(1f, -sc / (0.6f * hw)));
-        return 1 + Math.round((d - 1) * frac);
+        return 1 + Math.round((d - 1f) * frac);
+    }
+
+    /** Full depth (blocks) of a channel of continuous size (1 stream, 2 river, 3 main river; see RiverMap.Result#size). */
+    private static float depthAt(float size) {
+        int lo = Math.max(RiverMap.STREAM, Math.min(RiverMap.MAIN - 1, (int) Math.floor(size)));
+        float t = Math.max(0f, Math.min(1f, size - lo));
+        return DEPTH[lo] + (DEPTH[lo + 1] - DEPTH[lo]) * t;
+    }
+
+    /** Half width (blocks) of a channel of continuous size: geometric between the classes' widths. */
+    static float halfWidthAt(float size, int scale) {
+        int lo = Math.max(RiverMap.STREAM, Math.min(RiverMap.MAIN - 1, (int) Math.floor(size)));
+        float t = Math.max(0f, Math.min(1f, size - lo));
+        float a = halfWidth((byte) lo, scale), b = halfWidth((byte) (lo + 1), scale);
+        return a * (float) Math.pow(b / a, t);
+    }
+
+    /** Size of the channel at region pixel k, drawn as class {@code cls} (lake pixels carrying a stream: the class). */
+    private static float pixelSize(RiverService.Region reg, int k, byte cls) {
+        float s = reg.size != null ? reg.size[k] : 0f;
+        if (s <= 0f) return cls;
+        return cls >= RiverMap.MAIN ? Math.max(3f, s) : Math.max(cls, Math.min(cls + 0.999f, s));
     }
 
     /** Provides the region that owns a given region index. */
@@ -110,24 +132,25 @@ public final class RiverCarver {
 
     /** Rasterises one flow segment (pixel k to its downstream pixel q) into the per-column channel score. */
     private static void drawSegment(RiverService.Region reg, int k, int q, byte cls, float widen, int scale, int i1, int j1,
-                                    int H, int W, float[] score, float[] sA, byte[] cA, float[] wA, float[] cpx, float[] cpz,
-                                    float[] pt) {
+                                    int H, int W, float[] score, float[] sA, byte[] cA, float[] wA, float[] zA, float[] cpx,
+                                    float[] cpz, float[] pt) {
         // Centre line smoothed with a 1-2-1 filter along the flow direction so the D8
         // staircase turns into gentle curves (all branches of a confluence still meet).
         smoothPoint(reg, k, scale, pt);
         float ax = pt[0], az = pt[1];
         smoothPoint(reg, q, scale, pt);
         float bx = pt[0], bz = pt[1];
-        drawCapsule(ax, az, bx, bz, reg.surface[k], reg.surface[q], cls, widen, scale, i1, j1, H, W,
-                score, sA, cA, wA, cpx, cpz);
+        drawCapsule(ax, az, bx, bz, reg.surface[k], reg.surface[q], cls, pixelSize(reg, k, cls), pixelSize(reg, q, cls),
+                widen, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz);
     }
 
     /** Rasterises a channel centre line from (ax, az) to (bx, bz), in block coordinates, into the channel score. */
-    private static void drawCapsule(float ax, float az, float bx, float bz, float sp, float sq, byte cls, float widen,
-                                    int scale, int i1, int j1, int H, int W, float[] score, float[] sA, byte[] cA,
-                                    float[] wA, float[] cpx, float[] cpz) {
-        float hw = halfWidth(cls, scale) * widen;
-        float reach = hw + BANK;
+    private static void drawCapsule(float ax, float az, float bx, float bz, float sp, float sq, byte cls, float sizeA,
+                                    float sizeB, float widen, int scale, int i1, int j1, int H, int W, float[] score,
+                                    float[] sA, byte[] cA, float[] wA, float[] zA, float[] cpx, float[] cpz) {
+        // The width follows the channel size from one end of the segment to the other, so it changes gradually.
+        float hwA = halfWidthAt(sizeA, scale) * widen, hwB = halfWidthAt(sizeB, scale) * widen;
+        float reach = Math.max(hwA, hwB) + BANK;
         int cMin = Math.max(0, (int) Math.floor(Math.min(ax, bx) - reach - j1));
         int cMax = Math.min(W - 1, (int) Math.ceil(Math.max(ax, bx) + reach - j1));
         int rMin = Math.max(0, (int) Math.floor(Math.min(az, bz) - reach - i1));
@@ -143,6 +166,7 @@ public final class RiverCarver {
                 float t = len2 > 0f ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0f;
                 t = t < 0f ? 0f : (t > 1f ? 1f : t);
                 float ex = ax + t * dx - px, ez = az + t * dz - pz;
+                float hw = hwA + (hwB - hwA) * t;
                 float sc = (float) Math.sqrt(ex * ex + ez * ez) - hw;
                 if (sc >= BANK) continue;
                 int idx = r * W + c;
@@ -151,6 +175,7 @@ public final class RiverCarver {
                     sA[idx] = sp + (sq - sp) * t;
                     cA[idx] = cls;
                     wA[idx] = widen;
+                    zA[idx] = sizeA + (sizeB - sizeA) * t;
                     cpx[idx] = ax + t * dx;   // nearest point on the centre line: identifies the channel's cross-section
                     cpz[idx] = az + t * dz;
                 }
@@ -214,9 +239,9 @@ public final class RiverCarver {
         return 1f + (max - 1f) * e * e;
     }
 
-    /** Depth of a channel column, including the estuary's extra depth. */
-    private static int columnDepth(byte cls, float sc, float widen, int scale) {
-        int d = channelDepth(cls, sc, halfWidth(cls, scale) * widen);
+    /** Depth of a channel column of class cls and size (see RiverMap.Result#size), including the estuary's extra depth. */
+    private static int columnDepth(byte cls, float size, float sc, float widen, int scale) {
+        int d = channelDepth(size, sc, halfWidthAt(size, scale) * widen);
         float max = ESTUARY_WIDEN[cls];
         if (widen > 1.01f && max > 1f) d += Math.round(ESTUARY_DEEPEN * Math.min(1f, (widen - 1f) / (max - 1f)));
         return d;
@@ -254,13 +279,14 @@ public final class RiverCarver {
 
     /** Draws a delta's distributaries (see {@link DeltaPlan}): each channel widens a little toward the sea. */
     private static void drawDelta(DeltaPlan plan, int scale, int i1, int j1, int H, int W,
-                                  float[] score, float[] sA, byte[] cA, float[] wA, float[] cpx, float[] cpz) {
+                                  float[] score, float[] sA, byte[] cA, float[] wA, float[] zA, float[] cpx, float[] cpz) {
         for (DeltaPlan.Channel ch : plan.channels) {
             for (int i = 0; i + 1 < ch.x.length; i++) {
                 float t = Math.min(1f, (float) i / DELTA_START);
                 float widen = 1f + 0.6f * t * t;
                 drawCapsule(ch.x[i] * scale, ch.z[i] * scale, ch.x[i + 1] * scale, ch.z[i + 1] * scale,
-                        ch.surface[i], ch.surface[i + 1], ch.cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
+                        ch.surface[i], ch.surface[i + 1], ch.cls, ch.cls, ch.cls, widen, scale, i1, j1, H, W, score, sA, cA,
+                        wA, zA, cpx, cpz);
             }
         }
     }
@@ -367,6 +393,7 @@ public final class RiverCarver {
         byte[] cA = new byte[n];
         float[] wA = new float[n];
         Arrays.fill(wA, 1f);
+        float[] zA = new float[n];   // channel size per column (see RiverMap.Result#size)
 
         // ---- rivers: rasterise flow segments (pixel centre -> downstream pixel centre)
         float maxReach = halfWidth(RiverMap.MAIN, scale) * ESTUARY_WIDEN[RiverMap.MAIN] + BANK;
@@ -455,14 +482,14 @@ public final class RiverCarver {
                     if (cq < RiverMap.STREAM || cq > RiverMap.MAIN) continue;
                     int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
                     int dr = qr - kr, dc = qc - kc;
-                    drawSegment(reg, k, q0, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz, pt);
+                    drawSegment(reg, k, q0, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
                     int curR = kr, curC = kc;
                     for (int st = 0; st < LAKE_LINK; st++) {
                         int prR = curR - dr, prC = curC - dc;
                         if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
                         int prev = prR * reg.width + prC;
                         if (reg.cls[prev] != RiverMap.LAKE) break;
-                        drawSegment(reg, prev, curR * reg.width + curC, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz, pt);
+                        drawSegment(reg, prev, curR * reg.width + curC, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
                         curR = prR; curC = prC;
                     }
                     continue;
@@ -472,7 +499,7 @@ public final class RiverCarver {
                 int segK = k, q = q0;
                 float widen = estuaryWiden(reg, k, cls);
                 for (int seg = 0; seg <= LAKE_LINK; seg++) {
-                    drawSegment(reg, segK, q, cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz, pt);
+                    drawSegment(reg, segK, q, cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
                     if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
                     segK = q;
                     q = reg.downstream[segK];
@@ -497,7 +524,7 @@ public final class RiverCarver {
                 for (int rj = rj0; rj <= rj1; rj++) {
                     for (DeltaPlan plan : DeltaPlan.of(regions.get(ri, rj), ri, rj, regionSize)) {
                         if (!plan.near(tcx, tcz, tileHalf)) continue;
-                        drawDelta(plan, scale, i1, j1, H, W, score, sA, cA, wA, cpx, cpz);
+                        drawDelta(plan, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz);
                     }
                 }
             }
@@ -533,7 +560,7 @@ public final class RiverCarver {
                 int ys = metersToY.applyAsInt((int) Math.floor(Math.max(0f, sA[idx])));
                 // Water never sits higher than the lowest ground beside the channel, otherwise it
                 // would need an embankment (a ridge along the stream) to stay in place.
-                int rad = Math.min(8, (int) Math.ceil(halfWidth(cA[idx], scale)) + 1);
+                int rad = Math.min(8, (int) Math.ceil(halfWidthAt(zA[idx], scale)) + 1);
                 // "Beside" means across the channel: ground in the same cross-section (nearest centre-line points within a
                 // block and a half, as in the one-level pass below). Counting the ground up and down the channel too put
                 // the water of a river running down a steep slope at the level of the ground a few blocks downstream:
@@ -563,7 +590,7 @@ public final class RiverCarver {
                 // Near the coast the lowest ground can be the sea floor; river water never sits below the sea's surface
                 // (Y 62), or a river mouth became a deep trench cut down to the sea floor.
                 int waterTop = Math.max(low, Math.min(top, SEA_SURFACE_Y));
-                int bed = Math.max(bedFloor[idx], waterTop - columnDepth(cA[idx], sc, wA[idx], scale));
+                int bed = Math.max(bedFloor[idx], waterTop - columnDepth(cA[idx], zA[idx], sc, wA[idx], scale));
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) waterTop;
                 chanWater[idx] = waterTop;
@@ -597,7 +624,7 @@ public final class RiverCarver {
                         }
                     }
                     if (count < 2 || top - minLvl > 3) continue;
-                    int bed = Math.max(bedFloor[idx], minLvl - columnDepth(cA[idx], sc, wA[idx], scale));
+                    int bed = Math.max(bedFloor[idx], minLvl - columnDepth(cA[idx], zA[idx], sc, wA[idx], scale));
                     surfaceY[r][c] = (short) Math.min(top, bed);
                     waterY[r][c] = (short) minLvl;
                     chanWater[idx] = minLvl;
@@ -629,7 +656,7 @@ public final class RiverCarver {
                     if (lim < chanWater[idx]) {
                         chanWater[idx] = lim;
                         waterY[r][c] = (short) lim;
-                        surfaceY[r][c] = (short) Math.min(ytop[idx], Math.max(bedFloor[idx], lim - columnDepth(cA[idx], score[idx], wA[idx], scale)));
+                        surfaceY[r][c] = (short) Math.min(ytop[idx], Math.max(bedFloor[idx], lim - columnDepth(cA[idx], zA[idx], score[idx], wA[idx], scale)));
                         changed = true;
                     }
                 }
@@ -656,7 +683,7 @@ public final class RiverCarver {
                 for (int c = 0; c < W; c++) {
                     int idx = r * W + c;
                     if (chanWater[idx] == NOWATER) continue;
-                    int rr0 = (int) Math.ceil(halfWidth(cA[idx], scale)) + 1;
+                    int rr0 = (int) Math.ceil(halfWidthAt(zA[idx], scale)) + 1;
                     int ref = chanWater[idx], min = chanWater[idx], minTop = ytop[idx];
                     float best = score[idx];
                     for (int rr = Math.max(0, r - 2 * rr0); rr <= Math.min(H - 1, r + 2 * rr0); rr++) {
@@ -684,7 +711,7 @@ public final class RiverCarver {
                 int r = idx / W, c = idx % W;
                 chanWater[idx] = lowerTo[idx];
                 waterY[r][c] = (short) lowerTo[idx];
-                surfaceY[r][c] = (short) Math.min(ytop[idx], Math.max(bedFloor[idx], lowerTo[idx] - columnDepth(cA[idx], score[idx], wA[idx], scale)));
+                surfaceY[r][c] = (short) Math.min(ytop[idx], Math.max(bedFloor[idx], lowerTo[idx] - columnDepth(cA[idx], zA[idx], score[idx], wA[idx], scale)));
             }
             if (dropCount > 0) {
                 // Distance (in blocks) from the remaining water, used as the dropped columns' bank score.
