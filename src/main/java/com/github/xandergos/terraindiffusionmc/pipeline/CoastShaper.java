@@ -229,7 +229,9 @@ public final class CoastShaper {
                         && (steep > 0.18f || SHINGLE_MASK.GetNoise(wx, wz) > SHINGLE_LEVEL)) {
                     // Shingle: gravel and cobble beaches below rocky or steepish ground on temperate coasts.
                     biomes[k] = RegionalBiomes.SHINGLE_BEACH;
-                } else if (temp < 0f || isSnowy(biomes[k])) {
+                } else if (isSnowy(biomes[k])) {
+                    // Snowy beaches only where the land itself is snowy (Calvin, Oct 25: a snowy strip along the shore
+                    // of snow-free grassland on a cold, dry coast looked off).
                     biomes[k] = BiomeClassifier.SNOWY_BEACH;
                 } else {
                     biomes[k] = BiomeClassifier.BEACH;
