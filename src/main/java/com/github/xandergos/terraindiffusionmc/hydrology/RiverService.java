@@ -31,13 +31,68 @@ public final class RiverService {
         public final float[] temp;
         /** Continuous channel size per pixel ({@link RiverMap.Result#size}), or null. */
         public final float[] size;
+        /** The region's index and side (its own square is [ri*size, (ri+1)*size) on each axis). */
+        public final int ri, rj, regionSize;
+        /**
+         * Lakes, as this region sees them: per pixel the lake (4-connected LAKE pixels) it belongs to, or -1; per lake,
+         * whether it lies wholly inside the window (not touching its edge, so its level is right) and its anchor (its
+         * deepest pixel, global native coordinates). A lake belongs to the region whose own square holds its anchor;
+         * see {@code RiverCarver.lakeRegion}.
+         */
+        public final int[] lakeComp;
+        public final boolean[] lakeComplete;
+        public final int[] lakeAnchorI, lakeAnchorJ;
 
-        Region(int i0, int j0, int height, int width, RiverMap.Result res, float[] climate) {
+        Region(int i0, int j0, int height, int width, RiverMap.Result res, float[] climate, int ri, int rj, int regionSize) {
             this.i0 = i0; this.j0 = j0; this.height = height; this.width = width;
+            this.ri = ri; this.rj = rj; this.regionSize = regionSize;
             this.cls = res.cls; this.downstream = res.downstream; this.surface = res.surface; this.elev = res.elev;
             this.size = res.size;
             this.temp = climate == null || climate.length < height * width ? null
                     : java.util.Arrays.copyOf(climate, height * width);   // channel 0 of the climate is temperature
+            // Lake components.
+            int n = height * width;
+            lakeComp = new int[n];
+            java.util.Arrays.fill(lakeComp, -1);
+            java.util.List<int[]> info = new java.util.ArrayList<>();   // {complete, anchor index}
+            int[] stack = new int[n];
+            for (int s = 0; s < n; s++) {
+                if (lakeComp[s] >= 0 || cls[s] != RiverMap.LAKE) continue;
+                int id = info.size(), sp = 0, anchor = s;
+                boolean complete = true;
+                lakeComp[s] = id;
+                stack[sp++] = s;
+                while (sp > 0) {
+                    int k = stack[--sp], r = k / width, c = k % width;
+                    if (r <= 1 || c <= 1 || r >= height - 2 || c >= width - 2) complete = false;
+                    float ek = elev != null ? elev[k] : surface[k], ea = elev != null ? elev[anchor] : surface[anchor];
+                    if (ek < ea || (ek == ea && k < anchor)) anchor = k;
+                    if (r > 0 && lakeComp[k - width] < 0 && cls[k - width] == RiverMap.LAKE) { lakeComp[k - width] = id; stack[sp++] = k - width; }
+                    if (r < height - 1 && lakeComp[k + width] < 0 && cls[k + width] == RiverMap.LAKE) { lakeComp[k + width] = id; stack[sp++] = k + width; }
+                    if (c > 0 && lakeComp[k - 1] < 0 && cls[k - 1] == RiverMap.LAKE) { lakeComp[k - 1] = id; stack[sp++] = k - 1; }
+                    if (c < width - 1 && lakeComp[k + 1] < 0 && cls[k + 1] == RiverMap.LAKE) { lakeComp[k + 1] = id; stack[sp++] = k + 1; }
+                }
+                info.add(new int[]{complete ? 1 : 0, anchor});
+            }
+            lakeComplete = new boolean[info.size()];
+            lakeAnchorI = new int[info.size()];
+            lakeAnchorJ = new int[info.size()];
+            for (int q = 0; q < info.size(); q++) {
+                lakeComplete[q] = info.get(q)[0] == 1;
+                lakeAnchorI[q] = i0 + info.get(q)[1] / width;
+                lakeAnchorJ[q] = j0 + info.get(q)[1] % width;
+            }
+        }
+
+        /** Whether this region's own square holds native pixel (pi, pj). */
+        public boolean owns(int pi, int pj) {
+            return Math.floorDiv(pi, regionSize) == ri && Math.floorDiv(pj, regionSize) == rj;
+        }
+
+        /** Whether this region has the right level for its lake at index k: whole in its window, anchored in its square. */
+        public boolean ownsLakeAt(int k) {
+            int q = lakeComp[k];
+            return q >= 0 && lakeComplete[q] && owns(lakeAnchorI[q], lakeAnchorJ[q]);
         }
 
         /** Index of native pixel (pi, pj), or -1 if it is outside this region's window. */
@@ -105,7 +160,7 @@ public final class RiverService {
         try {
             float[][] data = source.get(i0, j0, i0 + span, j0 + span);
             RiverMap.Result res = RiverMap.computeFull(data[0], data[1], span, span, i0, j0, params);
-            Region region = new Region(i0, j0, span, span, res, data[1]);
+            Region region = new Region(i0, j0, span, span, res, data[1], ri, rj, size);
             cache.put(key, region);
             return region;
         } catch (RuntimeException e) {

@@ -127,6 +127,60 @@ public final class RiverCarver {
         return (pixel >= lo && pixel < hi) ? preferred : Math.floorDiv(pixel, regionSize);
     }
 
+    /**
+     * The region whose lake data to use at native pixel (pi, pj), the same from every tile: two regions can see a lake
+     * near their common edge differently (one window cuts the basin off and fills it to another level), and tiles on
+     * either side each preferring their own region left a wall of water where they met (Calvin, Oct 25, X 64512
+     * Z -13470: levels 11 blocks apart). The pixel's own region is used when it sees the lake whole and the lake's
+     * deepest pixel lies in its square; otherwise a neighbouring region that does; otherwise its own region.
+     */
+    static RiverService.Region lakeRegion(Regions regions, int pi, int pj, int regionSize) {
+        int ori = Math.floorDiv(pi, regionSize), orj = Math.floorDiv(pj, regionSize);
+        RiverService.Region o = regions.get(ori, orj);
+        int k = o.index(pi, pj);
+        if (k < 0) return o;
+        int margin = ori * regionSize - o.i0;
+        if (o.cls[k] == RiverMap.LAKE) {
+            if (o.ownsLakeAt(k)) return o;
+        } else {
+            // Not lake here: only worth asking the neighbours if this region sees a cut-off lake right beside it.
+            boolean near = false;
+            for (int dr = -1; dr <= 1 && !near; dr++) {
+                for (int dc = -1; dc <= 1; dc++) {
+                    int q = o.index(pi + dr, pj + dc);
+                    if (q >= 0 && o.cls[q] == RiverMap.LAKE && !o.ownsLakeAt(q)) { near = true; break; }
+                }
+            }
+            if (!near) return o;
+        }
+        for (int di = -1; di <= 1; di++) {
+            for (int dj = -1; dj <= 1; dj++) {
+                if (di == 0 && dj == 0 || !inWindow(pi, pj, ori + di, orj + dj, regionSize, margin)) continue;
+                RiverService.Region nb = regions.get(ori + di, orj + dj);
+                int q = nb.index(pi, pj);
+                if (q >= 0 && nb.cls[q] == RiverMap.LAKE && nb.ownsLakeAt(q)) return nb;
+            }
+        }
+        // No region both sees the lake whole and holds its deepest pixel: the first that sees it whole (the pixel's own
+        // region first, then the neighbours in a fixed order), which every tile picks alike.
+        if (o.cls[k] == RiverMap.LAKE && o.lakeComplete[o.lakeComp[k]]) return o;
+        for (int di = -1; di <= 1; di++) {
+            for (int dj = -1; dj <= 1; dj++) {
+                if (di == 0 && dj == 0 || !inWindow(pi, pj, ori + di, orj + dj, regionSize, margin)) continue;
+                RiverService.Region nb = regions.get(ori + di, orj + dj);
+                int q = nb.index(pi, pj);
+                if (q >= 0 && nb.cls[q] == RiverMap.LAKE && nb.lakeComplete[nb.lakeComp[q]]) return nb;
+            }
+        }
+        return o;
+    }
+
+    /** Whether native pixel (pi, pj) lies in region (ri, rj)'s window (its square plus the margin). */
+    private static boolean inWindow(int pi, int pj, int ri, int rj, int regionSize, int margin) {
+        return pi >= ri * regionSize - margin && pi < (ri + 1) * regionSize + margin
+                && pj >= rj * regionSize - margin && pj < (rj + 1) * regionSize + margin;
+    }
+
     /** How many lake pixels a stream's channel is carried into (inlets) or out of (outlets) a lake. */
     private static final int LAKE_LINK = 8;
 
@@ -422,8 +476,7 @@ public final class RiverCarver {
             for (int a = 0; a < gh; a++) {
                 for (int b = 0; b < gw; b++) {
                     int pi = gi0 + a, pj = gj0 + b;
-                    int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
-                    if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
+                    rg = lakeRegion(regions, pi, pj, regionSize);
                     int k = rg.index(pi, pj);
                     lk[a * gw + b] = k >= 0 && rg.cls[k] == RiverMap.LAKE;
                     anyLake |= lk[a * gw + b];
@@ -843,12 +896,7 @@ public final class RiverCarver {
             int pi = Math.floorDiv(i1 + r, scale);
             for (int c = 0; c < W; c++) {
                 int pj = Math.floorDiv(j1 + c, scale);
-                int ri = ownerIndex(pi, prefRi, regionSize, trust);
-                int rj = ownerIndex(pj, prefRj, regionSize, trust);
-                if (reg == null || ri != curRi || rj != curRj) {
-                    reg = regions.get(ri, rj);
-                    curRi = ri; curRj = rj;
-                }
+                reg = lakeRegion(regions, pi, pj, regionSize);
                 float level = Float.NaN;
                 float ownLevel = Float.NaN, minLevel = Float.NaN;
                 boolean ownLake = false;
@@ -1401,8 +1449,7 @@ public final class RiverCarver {
                 for (int a = 0; a < gh; a++) {
                     for (int b = 0; b < gw; b++) {
                         int pi = gi0 + a, pj = gj0 + b;
-                        int ri = ownerIndex(pi, prefRi, regionSize, trust), rj = ownerIndex(pj, prefRj, regionSize, trust);
-                        if (rg == null || ri != cri || rj != crj) { rg = regions.get(ri, rj); cri = ri; crj = rj; }
+                        rg = lakeRegion(regions, pi, pj, regionSize);
                         int k = rg.index(pi, pj);
                         // v23: only the part of the lake whose natural basin is at least SHALLOW_BLOCKS deep counts. On flat
                         // ground the hydrology mask reaches well past the water, and measuring from the mask's edge put
