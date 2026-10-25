@@ -38,11 +38,15 @@ public final class Landforms {
     static final double STRATO_CHANCE = 0.45, SHIELD_CHANCE = 0.25;
     /** Share of volcanoes that are active (lava lake, live lava channels). */
     static final double ACTIVE_CHANCE = 0.4;
+    /** An active shield's lava lake: a pit this fraction of its caldera's radius across, 30 m deeper. */
+    static final double LAVA_PIT = 0.28;
     /** Share of stratovolcanoes with a caldera instead of a summit crater. */
     static final double CALDERA_CHANCE = 0.25;
 
     /** Surface tags (shared with {@link OceanFeatures}' tag numbering). */
     public static final byte TAG_LAVA = 18, TAG_LAVA_CHANNEL = 19, TAG_VOLCANO = 23, TAG_CRATER = 24, TAG_LAVA_LAKE = 25;
+    /** An active crater's walls and floor around its lava lake: bare rock, and never water. */
+    public static final byte TAG_HOT_CRATER = 26;
 
     public static final int STRATO = 0, SHIELD = 1;
     /** Steepest mean slope (rise over run) of the ground a shield may be built on. */
@@ -212,16 +216,27 @@ public final class Landforms {
                 double crater = floor + v.craterDepth * smooth(0.72, 1.0, uc) + 0.1 * v.craterDepth * Math.exp(-sq((uc - 1.05) / 0.14));
                 if (uc < 1.0) e = Math.min(e, crater);
                 else e += 0.1 * v.craterDepth * Math.exp(-sq((uc - 1.05) / 0.14)) * (1 - smooth(1.2, 1.4, uc));
-                // An active crater holds a lava lake (live lava only where its floor is level; see VolcanicSurfaces). Its tag
-                // covers the rim, so no water the hydrology would pond in the crater is left.
-                if (uc < (v.active ? 1.15 : 0.95)) tag = v.active ? TAG_LAVA_LAKE : TAG_CRATER;
+                // An active crater holds a lava lake on its flat floor only (on the stepped walls it made rings, Calvin,
+                // Oct 25). A shield's caldera is too big to be all lava: the lake fills a deeper pit in its middle
+                // (Halemaumau in Kilauea's caldera). The rest of an active crater, out over the rim, is hot bare rock
+                // that never holds water (the hydrology would pond it).
+                double lake = v.type == SHIELD ? LAVA_PIT : 0.68;
+                if (v.active && v.type == SHIELD && uc < 1.6 * LAVA_PIT) {
+                    e -= 30 * (1 - smooth(0.75 * LAVA_PIT, 1.6 * LAVA_PIT, uc));
+                }
+                if (v.active) {
+                    if (uc < lake) tag = TAG_LAVA_LAKE;
+                    else if (uc < 1.15) tag = TAG_HOT_CRATER;
+                } else if (uc < 0.95) {
+                    tag = TAG_CRATER;
+                }
             }
             // Pit craters along the rift zones.
             for (double[] p : v.pits) {
                 double up = Math.hypot(z - p[0], x - p[1]) / p[2];
                 if (up >= 1.0) continue;
                 e -= p[3] * (1 - smooth(0.7, 1.0, up));
-                if (tag != TAG_LAVA_LAKE) tag = TAG_CRATER;
+                if (tag != TAG_LAVA_LAKE && tag != TAG_HOT_CRATER) tag = TAG_CRATER;
             }
             // Bare rock on the upper slopes of a stratovolcano and around a shield's summit.
             double bare = v.type == STRATO ? 0.55 : 0.18;
@@ -256,7 +271,7 @@ public final class Landforms {
         double e = out[0];
         if (e <= 0) return;   // flows stop at the sea
         int tag = (int) out[1];
-        if (keepCrater && (tag == TAG_CRATER || tag == TAG_LAVA_LAKE)) return;
+        if (keepCrater && (tag == TAG_CRATER || tag == TAG_LAVA_LAKE || tag == TAG_HOT_CRATER)) return;
         e += l.thick * smooth(0, 0.3, edge) + 1.5 * flowRough.GetNoise((float) x, (float) z);
         boolean channel = l.live && edge > 0.8 && s < 0.7 * l.len;
         out[0] = (float) e;

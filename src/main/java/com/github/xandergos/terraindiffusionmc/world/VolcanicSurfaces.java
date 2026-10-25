@@ -81,7 +81,7 @@ public final class VolcanicSurfaces {
                 int x = x0 + dx, z = z0 + dz, lx = x - startX, lz = z - startZ;
                 byte tag = data.oceanTags[lz][lx];
                 if (tag != Landforms.TAG_LAVA && tag != Landforms.TAG_LAVA_CHANNEL && tag != Landforms.TAG_LAVA_LAKE
-                        && tag != Landforms.TAG_CRATER) continue;
+                        && tag != Landforms.TAG_CRATER && tag != Landforms.TAG_HOT_CRATER) continue;
                 if (!loggedFirst) {
                     loggedFirst = true;
                     LOG.info("Terra: first chunk with volcanic surfaces at {}", cp);
@@ -108,15 +108,17 @@ public final class VolcanicSurfaces {
         for (int yy = y; yy >= Math.max(minY + 1, y - ROCK_DEPTH); yy--) {
             BlockState st = chunk.getBlockState(pos.set(x, yy, z));
             if (!isGround(st)) continue;
-            chunk.setBlockState(pos, tag == Landforms.TAG_CRATER ? craterRockAt(x, yy, z, h) : lavaRockAt(x, yy, z), 0);
+            boolean crater = tag == Landforms.TAG_CRATER || tag == Landforms.TAG_HOT_CRATER;
+            chunk.setBlockState(pos, crater ? craterRockAt(x, yy, z, h) : lavaRockAt(x, yy, z), 0);
         }
         BlockState above = chunk.getBlockState(pos.set(x, y + 1, z));
         if (above.is(Blocks.SNOW)) chunk.setBlockState(pos, Blocks.AIR.defaultBlockState(), 0);
         else if (!above.isAir()) return;
         // Live lava and magma only where the ground is level or a hollow, so nothing can run out.
-        int own = tileTop(data, lx, lz, scale);
-        if (own != y || !levelOrHollow(data, lx, lz, scale, own)) return;
-        if (liveTag && clearOfFuel(data, lx, lz)) {
+        int startX = x - lx, startZ = z - lz;
+        int own = tileTop(data, startX, startZ, x, z, scale);
+        if (own != y || !levelOrHollow(data, startX, startZ, x, z, scale, own)) return;
+        if (liveTag && clearOfFuel(data, startX, startZ, x, z)) {
             chunk.setBlockState(pos.set(x, y, z), Blocks.LAVA.defaultBlockState(), 0);
             chunk.setBlockState(pos.set(x, y - 1, z), Blocks.MAGMA_BLOCK.defaultBlockState(), 0);
         } else if (tag == Landforms.TAG_LAVA && unit(mix(h + 9)) < MAGMA_CHANCE) {
@@ -149,37 +151,55 @@ public final class VolcanicSurfaces {
                 || st.is(Blocks.SANDSTONE) || st.is(Blocks.TERRACOTTA) || st.is(Blocks.PACKED_ICE);
     }
 
-    /** Top solid block Y of tile column (lx, lz) from the tile (rivers included), or MIN_VALUE outside the tile. */
-    private static int tileTop(HeightmapData data, int lx, int lz, int scale) {
-        if (lz < 0 || lx < 0 || lz >= data.heightmap.length || lx >= data.heightmap[0].length) return Integer.MIN_VALUE;
-        if (data.surfaceY != null && data.surfaceY[lz][lx] != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE) {
-            return data.surfaceY[lz][lx];
-        }
-        return HeightConverter.convertToMinecraftHeight(data.heightmap[lz][lx], scale) - 1;
+    /**
+     * The tile holding block column (x, z): {@code data} if it is that tile, else the neighbouring tile (cached, or built:
+     * a lava lake or flow running over a tile's edge needs both sides, or the checks below failed along every tile edge
+     * and left lines of rock across lava lakes, Calvin, Oct 25).
+     */
+    private static HeightmapData tileAt(HeightmapData data, int startX, int startZ, int x, int z) {
+        int size = TerrainDiffusionConfig.tileSize();
+        if (x >= startX && x < startX + size && z >= startZ && z < startZ + size) return data;
+        int shift = Integer.numberOfTrailingZeros(size);
+        int sx = (x >> shift) << shift, sz = (z >> shift) << shift;
+        return LocalTerrainProvider.getInstance().fetchHeightmap(sz, sx, sz + size, sx + size);
     }
 
-    /** Whether all eight neighbours of tile column (lx, lz) stand at least as high as {@code own}. */
-    private static boolean levelOrHollow(HeightmapData data, int lx, int lz, int scale, int own) {
+    /** Top solid block Y of block column (x, z) from its tile (rivers included). */
+    private static int tileTop(HeightmapData data, int startX, int startZ, int x, int z, int scale) {
+        HeightmapData d = tileAt(data, startX, startZ, x, z);
+        if (d == null) return Integer.MIN_VALUE;
+        int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
+        int lx = x - ((x >> shift) << shift), lz = z - ((z >> shift) << shift);
+        if (d.surfaceY != null && d.surfaceY[lz][lx] != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE) {
+            return d.surfaceY[lz][lx];
+        }
+        return HeightConverter.convertToMinecraftHeight(d.heightmap[lz][lx], scale) - 1;
+    }
+
+    /** Whether all eight neighbours of block column (x, z) stand at least as high as {@code own}. */
+    private static boolean levelOrHollow(HeightmapData data, int startX, int startZ, int x, int z, int scale, int own) {
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
-                if ((dx != 0 || dz != 0) && tileTop(data, lx + dx, lz + dz, scale) < own) return false;
+                if ((dx != 0 || dz != 0) && tileTop(data, startX, startZ, x + dx, z + dz, scale) < own) return false;
             }
         }
         return true;
     }
 
     /** Whether every column within {@link #CLEARANCE} blocks is bare lava rock or crater (nothing to set alight). */
-    private static boolean clearOfFuel(HeightmapData data, int lx, int lz) {
-        byte[][] t = data.oceanTags;
+    private static boolean clearOfFuel(HeightmapData data, int startX, int startZ, int x, int z) {
+        int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
         for (int dz = -CLEARANCE; dz <= CLEARANCE; dz++) {
             for (int dx = -CLEARANCE; dx <= CLEARANCE; dx++) {
-                int r = lz + dz, c = lx + dx;
-                if (r < 0 || c < 0 || r >= t.length || c >= t[0].length) return false;
-                byte v = t[r][c];
+                HeightmapData d = tileAt(data, startX, startZ, x + dx, z + dz);
+                if (d == null || d.oceanTags == null) return false;
+                int lx = x + dx - (((x + dx) >> shift) << shift), lz = z + dz - (((z + dz) >> shift) << shift);
+                byte v = d.oceanTags[lz][lx];
                 if (v != Landforms.TAG_LAVA && v != Landforms.TAG_LAVA_CHANNEL && v != Landforms.TAG_LAVA_LAKE
-                        && v != Landforms.TAG_CRATER) return false;
-                short b = data.biomeIds[r][c];
-                if (b != RegionalBiomes.LAVA_FIELDS && b != RegionalBiomes.VOLCANO && !com.github.xandergos.terraindiffusionmc.pipeline.CoastShaper.isSnowy(b)) return false;
+                        && v != Landforms.TAG_CRATER && v != Landforms.TAG_HOT_CRATER) return false;
+                short b = d.biomeIds[lz][lx];
+                if (b != RegionalBiomes.LAVA_FIELDS && b != RegionalBiomes.VOLCANO
+                        && !com.github.xandergos.terraindiffusionmc.pipeline.CoastShaper.isSnowy(b)) return false;
             }
         }
         return true;

@@ -1247,7 +1247,7 @@ public final class LocalTerrainProvider {
                 int k = r * W + c;
                 byte t = tags[r][c];
                 if (elev[k] < 0f || t < Landforms.TAG_LAVA) continue;
-                boolean cone = t == Landforms.TAG_VOLCANO || t == Landforms.TAG_CRATER;
+                boolean cone = t == Landforms.TAG_VOLCANO || t == Landforms.TAG_CRATER || t == Landforms.TAG_HOT_CRATER;
                 boolean lava = t == Landforms.TAG_LAVA || t == Landforms.TAG_LAVA_CHANNEL || t == Landforms.TAG_LAVA_LAKE;
                 if (!cone && !lava) continue;
                 if (CoastShaper.isSnowy(biomes[k]) && t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL) continue;
@@ -1267,7 +1267,7 @@ public final class LocalTerrainProvider {
         for (int r = 0; r < data.height; r++) {
             for (int c = 0; c < data.width; c++) {
                 byte t = data.oceanTags[r][c];
-                if (t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL) continue;
+                if (t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL && t != Landforms.TAG_HOT_CRATER) continue;
                 data.waterY[r][c] = RiverCarver.NONE;
                 if (data.waterIsLake != null) data.waterIsLake[r][c] = false;
             }

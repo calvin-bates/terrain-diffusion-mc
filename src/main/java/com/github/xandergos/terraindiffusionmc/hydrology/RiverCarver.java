@@ -605,6 +605,10 @@ public final class RiverCarver {
                 float sc = score[idx];
                 if (sc == Float.POSITIVE_INFINITY || sc > 0f) continue;
                 if (contains(NO_WATER_BIOMES, biomeIds[r][c])) continue;
+                // Streams sink into porous lava rock and come out again at the flow's edge (Calvin, Oct 25: water running
+                // across a lava field looked wrong); rivers keep flowing.
+                if (cA[idx] == RiverMap.STREAM && (biomeIds[r][c] == com.github.xandergos.terraindiffusionmc.pipeline.RegionalBiomes.LAVA_FIELDS
+                        || biomeIds[r][c] == com.github.xandergos.terraindiffusionmc.pipeline.RegionalBiomes.VOLCANO)) continue;
                 int top = ytop[idx];
                 // Never carve the sea floor: a channel continued out into the sea as a dark trench across the shallows.
                 if (top < SEA_SURFACE_Y) continue;
