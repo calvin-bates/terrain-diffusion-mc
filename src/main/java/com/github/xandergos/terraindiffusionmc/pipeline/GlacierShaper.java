@@ -33,7 +33,7 @@ public final class GlacierShaper {
     /** Thickest ice (m) in a deep, very cold valley, and on a high plateau. */
     private static final float VALLEY_ICE_M = 70f, CAP_ICE_M = 35f, MAX_ICE_M = 90f;
     /** Ice thinner than this (m) is not laid. */
-    private static final float MIN_ICE_M = 2.5f;
+    private static final float MIN_ICE_M = 5f;
     /** Moraine on ground up to this far (m) above a nearby ice surface. */
     private static final float MORAINE_M = 6f;
 
@@ -72,7 +72,7 @@ public final class GlacierShaper {
             minTemp = Math.min(minTemp, climate[k]);
             maxGround = Math.max(maxGround, elevOut[k]);
         }
-        if (minTemp > 2f || maxGround < 300f) return null;
+        if (minTemp > -1f || maxGround < 300f) return null;
 
         // The smooth fields are filtered at native resolution (one sample per native pixel) and interpolated to blocks:
         // they vary over hundreds of metres, and this is ~scale^2 times cheaper than filtering every block.
@@ -134,7 +134,9 @@ public final class GlacierShaper {
                 float ground = small[k];
                 float valley = smoothstep(8f, 50f, wide[k] - small[k]) * smoothstep(300f, 800f, ground);
                 float cap = smoothstep(600f, 1000f, ground);
-                float threshold = -1f + 3f * valley;
+                // Colder than at first (Calvin, Oct 26: 8.7% of a mountain view under ice, speckled): ice from -4 C
+                // (-1 C in deep valleys), full by -9 C.
+                float threshold = -4f + 3f * valley;
                 float cold = smoothstep(threshold, threshold - 5f, temp);
                 float wet = smoothstep(200f, 400f, precip);
                 float T = cold * wet * Math.min(MAX_ICE_M, VALLEY_ICE_M * valley + CAP_ICE_M * cap);
