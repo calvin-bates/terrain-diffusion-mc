@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Dry-land landforms (biomes plan v1.4 round C), applied to a tile's final ground at block resolution, after the coast:
  * <ul>
- *   <li><b>Badlands mesas</b> ({@link #mesas}): in hot, arid zones the hills are terraced into banded cap-rock layers: a
+ *   <li><b>Badlands mesas</b> ({@link #mesas}): in hot, arid zones the hills are terraced into tall banded cap-rock layers: a
  *   monotone remap of height, so every slope becomes a stair of flat benches and short cliffs (the Colorado Plateau's
  *   mesas and buttes). Badlands mesa biome.</li>
  *   <li><b>Canyons</b> ({@link #canyons}): rivers and streams through arid zones cut stepped gorges: the ground near a
@@ -76,8 +76,8 @@ public final class AridLandforms {
      *
      * @param climate the tile's climate (temperature at 0, precipitation at 2 * H * W)
      */
-    public static void mesas(float[] elev, short[] biomes, float[] climate, int i1, int j1, int H, int W,
-                             float metresPerBlock) {
+    public static void mesas(float[] elev, short[] biomes, float[] climate, float[] riverDist, int i1, int j1, int H,
+                             int W, float metresPerBlock) {
         if (climate == null) return;
         int HW = H * W;
         for (int k = 0; k < HW; k++) {
@@ -89,16 +89,23 @@ public final class AridLandforms {
             float wx = (j1 + c) * metresPerBlock, wz = (i1 + r) * metresPerBlock;
             float zone = smoothstep(MESA_ZONE_LEVEL, MESA_ZONE_LEVEL + 0.12f, MESA_ZONE.GetNoise(wx, wz));
             if (zone <= 0f) continue;
-            float w = zone * a * smoothstep(250f, 500f, e);
-            float step = 75f + 30f * MESA_STEP.GetNoise(wx, wz);            // 55-95 m layers
+            float raw = zone * a * smoothstep(250f, 500f, e);
+            // Full strength over most of a mesa zone: half-strength terraces were low ledges like ripples (Calvin, Oct 26).
+            float w = smoothstep(0.15f, 0.5f, raw);
+            // Rivers keep their own valleys through the mesas (a terrace edge along a channel left the river in a slot).
+            if (riverDist != null) w *= awayFromChannel(riverDist[k], 0.8f, 3f);
+            if (w <= 0f) continue;
+            float step = 120f + 50f * MESA_STEP.GetNoise(wx, wz);           // ~85-155 m layers: a few tall cliffs
             float off = 200f * MESA_PHASE.GetNoise(wx, wz);
             float q = (e - off) / step;
             float fl = (float) Math.floor(q), f = q - fl;
-            // The lower 86% of each layer is a nearly flat bench, the rest a steep cliff (the cap rock's edge).
-            float g = f < 0.86f ? 0.06f * f / 0.86f : 0.06f + 0.94f * smoothstep(0.86f, 1f, f);
+            // The lower 95% of each layer is a nearly flat bench, the top 5% a cliff (the cap rock's edge). The cliff
+            // takes only that share of the old slope's width, so even on gentle hills it is near vertical; with 14% it
+            // was a 30-40 degree bank, and the hills read as rippled ledges rather than mesas.
+            float g = f < 0.95f ? 0.05f * f / 0.95f : 0.05f + 0.95f * smoothstep(0.95f, 1f, f);
             float terraced = off + step * (fl + g);
             elev[k] = e + (terraced - e) * w;
-            if (w > 0.45f) biomes[k] = RegionalBiomes.BADLANDS_MESA;
+            if (raw > 0.3f) biomes[k] = RegionalBiomes.BADLANDS_MESA;
         }
     }
 
@@ -235,8 +242,8 @@ public final class AridLandforms {
      * @param cropI row in {@code up} of the tile's first row
      * @param cropJ column in {@code up} of the tile's first column
      */
-    public static void dunes(float[] elev, short[] biomes, float[][] up, int cropI, int cropJ, int i1, int j1, int H,
-                             int W, float metresPerBlock) {
+    public static void dunes(float[] elev, short[] biomes, float[] riverDist, float[][] up, int cropI, int cropJ, int i1,
+                             int j1, int H, int W, float metresPerBlock) {
         for (int r = 0; r < H; r++) {
             for (int c = 0; c < W; c++) {
                 int k = r * W + c;
@@ -251,6 +258,7 @@ public final class AridLandforms {
                 float sx = (up[si][sj + g] - up[si][sj - g]) / (2f * g * metresPerBlock);
                 float sz = (up[si + g][sj] - up[si - g][sj]) / (2f * g * metresPerBlock);
                 float flat = 1f - smoothstep(0.04f, 0.12f, (float) Math.sqrt(sx * sx + sz * sz));
+                if (riverDist != null) flat *= awayFromChannel(riverDist[k], 1f, 4f);
                 if (flat <= 0f) continue;
                 // Ridges run north-south across a west wind, wandering; spacing 250-450 m.
                 float spacing = 350f + 100f * DUNE_AMP.GetNoise(wz * 0.7f + 3000, wx * 0.7f);
@@ -284,7 +292,8 @@ public final class AridLandforms {
      * a spire's radius is raised by the spire's height times a flat-topped profile (columns judged on their own, so
      * the spire stands on whatever ground the tile has). Only on canyon, mesa, badlands and painted mountain columns.
      */
-    public static void hoodoos(float[] elev, short[] biomes, Field field, int i1, int j1, int H, int W, int scale) {
+    public static void hoodoos(float[] elev, short[] biomes, float[] riverDist, Field field, int i1, int j1, int H, int W,
+                               int scale) {
         float metresPerBlock = WorldPipelineModelConfig.nativeResolution() / scale;
         float cellM = 20f;
         int cell = Math.max(1, Math.round(cellM / metresPerBlock));
@@ -311,6 +320,7 @@ public final class AridLandforms {
                         float d = (float) Math.sqrt(dx * dx + dz * dz);
                         if (d >= radius) continue;
                         int k = r * W + c;
+                        if (riverDist != null && riverDist[k] < 1.5f) continue;
                         short b = biomes[k];
                         if (b != RegionalBiomes.CANYON && b != RegionalBiomes.BADLANDS_MESA && b != BiomeClassifier.BADLANDS
                                 && b != RegionalBiomes.PAINTED_MOUNTAINS) continue;
@@ -325,6 +335,11 @@ public final class AridLandforms {
     }
 
     // ---- Helpers ----
+
+    /** 0 on a channel (closer than {@code near} native pixels), rising to 1 at {@code far}. */
+    public static float awayFromChannel(float distPx, float near, float far) {
+        return smoothstep(near, far, distPx);
+    }
 
     static long hash(int a, int b, long salt) {
         return (long) a * 0x9E3779B97F4A7C15L ^ (long) b * 0xC2B2AE3D27D4EB4FL ^ salt;

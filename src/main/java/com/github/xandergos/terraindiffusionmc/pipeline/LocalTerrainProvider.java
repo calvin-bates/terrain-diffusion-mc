@@ -1118,7 +1118,7 @@ public final class LocalTerrainProvider {
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
         landformsRoundC(elevFlat, biomeFlat, climate, elevMargin2D, M, M, i1 - M, j1 - M, climate, i1, j1, H, W,
-                i1, j1, H, W, 1, true);
+                i1, j1, H, W, 1, true, rd == null ? null : rd[0]);
         byte[][] blockTags1 = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
         mushroomFields(blockTags1, elevFlat, biomeFlat, W);
         volcanicBiomes(blockTags1, elevFlat, biomeFlat, W);
@@ -1204,7 +1204,7 @@ public final class LocalTerrainProvider {
         t0 = TerraPerf.start();
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
         landformsRoundC(elevOut, biomeFlat, climate, elevUp, cropI1, cropJ1, i1p * scale, j1p * scale,
-                climateNativeFlat, i1p, j1p, nH, nW, i1, j1, H, W, scale, true);
+                climateNativeFlat, i1p, j1p, nH, nW, i1, j1, H, W, scale, true, rd == null ? null : rd[0]);
         byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
         volcanicBiomes(blockTagsUp, elevOut, biomeFlat, W);
@@ -1229,10 +1229,13 @@ public final class LocalTerrainProvider {
      *
      * @param up        smooth upsampled ground with the tile's margin; {@code up[0][0]} is world block (upI0, upJ0)
      * @param climNative climate at native pixels, {@code nH x nW} from native pixel (ni0, nj0), channels stacked
+     * @param riverDist  per tile column, native pixels to the nearest river, stream or lake channel (far: large), or
+     *                   null: the passes that raise or terrace ground fade out near channels, so the river carver (which
+     *                   keeps the hydrology's levels) never has to cut a slot through them
      */
     public void landformsRoundC(float[] elev, short[] biomes, float[] climate, float[][] up, int cropI, int cropJ,
                                 int upI0, int upJ0, float[] climNative, int ni0, int nj0, int nH, int nW,
-                                int i1, int j1, int H, int W, int scale, boolean full) {
+                                int i1, int j1, int H, int W, int scale, boolean full, float[] riverDist) {
         if (!TerrainDiffusionConfig.aridLandforms() || climate == null || climNative == null) return;
         int HW = H * W, nN = nH * nW;
         if (climNative.length < 3 * nN) return;
@@ -1256,14 +1259,14 @@ public final class LocalTerrainProvider {
         };
         try {
             if (arid) {
-                AridLandforms.mesas(elev, biomes, climate, i1, j1, H, W, mpb);
+                AridLandforms.mesas(elev, biomes, climate, riverDist, i1, j1, H, W, mpb);
                 if (TerrainDiffusionConfig.riversEnabled()) {
                     AridLandforms.canyons(elev, biomes, canyonSegments(i1, j1, H, W, scale), i1, j1, H, W, scale);
-                    alluvialFans(elev, biomes, i1, j1, H, W, scale);
+                    alluvialFans(elev, biomes, riverDist, i1, j1, H, W, scale);
                 }
                 if (full) {
-                    AridLandforms.dunes(elev, biomes, up, cropI, cropJ, i1, j1, H, W, mpb);
-                    AridLandforms.hoodoos(elev, biomes, field, i1, j1, H, W, scale);
+                    AridLandforms.dunes(elev, biomes, riverDist, up, cropI, cropJ, i1, j1, H, W, mpb);
+                    AridLandforms.hoodoos(elev, biomes, riverDist, field, i1, j1, H, W, scale);
                 }
             }
             if (tropic && KarstTowers.mayApply(i1, j1, H, W, mpb)) {
@@ -1370,7 +1373,7 @@ public final class LocalTerrainProvider {
     }
 
     /** Raises the alluvial fans near the tile ({@link com.github.xandergos.terraindiffusionmc.hydrology.FanPlan}). */
-    private void alluvialFans(float[] elev, short[] biomes, int i1, int j1, int H, int W, int scale) {
+    private void alluvialFans(float[] elev, short[] biomes, float[] riverDist, int i1, int j1, int H, int W, int scale) {
         int pad = com.github.xandergos.terraindiffusionmc.hydrology.FanPlan.MAX_RADIUS_PX + 2;
         int pi0 = Math.floorDiv(i1, scale), pj0 = Math.floorDiv(j1, scale);
         int pi1 = Math.floorDiv(i1 + H - 1, scale) + 1, pj1 = Math.floorDiv(j1 + W - 1, scale) + 1;
@@ -1395,6 +1398,8 @@ public final class LocalTerrainProvider {
                 int k = r * W + c;
                 float e = elev[k], best = 0f;
                 for (var f : fans) best = Math.max(best, f.raise(x, z, e));
+                // The fan's channels stay at the river's level in a shallow trench (a fanhead trench), not a slot.
+                if (riverDist != null) best *= AridLandforms.awayFromChannel(riverDist[k], 1f, 4f);
                 if (best <= 0f) continue;
                 elev[k] = e + best;
                 if (best > 1.5f && !BiomeClassifier.isOceanBiome(biomes[k])) biomes[k] = RegionalBiomes.ALLUVIAL_FAN;

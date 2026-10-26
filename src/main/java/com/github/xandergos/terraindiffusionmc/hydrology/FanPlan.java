@@ -11,7 +11,7 @@ import java.util.WeakHashMap;
  * basin, it drops its gravel in a fan-shaped apron spreading from the valley's mouth (Death Valley, the Basin and
  * Range). Found in the hydrology: a channel pixel in arid land whose channel falls steeply just upstream (over 4% over
  * 120-180 m) and gently just downstream (under 3% over 240 m), at the foot of high ground. The fan is a cone sector
- * around the downstream direction, its surface falling from up to ~40 m over the apex, a little concave (steeper near
+ * around the downstream direction, its surface falling from up to 20 m over the apex, a little concave (steeper near
  * the apex, gentler at the toe), to meet the basin floor at its radius; ground under it is raised to it (up to {@link #MAX_RAISE_M}), never
  * lowered. From the region owning the apex, so every tile gets the same fans.
  *
@@ -140,8 +140,9 @@ public final class FanPlan {
             // The basin floor at the fan's toe, along the axis.
             int er = Math.round(k / reg.width + az * radius), ec = Math.round(k % reg.width + ax * radius);
             float eEnd = er >= 0 && ec >= 0 && er < reg.height && ec < reg.width ? reg.elev[er * reg.width + ec] : reg.elev[dn];
-            // The fan stands up to ~40 m thick at its apex, thinning to nothing at its toe.
-            float apexE = reg.elev[k] + Math.min(40f, 0.035f * radius * 30f);
+            // The fan starts a little over the channel at its apex (a mound there dammed the canyon's mouth) and stands
+            // above the basin where the basin floor falls away faster than the fan's surface.
+            float apexE = reg.elev[k] + Math.min(20f, 0.02f * radius * 30f);
             float drop = Math.max(10f, apexE - eEnd);
             float half = (float) Math.toRadians(50f + 25f * u(h, 2));
             out.add(new FanPlan(j + 0.5f, i + 0.5f, ax, az, half, radius, apexE, drop));
