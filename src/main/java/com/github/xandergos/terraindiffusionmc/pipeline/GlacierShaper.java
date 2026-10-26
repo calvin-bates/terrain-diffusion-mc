@@ -33,11 +33,14 @@ public final class GlacierShaper {
     /** Thickest ice (m) in a deep, very cold valley, and on a high plateau. */
     private static final float VALLEY_ICE_M = 55f, CAP_ICE_M = 30f, MAX_ICE_M = 70f;
     /** Ice thinner than this (m) is not laid. */
-    private static final float MIN_ICE_M = 5f;
+    private static final float MIN_ICE_M = 8f;
     /** Moraine on ground up to this far (m) above a nearby ice surface. */
     private static final float MORAINE_M = 6f;
 
     private static final FastNoiseLite SURFACE = noise(7301, 1f / 220f);
+    /** Glaciated ranges: a ~40 km zone noise; level 0.3 leaves about a quarter of the world in it. */
+    private static final FastNoiseLite ZONE = noise(7302, 1f / 40000f);
+    private static final float ZONE_LEVEL = 0.3f;
 
     private GlacierShaper() {
     }
@@ -72,7 +75,7 @@ public final class GlacierShaper {
             minTemp = Math.min(minTemp, climate[k]);
             maxGround = Math.max(maxGround, elevOut[k]);
         }
-        if (minTemp > -1f || maxGround < 300f) return null;
+        if (minTemp > -4f || maxGround < 300f) return null;
 
         // The smooth fields are filtered at native resolution (one sample per native pixel) and interpolated to blocks:
         // they vary over hundreds of metres, and this is ~scale^2 times cheaper than filtering every block.
@@ -135,17 +138,21 @@ public final class GlacierShaper {
                 // Calvin, Oct 26: still 43% of a high range under ice. Valley glaciers only in clearly deep valleys, and
                 // ice caps only on gentle high ground (a plateau, not every mountainside): the ground stands little over
                 // its floor 60 m around.
-                float valley = smoothstep(25f, 80f, wide[k] - small[k]) * smoothstep(300f, 800f, ground);
-                float flat = 1f - smoothstep(10f, 30f, small[k] - floor[k]);
+                float valley = smoothstep(40f, 120f, wide[k] - small[k]) * smoothstep(300f, 800f, ground);
+                float flat = 1f - smoothstep(6f, 18f, small[k] - floor[k]);
                 float cap = smoothstep(600f, 1000f, ground) * flat;
                 // Colder than at first (Calvin, Oct 26: 8.7% of a mountain view under ice, speckled): ice from -4 C
                 // (-1 C in deep valleys), full by -9 C.
-                float threshold = -4f + 3f * valley;
+                // Calvin, Oct 26 again: still 14% of a cold range, mostly patches in every high hollow; he wants ~1%.
+                // Ice from -7 C (-4 C in deep valleys), full by -12 C, and only in glaciated ranges (a large-scale zone,
+                // about a quarter of the world), so most cold mountains are bare and a few carry real glaciers.
+                float threshold = -7f + 3f * valley;
                 float cold = smoothstep(threshold, threshold - 5f, temp);
                 float wet = smoothstep(200f, 400f, precip);
-                float T = cold * wet * Math.min(MAX_ICE_M, VALLEY_ICE_M * valley + CAP_ICE_M * cap);
-                if (T <= 0.5f) continue;
                 float wx = (j1 + c) * metresPerBlock, wz = (i1 + r) * metresPerBlock;
+                float zone = smoothstep(ZONE_LEVEL, ZONE_LEVEL + 0.15f, ZONE.GetNoise(wx, wz));
+                float T = zone * cold * wet * Math.min(MAX_ICE_M, VALLEY_ICE_M * valley + CAP_ICE_M * cap);
+                if (T <= 0.5f) continue;
                 float top = floor[k] + T + 1.5f * SURFACE.GetNoise(wx, wz) * Math.min(1f, T / 10f);
                 float thick = top - e;
                 byte kd;
