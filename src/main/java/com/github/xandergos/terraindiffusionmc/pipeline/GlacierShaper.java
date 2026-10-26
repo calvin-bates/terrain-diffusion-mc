@@ -31,7 +31,7 @@ public final class GlacierShaper {
     private static final int R3_PX = R1_PX + R2_PX;
 
     /** Thickest ice (m) in a deep, very cold valley, and on a high plateau. */
-    private static final float VALLEY_ICE_M = 70f, CAP_ICE_M = 35f, MAX_ICE_M = 90f;
+    private static final float VALLEY_ICE_M = 55f, CAP_ICE_M = 30f, MAX_ICE_M = 70f;
     /** Ice thinner than this (m) is not laid. */
     private static final float MIN_ICE_M = 5f;
     /** Moraine on ground up to this far (m) above a nearby ice surface. */
@@ -132,8 +132,12 @@ public final class GlacierShaper {
                 if (tags != null && volcanic(tags[r][c])) continue;
                 float temp = climate[k], precip = climate[2 * HW + k];
                 float ground = small[k];
-                float valley = smoothstep(8f, 50f, wide[k] - small[k]) * smoothstep(300f, 800f, ground);
-                float cap = smoothstep(600f, 1000f, ground);
+                // Calvin, Oct 26: still 43% of a high range under ice. Valley glaciers only in clearly deep valleys, and
+                // ice caps only on gentle high ground (a plateau, not every mountainside): the ground stands little over
+                // its floor 60 m around.
+                float valley = smoothstep(25f, 80f, wide[k] - small[k]) * smoothstep(300f, 800f, ground);
+                float flat = 1f - smoothstep(10f, 30f, small[k] - floor[k]);
+                float cap = smoothstep(600f, 1000f, ground) * flat;
                 // Colder than at first (Calvin, Oct 26: 8.7% of a mountain view under ice, speckled): ice from -4 C
                 // (-1 C in deep valleys), full by -9 C.
                 float threshold = -4f + 3f * valley;
