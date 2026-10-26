@@ -1,13 +1,6 @@
 {
   "replace": false,
   "values": [
-    "terra:karst",
-    "terra:geothermal_basin",
-    "terra:karst",
-    "terra:yosemite",
-    "terra:geothermal_basin",
-    "terra:karst",
-    "terra:yosemite",
     "terra:birch_taiga",
     "terra:boreal_forest",
     "terra:cloud_forest",

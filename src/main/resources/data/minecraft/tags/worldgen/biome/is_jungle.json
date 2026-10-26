@@ -1,11 +1,6 @@
 {
   "replace": false,
   "values": [
-    "terra:karst",
-    "terra:karst",
-    "terra:mirage_isles",
-    "terra:karst",
-    "terra:mirage_isles",
     "terra:cloud_forest",
     "terra:karst",
     "terra:mirage_isles"

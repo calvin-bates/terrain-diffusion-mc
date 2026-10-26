@@ -767,6 +767,19 @@ biome("mirage_isles", id=95, base="sparse_jungle", temp=0.9, downfall=0.8,
       no_tags=["has_structure/jungle_temple"])
 
 
+# ---- v1.5 part one: cave biomes (set by the biome source below the cave layer's start depth; pipeline/CaveBiomes) ----
+# Andesite, diorite, granite and tuff caves: vanilla's dripstone caves (cave mob spawns, mineshaft, trial chamber and
+# stronghold tags) without its dripstone and without its music. world/CaveStone turns the rock in these biomes into
+# their stone; no material rules (the stone is painted in Java, so no biome lookup per stone block).
+STONE_CAVE = dict(base="dripstone_caves", temp=0.8, downfall=0.4, colors={}, veg=[], top=None,
+                  steps={2: ["minecraft:amethyst_geode"], 7: []}, drop_attrs=["minecraft:audio/background_music"],
+                  cave=True)
+biome("andesite_caves", id=140, **STONE_CAVE)
+biome("diorite_caves", id=141, **STONE_CAVE)
+biome("granite_caves", id=142, **STONE_CAVE)
+biome("tuff_caves", id=143, **STONE_CAVE)
+# id 144 is vanilla's dripstone_caves, used as is (in VANILLA_USED below).
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -780,6 +793,9 @@ def load(path):
 
 
 def main():
+    global V12, MANAGED
+    V12 = [f"terra:{n}" for n in B]
+    MANAGED = V12 + ["minecraft:mushroom_fields"]
     for name, f in FEATURES.items():
         write(f"{TERRA}/feature/{name}.json", f)
     for name, (default, options) in SELECTORS.items():
@@ -816,6 +832,10 @@ def main():
         steps = [list(s) for s in base["features"]]
         steps[1] = steps[1] + d.get("lakes", [])
         steps[9] = ["minecraft:glow_lichen"] + d["veg"]
+        for k, lst in d.get("steps", {}).items():
+            steps[k] = list(lst)
+        if d.get("drop_attrs"):
+            out["attributes"] = {k: v for k, v in out.get("attributes", {}).items() if k not in d["drop_attrs"]}
         if not d.get("freeze", True):
             steps[10] = [f for f in steps[10] if f != "minecraft:freeze_top_layer"]
         out["features"] = steps
@@ -911,7 +931,7 @@ deep_frozen_ocean deep_lukewarm_ocean deep_ocean desert flower_forest forest fro
 grove jagged_peaks jungle lukewarm_ocean mangrove_swamp meadow ocean old_growth_birch_forest old_growth_pine_taiga
 old_growth_spruce_taiga pale_garden plains river savanna savanna_plateau snowy_beach snowy_plains snowy_slopes
 snowy_taiga sparse_jungle stony_peaks stony_shore sunflower_plains swamp taiga warm_ocean windswept_forest
-windswept_gravelly_hills windswept_hills windswept_savanna mushroom_fields""".split()
+windswept_gravelly_hills windswept_hills windswept_savanna mushroom_fields dripstone_caves""".split()
 TERRA_FIXED = ["dark_forest", "forest_sparse", "taiga_sparse", "snowy_taiga_sparse"]
 
 
@@ -958,7 +978,8 @@ def sort_step(k, feats, fixed):
                 ready.append(g)
     if len(rank) != len(order):
         raise SystemExit(f"step {k}: the fixed biomes already disagree on feature order")
-    new = sorted({f for d in B.values() for f in d["veg"] + d.get("lakes", [])} - set(rank))
+    new = sorted({f for d in B.values() for f in d["veg"] + d.get("lakes", [])
+                  + [g for lst in d.get("steps", {}).values() for g in lst]} - set(rank))
     lichen = rank.get("minecraft:glow_lichen", -1)
 
     def key(f):
@@ -1018,12 +1039,23 @@ def strip(seq):
                                      and set(r["if_true"]["biome_is"]) <= set(MANAGED))]
 
 
+ABOVE_PRELIMINARY = {"type": "minecraft:above_preliminary_surface"}
+
+
 def find_surface_sequences(mr):
-    """The two per-biome sequences in Terra's rule: under stone_depth offset 0 (top) and offset 4 (under)."""
+    """The two per-biome sequences in Terra's rule: under stone_depth offset 0 (top) and offset 4 (under). Each sits
+    behind an above_preliminary_surface guard (added here if missing) so grass, dirt, sand and the other surface
+    layers stay off cave floors (caves plan v1.5; the surface level is reported 3 blocks down so the guard reaches the
+    deepest dirt layer, see TerrainDiffusionSurfaceLevelFunction)."""
     found = {}
     for r in mr["sequence"]:
-        if isinstance(r, dict) and r.get("type") == "minecraft:condition" and r["if_true"].get("type") == "minecraft:stone_depth":
-            found[r["if_true"]["offset"]] = r["then_run"]["sequence"]
+        if isinstance(r, dict) and r.get("type") == "minecraft:condition" and r["if_true"].get("type") == "minecraft:stone_depth" \
+                and r["if_true"]["offset"] in (0, 4):
+            body = r["then_run"]
+            if not (body.get("type") == "minecraft:condition" and body["if_true"] == ABOVE_PRELIMINARY):
+                body = {"type": "minecraft:condition", "if_true": ABOVE_PRELIMINARY, "then_run": body}
+                r["then_run"] = body
+            found[r["if_true"]["offset"]] = body["then_run"]["sequence"]
     return found[0], found[4]
 
 

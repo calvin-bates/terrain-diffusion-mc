@@ -2,9 +2,6 @@
   "replace": false,
   "values": [
     "terra:alluvial_fan",
-    "terra:alluvial_fan",
-    "terra:alluvial_fan",
-    "terra:alluvial_fan",
     "terra:desert_oasis",
     "terra:rocky_desert",
     "terra:salt_flats"

@@ -1,14 +1,18 @@
 {
   "replace": false,
   "values": [
+    "terra:andesite_caves",
     "terra:arctic",
     "terra:aspen_parkland",
     "terra:blooming_valley",
+    "terra:diorite_caves",
+    "terra:granite_caves",
     "terra:mediterranean_scrub",
     "terra:polar_desert",
     "terra:steppe",
     "terra:tallgrass_prairie",
     "terra:tropical_dry_forest",
+    "terra:tuff_caves",
     "terra:tundra",
     "terra:white_cliffs"
   ]

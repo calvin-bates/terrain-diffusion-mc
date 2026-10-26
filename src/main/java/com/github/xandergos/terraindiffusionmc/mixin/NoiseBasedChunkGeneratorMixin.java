@@ -55,6 +55,9 @@ public abstract class NoiseBasedChunkGeneratorMixin {
         int seaLevel = ((NoiseBasedChunkGenerator) (Object) this).getSeaLevel();
         cir.setReturnValue(cir.getReturnValue().thenApply(built -> {
             long t0 = TerraPerf.start();
+            com.github.xandergos.terraindiffusionmc.world.CaveStone.paint(built);
+            TerraPerf.end("chunk.caveStone", t0);
+            t0 = TerraPerf.start();
             RiverWaterPlacer.place(built);
             TerraPerf.end("chunk.riverWater", t0);
             t0 = TerraPerf.start();
@@ -71,9 +74,35 @@ public abstract class NoiseBasedChunkGeneratorMixin {
     /** Start times of this thread's current terrain stages ({@link TerraPerf}): fill, surface, carvers. */
     private static final ThreadLocal<long[]> TERRA$STAGE_START = ThreadLocal.withInitial(() -> new long[3]);
 
+    /** The chunk {@code doFill} is working on, for {@link #terra$dryNoiseCaves}. */
+    private static final ThreadLocal<ChunkAccess> TERRA$FILL_CHUNK = new ThreadLocal<>();
+
     @Inject(method = "doFill", at = @At("HEAD"), require = 0)
     private void terra$fillStart(NoiseChunk noiseChunk, ChunkAccess chunk, CallbackInfo ci) {
         TERRA$STAGE_START.get()[0] = TerraPerf.start();
+        TERRA$FILL_CHUNK.set(chunk);
+    }
+
+    /**
+     * Terra's noise caves (caves plan v1.5) are made by the density, so the fill step decides between air and water for
+     * them with the same disabled aquifer that floods carved caves below sea level. Keep caves under land dry here too,
+     * as for the carvers ({@link DryCaves}); caves under and right beside the sea stay flooded.
+     */
+    @Redirect(method = "doFill",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/levelgen/NoiseChunk;aquifer()Lnet/minecraft/world/level/levelgen/Aquifer;"),
+            require = 0)
+    private Aquifer terra$dryNoiseCaves(NoiseChunk noiseChunk) {
+        Aquifer aquifer = noiseChunk.aquifer();
+        ChunkAccess chunk = TERRA$FILL_CHUNK.get();
+        TERRA$FILL_CHUNK.remove();
+        if (chunk == null || !(((ChunkGenerator) (Object) this).getBiomeSource() instanceof TerrainDiffusionBiomeSource)) {
+            return aquifer;
+        }
+        try {
+            return DryCaves.wrap(chunk, aquifer, ((NoiseBasedChunkGenerator) (Object) this).getSeaLevel());
+        } catch (RuntimeException e) {
+            return aquifer;   // never let this break chunk generation
+        }
     }
 
     @Inject(method = "doFill", at = @At("RETURN"), require = 0)

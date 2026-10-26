@@ -1,6 +1,9 @@
 package com.github.xandergos.terraindiffusionmc.world;
 
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.explorer.BiomePalette;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes;
 import com.github.xandergos.terraindiffusionmc.pipeline.CoastPlan;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.OceanFeatures;
@@ -96,6 +99,10 @@ public final class FeatureFinder {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(literal("terra-find")
+                .then(literal("cave")
+                        .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(CAVES.keySet(), builder))
+                                .executes(FeatureFinder::executeCave)))
                 .then(literal("biome")
                         .then(argument("name", StringArgumentType.word())
                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(BIOMES.keySet(), builder))
@@ -237,6 +244,122 @@ public final class FeatureFinder {
         source.sendSuccess(() -> Component.literal("Nearest " + name + ": " + x + ", " + z + " (" + blocks + " blocks, "
                         + km + " km" + edge + ") ")
                 .append(teleport).append(" ").append(copy), false);
+    }
+
+    // ---- Caves (caves plan v1.5) ----
+
+    /** Cave biomes {@code /terra-find cave} knows: command word → id. */
+    private static final Map<String, Short> CAVES = new LinkedHashMap<>();
+    static {
+        for (Map.Entry<Short, String> e : CaveBiomes.NAMES.entrySet()) {
+            CAVES.put(e.getValue().replaceAll(".*:", ""), e.getKey());
+        }
+    }
+
+    /** How far around the player cave biomes are searched, in blocks, and the spacing of the searched columns. */
+    private static final int CAVE_RADIUS = 768, CAVE_STEP = 12;
+
+    private static int executeCave(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        String word = StringArgumentType.getString(ctx, "name");
+        Short id = CAVES.get(word);
+        if (id == null) {
+            source.sendFailure(Component.literal("Unknown cave \"" + word + "\". Try one of: " + String.join(", ", CAVES.keySet())));
+            return 0;
+        }
+        if (!TerrainDiffusionConfig.caveBiomes() || !TerrainDiffusionConfig.caves()) {
+            source.sendFailure(Component.literal("Cave biomes or noise caves are turned off (caves.biomes / caves.enabled)."));
+            return 0;
+        }
+        String name = word.replace('_', ' ');
+        Vec3 pos = source.getPosition();
+        MinecraftServer server = source.getServer();
+        source.sendSuccess(() -> Component.literal("Searching for the nearest " + name + " with an open cave…")
+                .withStyle(ChatFormatting.GRAY), false);
+        Thread worker = new Thread(() -> {
+            try {
+                int[] found = findCave(id, (int) Math.floor(pos.x), (int) Math.floor(pos.z));
+                server.execute(() -> reportCave(source, name, found, pos));
+            } catch (Exception e) {
+                LOG.error("terra-find cave " + word + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+            }
+        }, "terra-find");
+        worker.setDaemon(true);
+        worker.start();
+        return 1;
+    }
+
+    /**
+     * The nearest standing spot (two air blocks over a floor) in Terra's noise caves inside the given cave biome, ring
+     * by ring around (x0, z0), or null. Uses the same functions as the terrain (cave biome layer, cave field, roof), so it
+     * also points at places not generated yet. Vanilla's carver tunnels aren't known here.
+     */
+    private static int[] findCave(short id, int x0, int z0) {
+        long seed = LocalTerrainProvider.getSeed();
+        CaveBiomes biomes = CaveBiomes.forSeed(seed);
+        CaveShapes shapes = CaveShapes.forSeed(seed);
+        TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
+        for (int r = 0; r <= CAVE_RADIUS; r += CAVE_STEP) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            int n = r == 0 ? 1 : Math.max(8, (int) Math.round(2 * Math.PI * r / CAVE_STEP));
+            for (int k = 0; k < n; k++) {
+                double a = 2 * Math.PI * k / n;
+                int x = x0 + (int) Math.round(r * Math.cos(a)), z = z0 + (int) Math.round(r * Math.sin(a));
+                int ref = cache.caveRefTop(x, z);
+                if (ref == Integer.MIN_VALUE) continue;
+                float roof = switch (cache.caveKind) {
+                    case TerrainDiffusionDensityFunction.TileCache.CAVE_SEA -> CaveShapes.ROOF_SEA;
+                    case TerrainDiffusionDensityFunction.TileCache.CAVE_WATER -> CaveShapes.ROOF_WATER;
+                    default -> shapes.landRoof(x, z);
+                };
+                for (int y = ref - CaveBiomes.START_DEPTH; y > -60; y--) {
+                    if ((y & 3) == 0 && biomes.pick(x, y, z) != id) {
+                        y -= 3;   // skip the rest of this 4-block step quickly
+                        continue;
+                    }
+                    if (biomes.pick(x, y, z) != id) continue;
+                    // Two air blocks over a rock floor.
+                    if (caveAir(shapes, x, y, z, ref, roof) && caveAir(shapes, x, y + 1, z, ref, roof)
+                            && !caveAir(shapes, x, y - 1, z, ref, roof)) {
+                        double d = Math.hypot(x - x0, z - z0);
+                        if (d < bestD) {
+                            bestD = d;
+                            best = new int[]{x, y, z};
+                        }
+                        break;
+                    }
+                }
+            }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    private static boolean caveAir(CaveShapes shapes, int x, int y, int z, int ref, float roof) {
+        return y <= ref && shapes.at(x, y, z) + CaveShapes.roof(ref - y, roof) <= 0;
+    }
+
+    private static void reportCave(CommandSourceStack source, String name, int[] found, Vec3 from) {
+        if (found == null) {
+            source.sendFailure(Component.literal("No " + name + " with an open cave within " + CAVE_RADIUS
+                    + " blocks. Cave biomes are pockets about 110 blocks across; try again from somewhere else."));
+            return;
+        }
+        int x = found[0], y = found[1], z = found[2];
+        long blocks = Math.round(Math.hypot(x - from.x, z - from.z));
+        String tp = "/tp @s " + x + " " + y + " " + z;
+        MutableComponent teleport = Component.literal("[Teleport]").withStyle(s -> s
+                .withColor(ChatFormatting.GREEN)
+                .withClickEvent(new ClickEvent.SuggestCommand(tp))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal(tp))));
+        MutableComponent copy = Component.literal("[Copy]").withStyle(s -> s
+                .withColor(ChatFormatting.AQUA)
+                .withClickEvent(new ClickEvent.CopyToClipboard(x + " " + y + " " + z))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal("Copy the coordinates"))));
+        source.sendSuccess(() -> Component.literal("Nearest " + name + ": " + x + ", " + y + ", " + z + " (" + blocks
+                + " blocks away, in a cave) ").append(teleport).append(" ").append(copy), false);
     }
 
     /** Rings of iceberg regions (7.7 km each) searched around the player. */

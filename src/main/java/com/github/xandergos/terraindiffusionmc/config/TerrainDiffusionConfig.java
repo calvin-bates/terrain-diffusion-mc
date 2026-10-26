@@ -175,6 +175,10 @@ public final class TerrainDiffusionConfig {
     public static boolean aridLandforms() { return readBoolean("landforms.arid", true); }
     /** Geothermal basins, Yosemite valleys, waterfalls and mirage isles (biomes plan v1.4 round D). */
     public static boolean showpieces() { return readBoolean("landforms.showpieces", true); }
+    /** Terra's own noise caves: caverns, spaghetti and noodle tunnels under any terrain (caves plan v1.5). */
+    public static boolean caves() { return readBoolean("caves.enabled", true); }
+    /** The 3D cave biome layer (andesite, diorite, granite, tuff and dripstone caves so far) and their stone. */
+    public static boolean caveBiomes() { return readBoolean("caves.biomes", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */

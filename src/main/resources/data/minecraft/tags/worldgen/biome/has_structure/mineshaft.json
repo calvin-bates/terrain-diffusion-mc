@@ -2,14 +2,14 @@
   "replace": false,
   "values": [
     "terra:alluvial_fan",
-    "terra:alluvial_fan",
-    "terra:alluvial_fan",
-    "terra:alluvial_fan",
+    "terra:andesite_caves",
     "terra:arctic",
     "terra:aspen_parkland",
     "terra:blooming_valley",
     "terra:bog",
     "terra:desert_oasis",
+    "terra:diorite_caves",
+    "terra:granite_caves",
     "terra:marsh",
     "terra:mediterranean_scrub",
     "terra:polar_desert",
@@ -19,6 +19,7 @@
     "terra:steppe",
     "terra:tallgrass_prairie",
     "terra:tropical_dry_forest",
+    "terra:tuff_caves",
     "terra:tundra",
     "terra:white_cliffs"
   ]

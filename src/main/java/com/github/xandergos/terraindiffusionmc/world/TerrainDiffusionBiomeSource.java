@@ -1,6 +1,7 @@
 package com.github.xandergos.terraindiffusionmc.world;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import com.mojang.datafixers.util.Pair;
@@ -119,6 +120,11 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
                 m.put(e.getKey(), this.biomeLookup.getOrThrow(ResourceKey.create(Registries.BIOME,
                         Identifier.fromNamespaceAndPath("terra", e.getValue()))));
             }
+            // v1.5 cave biomes (CaveBiomes; data from tools/biomes/gen_biomes_v12.py, dripstone caves is vanilla's).
+            for (Map.Entry<Short, String> e : CaveBiomes.NAMES.entrySet()) {
+                m.put(e.getKey(), this.biomeLookup.getOrThrow(ResourceKey.create(Registries.BIOME,
+                        Identifier.parse(e.getValue()))));
+            }
             biomeIdMap = m;
         }
     }
@@ -165,6 +171,15 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
         int blockX = QuartPos.toBlock(x);
         int blockZ = QuartPos.toBlock(z);
         TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
+        if (TerrainDiffusionConfig.caveBiomes()) {
+            // Underground: the cave biome layer, measured from the lowest ground nearby, at the cell's centre.
+            int refTop = cache.caveRefTopMemo(blockX + 2, blockZ + 2);
+            int blockY = QuartPos.toBlock(y) + 2;
+            if (refTop != Integer.MIN_VALUE && refTop - blockY >= CaveBiomes.START_DEPTH) {
+                short cave = CaveBiomes.forSeed(LocalTerrainProvider.getSeed()).pick(blockX + 2, blockY, blockZ + 2);
+                if (cave >= 0 && cave < byId.length && byId[cave] != null) return byId[cave];
+            }
+        }
         HeightmapData data = cache.tile(blockX, blockZ);
         if (data != null && data.biomeIds != null) {
             int localX = Math.max(0, Math.min(data.width - 1, blockX - cache.blockStartX));
