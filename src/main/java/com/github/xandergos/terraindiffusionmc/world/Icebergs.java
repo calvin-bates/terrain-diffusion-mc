@@ -327,52 +327,63 @@ public final class Icebergs {
      * ice; anything rooted on ice is cleared to water, magma touching ice becomes packed ice. Only chunks near bergs or
      * with shelf ice at the waterline are walked.
      */
-    public static void cleanAfterFeatures(ChunkAccess chunk, int seaLevel) {
+    public static void cleanAfterFeatures(net.minecraft.world.level.WorldGenLevel level, ChunkAccess chunk, int seaLevel) {
         try {
             if (!TerrainDiffusionConfig.icebergs()) return;
             ChunkPos cp = chunk.getPos();
-            int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ(), top = seaLevel - 1, minY = chunk.getMinY();
+            // This chunk and its eight neighbours: features decorating this chunk also write into its neighbours, after
+            // their own clean-up ran (the seagrass and vent magma Calvin still found on bergs, Oct 26). Cleaning the
+            // whole writable area after every chunk's features catches all of it.
+            int x0 = cp.getMinBlockX() - 16, z0 = cp.getMinBlockZ() - 16, size = 48;
+            int top = seaLevel - 1, minY = chunk.getMinY();
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-            boolean ice = !bergsNear(x0, z0, x0 + 15, z0 + 15).isEmpty();
-            for (int dz = 0; dz < 16 && !ice; dz++)
-                for (int dx = 0; dx < 16 && !ice; dx++)
-                    ice = isIce(chunk.getBlockState(pos.set(x0 + dx, top + 1, z0 + dz)))
-                            || isIce(chunk.getBlockState(pos.set(x0 + dx, top, z0 + dz)));
+            boolean ice = !bergsNear(x0, z0, x0 + size - 1, z0 + size - 1).isEmpty();
+            for (int dz = 0; dz < size && !ice; dz += 2)
+                for (int dx = 0; dx < size && !ice; dx += 2)
+                    ice = isIce(level.getBlockState(pos.set(x0 + dx, top + 1, z0 + dz)))
+                            || isIce(level.getBlockState(pos.set(x0 + dx, top, z0 + dz)));
             if (!ice) return;
-            int yStart = top, yEnd = Math.max(minY, top - 70);   // plants and magma only come under the water
+            int yEnd = Math.max(minY + 1, top - 70);   // plants and magma only come under the water
             BlockState water = Blocks.WATER.defaultBlockState(), packed = Blocks.PACKED_ICE.defaultBlockState();
             int[] plants = new int[128];
-            for (int dz = 0; dz < 16; dz++) {
-                for (int dx = 0; dx < 16; dx++) {
+            for (int dz = 0; dz < size; dz++) {
+                for (int dx = 0; dx < size; dx++) {
                     int x = x0 + dx, z = z0 + dz, n = 0;
-                    boolean prevIce = false;
-                    for (int y = yStart; y >= yEnd; y--) {
-                        BlockState st = chunk.getBlockState(pos.set(x, y, z));
+                    for (int y = top; y >= yEnd; y--) {
+                        BlockState st = level.getBlockState(pos.set(x, y, z));
                         if (isSeaPlant(st)) {
                             if (n < plants.length) plants[n++] = y;
-                            prevIce = false;
                             continue;
                         }
-                        boolean magma = st.is(Blocks.MAGMA_BLOCK);
-                        boolean onIce = isIce(st)
-                                || magma && (prevIce || isIce(chunk.getBlockState(pos.set(x, y - 1, z))));
-                        if (onIce) {
-                            if (magma) chunk.setBlockState(pos.set(x, y, z), packed, 0);
-                            for (int k = 0; k < n; k++) chunk.setBlockState(pos.set(x, plants[k], z), water, 0);
+                        boolean iceHere = isIce(st);
+                        if (st.is(Blocks.MAGMA_BLOCK) && touchesIce(level, pos, x, y, z)) {
+                            level.setBlock(pos.set(x, y, z), packed, 2);
+                            iceHere = true;
+                        }
+                        if (iceHere) {
+                            // Plants rooted on ice go back to water.
+                            for (int k = 0; k < n; k++) level.setBlock(pos.set(x, plants[k], z), water, 2);
                             n = 0;
-                            prevIce = true;
                             continue;
                         }
                         n = 0;
-                        prevIce = false;
                         // Real ground (not ice, water or air): the sea floor, whose plants stay.
-                        if (!st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.SNOW)) break;
+                        if (!st.isAir() && st.getFluidState().isEmpty() && !st.is(Blocks.SNOW)
+                                && !st.is(Blocks.MAGMA_BLOCK)) break;
                     }
                 }
             }
         } catch (Throwable t) {
             LOG.error("Terra: iceberg clean-up failed for chunk {}", chunk.getPos(), t);
         }
+    }
+
+    /** Whether any of the six blocks around (x, y, z) is berg ice. */
+    private static boolean touchesIce(net.minecraft.world.level.WorldGenLevel level, BlockPos.MutableBlockPos pos,
+                                      int x, int y, int z) {
+        return isIce(level.getBlockState(pos.set(x, y + 1, z))) || isIce(level.getBlockState(pos.set(x, y - 1, z)))
+                || isIce(level.getBlockState(pos.set(x + 1, y, z))) || isIce(level.getBlockState(pos.set(x - 1, y, z)))
+                || isIce(level.getBlockState(pos.set(x, y, z + 1))) || isIce(level.getBlockState(pos.set(x, y, z - 1)));
     }
 
     private static boolean isIce(BlockState st) {

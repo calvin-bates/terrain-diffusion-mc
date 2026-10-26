@@ -52,7 +52,7 @@ public abstract class ChunkGeneratorMixin {
         } catch (RuntimeException e) {
             // never let this break chunk generation
         }
-        com.github.xandergos.terraindiffusionmc.world.Icebergs.cleanAfterFeatures(chunk, self.getSeaLevel());
+        com.github.xandergos.terraindiffusionmc.world.Icebergs.cleanAfterFeatures(level, chunk, self.getSeaLevel());
         TerraPerf.end("chunk.afterFeatures (deep plants, sea ice, vents)", t0);
     }
 }
