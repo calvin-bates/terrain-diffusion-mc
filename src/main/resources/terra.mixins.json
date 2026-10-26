@@ -8,6 +8,7 @@
     "BeardifierAccessor",
     "BiomeMixin",
     "ChunkGeneratorMixin",
+    "LakeFeatureMixin",
     "MinecraftServerMixin",
     "MonumentBuildingAccessor",
     "NoiseBasedChunkGeneratorMixin",
