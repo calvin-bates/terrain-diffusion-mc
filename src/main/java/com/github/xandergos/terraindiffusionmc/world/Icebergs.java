@@ -378,6 +378,70 @@ public final class Icebergs {
         }
     }
 
+    /** Chance a big berg gets polar bears, and a chunk on an ice island. */
+    private static final double BEAR_BERG_CHANCE = 0.35, BEAR_ISLAND_CHUNK_CHANCE = 0.05;
+
+    /**
+     * Polar bears on icebergs and ice islands (Calvin, Oct 26), at chunk generation like vanilla's first animals: a big
+     * berg whose centre lies in this chunk gets a group of 1-2 (an adult and maybe a cub) at a 35% chance, and each
+     * chunk mostly on an ice island one at a 5% chance. They stand on the berg's top (ice or snow above the sea with
+     * room above). The block tag {@code polar_bears_spawnable_on_alternate} also takes packed ice, blue ice and snow
+     * block, so bears keep spawning on bergs in frozen oceans later on.
+     */
+    public static void spawnBears(net.minecraft.world.level.WorldGenLevel level, ChunkAccess chunk, int seaLevel) {
+        try {
+            if (!TerrainDiffusionConfig.icebergs()) return;
+            ChunkPos cp = chunk.getPos();
+            int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ();
+            List<IcebergPlan.Berg> bergs = bergsNear(x0, z0, x0 + 15, z0 + 15);
+            if (bergs.isEmpty()) return;
+            long seed = LocalTerrainProvider.getSeed();
+            for (IcebergPlan.Berg b : bergs) {
+                long h = mix(seed ^ Double.doubleToLongBits(b.cx * 31.0 + b.cz) ^ 0xBEA2L);
+                if (b.shape == IcebergPlan.ICE_ISLAND) {
+                    float dx = x0 + 8 - b.cx, dz = z0 + 8 - b.cz;
+                    if (dx * dx + dz * dz > 0.64f * b.r * b.r) continue;
+                    long hc = mix(h ^ ((long) x0 * 0x9E3779B97F4A7C15L) ^ ((long) z0 * 0xC2B2AE3D27D4EB4FL));
+                    if (unit(hc) < BEAR_ISLAND_CHUNK_CHANCE) bearGroup(level, x0, z0, 16, seaLevel, hc);
+                } else if (b.shape != IcebergPlan.BIT) {
+                    int bx = (int) Math.floor(b.cx), bz = (int) Math.floor(b.cz);
+                    if (bx < x0 || bx > x0 + 15 || bz < z0 || bz > z0 + 15) continue;
+                    if (unit(h) < BEAR_BERG_CHANCE) {
+                        int half = (int) Math.max(2, Math.min(7, b.r * 0.4f));
+                        bearGroup(level, bx - half, bz - half, 2 * half + 1, seaLevel, h);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("Terra: polar bears failed for chunk {}", chunk.getPos(), t);
+        }
+    }
+
+    /** One group of 1-2 polar bears on berg ice in the square [x0, x0 + n) x [z0, z0 + n), if a spot is found. */
+    private static void bearGroup(net.minecraft.world.level.WorldGenLevel level, int x0, int z0, int n, int seaLevel, long h) {
+        int count = 1 + (unit(mix(h + 1)) < 0.5 ? 1 : 0);
+        net.minecraft.world.entity.SpawnGroupData group = null;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int a = 0, placed = 0; a < 12 && placed < count; a++) {
+            int x = x0 + (int) (n * unit(mix(h + 10 + 2L * a))), z = z0 + (int) (n * unit(mix(h + 11 + 2L * a)));
+            int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z);     // first free block above the top
+            if (y <= seaLevel + 1) continue;
+            BlockState ground = level.getBlockState(pos.set(x, y - 1, z));
+            if (!isIce(ground)) continue;
+            if (!level.getBlockState(pos.set(x, y, z)).isAir() && !level.getBlockState(pos).is(Blocks.SNOW)) continue;
+            if (!level.getBlockState(pos.set(x, y + 1, z)).isAir()) continue;
+            net.minecraft.world.entity.animal.polarbear.PolarBear bear = net.minecraft.world.entity.EntityTypes.POLAR_BEAR.create(
+                    level.getLevel(), net.minecraft.world.entity.EntitySpawnReason.CHUNK_GENERATION);
+            if (bear == null) return;
+            bear.snapTo(x + 0.5, y, z + 0.5, (float) (360.0 * unit(mix(h + 40 + a))), 0f);
+            group = bear.finalizeSpawn(level, level.getCurrentDifficultyAt(pos.set(x, y, z)),
+                    net.minecraft.world.entity.EntitySpawnReason.CHUNK_GENERATION, group);
+            bear.setPersistenceRequired();
+            level.addFreshEntityWithPassengers(bear);
+            placed++;
+        }
+    }
+
     /** Whether any of the six blocks around (x, y, z) is berg ice. */
     private static boolean touchesIce(net.minecraft.world.level.WorldGenLevel level, BlockPos.MutableBlockPos pos,
                                       int x, int y, int z) {
