@@ -161,7 +161,9 @@ public final class ExplorerServer {
             }
             int scale = Math.max(1, WorldScaleManager.getCurrentScale());
             List<Map<String, Object>> list = new ArrayList<>();
-            for (OceanFeatures.Landmark l : LocalTerrainProvider.getOceanLandmarks(i0, j0, i1, j1)) {
+            List<OceanFeatures.Landmark> marks = new ArrayList<>(LocalTerrainProvider.getOceanLandmarks(i0, j0, i1, j1));
+            marks.addAll(LocalTerrainProvider.getInletLandmarks(i0, j0, i1, j1));
+            for (OceanFeatures.Landmark l : marks) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("type", l.type());
                 m.put("i", l.i());

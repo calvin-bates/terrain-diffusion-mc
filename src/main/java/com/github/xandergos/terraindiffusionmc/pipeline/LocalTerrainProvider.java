@@ -233,6 +233,34 @@ public final class LocalTerrainProvider {
         });
     }
 
+    /** Largest window (native pixels a side) the explorer gets fjord and ria markers for: they need the hydrology. */
+    private static final int INLET_MARKER_MAX_PX = 1536;
+
+    /**
+     * Fjords and rias with their mouths in a native-pixel window, as explorer markers ({@code value} = how far the
+     * inlet's traced valley runs, km); empty for windows wider than {@link #INLET_MARKER_MAX_PX} (each hydrology region
+     * is computed if needed). Each region on the inference thread by itself.
+     */
+    public static java.util.List<OceanFeatures.Landmark> getInletLandmarks(int i1, int j1, int i2, int j2) throws Exception {
+        java.util.List<OceanFeatures.Landmark> out = new java.util.ArrayList<>();
+        if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.oceanFeatures()) return out;
+        if (i2 - i1 > INLET_MARKER_MAX_PX || j2 - j1 > INLET_MARKER_MAX_PX) return out;
+        int size = rivers().regionSize();
+        for (int ri = Math.floorDiv(i1, size); ri <= Math.floorDiv(i2 - 1, size); ri++) {
+            for (int rj = Math.floorDiv(j1, size); rj <= Math.floorDiv(j2 - 1, size); rj++) {
+                final int fri = ri, frj = rj;
+                List<RiaPlan> plans = submitToInferenceThread(() -> RiaPlan.of(
+                        rivers().region(fri, frj, (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true)), fri, frj, size));
+                for (RiaPlan p : plans) {
+                    if (p.mouthZ < i1 || p.mouthZ >= i2 || p.mouthX < j1 || p.mouthX >= j2) continue;
+                    float km = (float) Math.hypot(p.headX() - p.mouthX, p.headZ() - p.mouthZ) * NATIVE_RESOLUTION / 1000f;
+                    out.add(new OceanFeatures.Landmark(p.fjord ? "fjord" : "ria", p.mouthZ, p.mouthX, km));
+                }
+            }
+        }
+        return out;
+    }
+
     /** Ocean features centred in a native-pixel window (see {@link WorldPipeline#oceanLandmarks}). Inference thread. */
     public static java.util.List<OceanFeatures.Landmark> getOceanLandmarks(int i1, int j1, int i2, int j2) throws Exception {
         return submitToInferenceThread(() -> getInstance().pipeline.oceanLandmarks(i1, j1, i2, j2));

@@ -33,7 +33,7 @@ public final class RiaPlan {
     /** Mouths colder than this (deg C) become fjords instead of rias. */
     public static final float MIN_TEMP = 8f;
     /** Share of qualifying cold river mouths that are fjords. */
-    public static final float FJORD_CHANCE = 0.65f;
+    public static final float FJORD_CHANCE = 0.8f;
     /** Like {@link #MIN_RELIEF}, for fjords: they are cut into mountains. */
     private static final float FJORD_MIN_RELIEF = 150f;
     /** Shortest fjord (pixels, 1.5 km) of drowned trough. */
@@ -373,12 +373,14 @@ public final class RiaPlan {
     private static RiaPlan tryMouth(RiverService.Region reg, int k, int i, int j, int[] why) {
         why[0] = -1;
         byte c = reg.cls[k];
-        if (c != RiverMap.RIVER && c != RiverMap.MAIN) return null;
+        boolean fjord = reg.temp != null && reg.temp[k] < MIN_TEMP;
+        // Fjords also at streams' mouths: on steep cold coasts the valleys are short and few reach river size (Calvin,
+        // Oct 26: no fjord within 250 km; the few cold mouths found were mostly streams).
+        if (c != RiverMap.RIVER && c != RiverMap.MAIN && !(fjord && c == RiverMap.STREAM)) return null;
         if (reg.elev[k] <= 0f) return null;
         int d = reg.downstream[k];
         if (d < 0 || reg.elev[d] > 0f) return null;                          // not the last land pixel
         long h = (long) i * 73856093L ^ (long) j * 19349663L ^ 0x41A5L;
-        boolean fjord = reg.temp[k] < MIN_TEMP;
         if (u(h, 0) > (fjord ? FJORD_CHANCE : RIA_CHANCE)) { why[0] = 2; return null; }
         int target = fjord ? 130 + (int) ((FJORD_MAX_LENGTH_PX - 130) * u(h, 3)) : 100 + (int) (83 * u(h, 3));
         List<int[]> stem = new ArrayList<>();

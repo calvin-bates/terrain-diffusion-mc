@@ -1323,6 +1323,8 @@
     shield_volcano:  { name: 'Shield volcano',  color: '#b45309', on: true },
     lava_field:      { name: 'Lava field',      color: '#3f3f46', on: true },
     active_island:   { name: 'Active island',   color: '#ef4444', on: true },
+    fjord:           { name: 'Fjord',           color: '#60a5fa', on: true },
+    ria:             { name: 'Ria',             color: '#34d399', on: false },
   };
   const coarseFeatures = document.getElementById('coarse-features');
   const detailFeatures = document.getElementById('detail-features');
@@ -1362,6 +1364,8 @@
       case 'shield_volcano': return `broad shield volcano, summit about ${Math.round(v)} m, pit craters along its rift zones`;
       case 'lava_field': return 'lava flows (basalt and blackstone; live lava on active volcanoes)';
       case 'active_island': return `active island volcano: lava lake in the summit crater, lava flows to the coast; peak ${Math.round(v)} m`;
+      case 'fjord': return `fjord mouth: a deep, steep-walled inlet running about ${f.value.toFixed(1)} km up the valley`;
+      case 'ria': return `ria mouth: a drowned river valley running about ${f.value.toFixed(1)} km inland`;
       default: return '';
     }
   }
