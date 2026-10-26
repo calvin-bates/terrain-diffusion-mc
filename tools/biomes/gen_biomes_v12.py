@@ -277,6 +277,10 @@ SELECTORS = {
             ("minecraft:spruce_checked", "minecraft:mega_spruce_checked", 0.08)]) + [("minecraft:fallen_spruce_tree", 0.01)]),
     # Oasis palms: small jungle trees and jungle bushes.
     "trees_oasis": mix("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.4)]),
+    # Mirage isles: tall teal-leaved jungle and fancy oaks (both leaves take the biome's foliage colour), giant red and
+    # brown mushrooms between them.
+    "trees_mirage": mix("minecraft:jungle_tree", [("minecraft:fancy_oak_checked", 0.3), ("terra:huge_red_mushroom", 0.12),
+                                                 ("terra:huge_brown_mushroom", 0.06), ("minecraft:mega_jungle_tree_checked", 0.08)]),
     "trees_highland": ("minecraft:spruce_checked", [("minecraft:oak_checked", 0.3), ("minecraft:birch_checked", 0.2),
                                                    ("minecraft:fancy_oak_checked", 0.05), ("minecraft:fallen_oak_tree", 0.01)]),
     "trees_cloud_forest": ("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.35), ("minecraft:oak_checked", 0.15)]),
@@ -351,6 +355,9 @@ PLACED = {
     "trees_redwoods": trees("terra:trees_redwoods", [(6, 9), (7, 1)]),
     "trees_aspen": grove_trees("terra:trees_aspen", above=7, below=0),
     "trees_oasis": trees("terra:trees_oasis", [(3, 3), (5, 1)]),
+    "trees_mirage": trees("terra:trees_mirage", [(9, 9), (11, 1)]),
+    "huge_red_mushroom": {"feature": "minecraft:huge_red_mushroom", "placement": []},
+    "huge_brown_mushroom": {"feature": "minecraft:huge_brown_mushroom", "placement": []},
     "trees_blooming": trees("minecraft:fancy_oak", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
     "trees_lush_valley": trees("terra:trees_highland", [(7, 9), (9, 1)]),
     "oasis_pool": {"feature": "terra:oasis_pool", "placement": [
@@ -711,6 +718,48 @@ biome("karst", id=92, base="jungle", temp=0.95, downfall=0.9,
           {"type": "minecraft:condition", "if_true": STEEP, "then_run": KARST_ROCK},
           {"type": "minecraft:condition", "if_true": noise("surface", 0.3), "then_run": block("minecraft:moss_block")}]},
       under={"type": "minecraft:condition", "if_true": STEEP, "then_run": KARST_ROCK}, top_wet=True,
+      no_tags=["has_structure/jungle_temple"])
+
+# ---- v1.4 round D: showpieces (set by the tile: Showpieces tags, AridLandforms yosemite cut) ----
+# Geothermal basin floors (Yellowstone): white sinter (calcite, white terracotta) with grey tuff and orange and yellow
+# runoff stains; world/Geothermal lays the hot spring pools. Bright turquoise water.
+biome("geothermal_basin", id=93, base="taiga", temp=0.3, downfall=0.6,
+      colors={"grass_color": "#8aa05a", "foliage_color": "#5f8a4c", "water_color": "#22c6e0"},
+      veg=["minecraft:patch_dead_bush_2"],
+      top=rule((noise("surface_secondary", 0.5), "minecraft:orange_terracotta"),
+               (noise("surface_secondary", 0.38), "minecraft:yellow_terracotta"),
+               (noise("surface", -1e9, -0.35), "minecraft:tuff"),
+               (noise("surface", 0.3), "minecraft:calcite"),
+               (None, "minecraft:white_terracotta")),
+      under=rule((noise("surface", 0.0), "minecraft:calcite"), (None, "minecraft:white_terracotta")), top_wet=True,
+      no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
+# Yosemite valleys: sheer white granite walls (calcite and diorite down every column, so the cliff faces show it),
+# pine forest on the flat floor and benches.
+WHITE_GRANITE = {"type": "minecraft:sequence", "sequence": [
+    {"type": "minecraft:condition", "if_true": noise("surface", 0.2), "then_run": block("minecraft:calcite")},
+    block("minecraft:diorite")]}
+biome("yosemite", id=94, base="old_growth_pine_taiga", temp=0.35, downfall=0.8,
+      colors={"grass_color": "#79a95a", "foliage_color": "#5f8f4a"},
+      veg=["minecraft:trees_old_growth_pine_taiga", "minecraft:patch_large_fern", "minecraft:patch_grass_taiga",
+           "minecraft:flower_default", "minecraft:patch_berry_common"],
+      top={"type": "minecraft:sequence", "sequence": [
+          {"type": "minecraft:condition", "if_true": STEEP, "then_run": WHITE_GRANITE},
+          {"type": "minecraft:condition", "if_true": noise("surface", 0.45), "then_run": block("minecraft:coarse_dirt")}]},
+      under={"type": "minecraft:condition", "if_true": STEEP, "then_run": WHITE_GRANITE},
+      deep=(40, WHITE_GRANITE, "after"),
+      no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
+# Mirage isles: sheer pale cliffs in bands (calcite, white and pink terracotta), teal jungle and giant mushrooms on top.
+MIRAGE_BANDS = ["minecraft:calcite", "minecraft:white_terracotta", "minecraft:pink_terracotta", "minecraft:white_terracotta",
+                "minecraft:calcite", "minecraft:smooth_sandstone", "minecraft:white_terracotta", "minecraft:terracotta"]
+MIRAGE_STRATA = {"type": "minecraft:sequence", "sequence": [
+    {"type": "minecraft:condition", "if_true": {"type": "minecraft:y_above", "anchor": {"absolute": y},
+                                                  "surface_depth_multiplier": 0, "add_stone_depth": False},
+     "then_run": block(MIRAGE_BANDS[(y // 2) % len(MIRAGE_BANDS)])}
+    for y in range(160, 20, -2)] + [block("minecraft:calcite")]}
+biome("mirage_isles", id=95, base="sparse_jungle", temp=0.9, downfall=0.8,
+      colors={"grass_color": "#5fd2b0", "foliage_color": "#36d1bd", "water_color": "#43c8e0"},
+      veg=["terra:trees_mirage", "minecraft:patch_grass_jungle", "minecraft:flower_warm", "minecraft:vines"],
+      top=None, deep=(60, MIRAGE_STRATA, "after"),
       no_tags=["has_structure/jungle_temple"])
 
 

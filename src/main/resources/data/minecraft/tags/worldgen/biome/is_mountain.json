@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "terra:glacier",
+    "terra:glacier",
     "terra:blooming_plateau",
     "terra:glacier",
     "terra:temperate_highland"

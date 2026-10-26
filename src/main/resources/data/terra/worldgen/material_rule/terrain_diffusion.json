@@ -58,6 +58,78 @@
       "if_true": {
         "type": "minecraft:biome",
         "biome_is": [
+          "terra:canyon"
+        ]
+      },
+      "then_run": {
+        "type": "minecraft:condition",
+        "if_true": {
+          "type": "minecraft:stone_depth",
+          "offset": 80,
+          "surface_type": "floor",
+          "add_surface_depth": false,
+          "secondary_depth_range": 0
+        },
+        "then_run": {
+          "type": "minecraft:bandlands"
+        }
+      }
+    },
+    {
+      "type": "minecraft:condition",
+      "if_true": {
+        "type": "minecraft:biome",
+        "biome_is": [
+          "terra:badlands_mesa"
+        ]
+      },
+      "then_run": {
+        "type": "minecraft:condition",
+        "if_true": {
+          "type": "minecraft:stone_depth",
+          "offset": 70,
+          "surface_type": "floor",
+          "add_surface_depth": false,
+          "secondary_depth_range": 0
+        },
+        "then_run": {
+          "type": "minecraft:sequence",
+          "sequence": [
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:not",
+                "invert": {
+                  "type": "minecraft:steep"
+                }
+              },
+              "then_run": {
+                "type": "minecraft:condition",
+                "if_true": {
+                  "type": "minecraft:stone_depth",
+                  "offset": 0,
+                  "surface_type": "floor",
+                  "add_surface_depth": false,
+                  "secondary_depth_range": 0
+                },
+                "then_run": {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:red_sand"
+                }
+              }
+            },
+            {
+              "type": "minecraft:bandlands"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "minecraft:condition",
+      "if_true": {
+        "type": "minecraft:biome",
+        "biome_is": [
           "terra:painted_mountains"
         ]
       },
@@ -806,6 +878,228 @@
                 {
                   "type": "minecraft:block",
                   "result_state": "minecraft:stone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:volcano"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.35,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.05,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:tuff"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface_secondary",
+                    "min_threshold": 0.2,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:andesite"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:lava_fields"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.3,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:smooth_basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": -0.15,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:blackstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:glacier"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.25,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:stone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:alluvial_fan"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.25,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": -0.2,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:coarse_dirt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:sand"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:karst"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:steep"
+                  },
+                  "then_run": {
+                    "type": "minecraft:sequence",
+                    "sequence": [
+                      {
+                        "type": "minecraft:condition",
+                        "if_true": {
+                          "type": "minecraft:noise_threshold",
+                          "noise": "minecraft:surface",
+                          "min_threshold": 0.15,
+                          "max_threshold": 1.7976931348623157e+308
+                        },
+                        "then_run": {
+                          "type": "minecraft:block",
+                          "result_state": "minecraft:calcite"
+                        }
+                      },
+                      {
+                        "type": "minecraft:block",
+                        "result_state": "minecraft:stone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.3,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:moss_block"
+                  }
                 }
               ]
             }
@@ -2303,6 +2597,142 @@
           {
             "type": "minecraft:condition",
             "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:geothermal_basin"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface_secondary",
+                    "min_threshold": 0.5,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:orange_terracotta"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface_secondary",
+                    "min_threshold": 0.38,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:yellow_terracotta"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": -1000000000.0,
+                    "max_threshold": -0.35
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:tuff"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.3,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:calcite"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:white_terracotta"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:yosemite"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 62
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:sequence",
+                "sequence": [
+                  {
+                    "type": "minecraft:condition",
+                    "if_true": {
+                      "type": "minecraft:steep"
+                    },
+                    "then_run": {
+                      "type": "minecraft:sequence",
+                      "sequence": [
+                        {
+                          "type": "minecraft:condition",
+                          "if_true": {
+                            "type": "minecraft:noise_threshold",
+                            "noise": "minecraft:surface",
+                            "min_threshold": 0.2,
+                            "max_threshold": 1.7976931348623157e+308
+                          },
+                          "then_run": {
+                            "type": "minecraft:block",
+                            "result_state": "minecraft:calcite"
+                          }
+                        },
+                        {
+                          "type": "minecraft:block",
+                          "result_state": "minecraft:diorite"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "type": "minecraft:condition",
+                    "if_true": {
+                      "type": "minecraft:noise_threshold",
+                      "noise": "minecraft:surface",
+                      "min_threshold": 0.45,
+                      "max_threshold": 1.7976931348623157e+308
+                    },
+                    "then_run": {
+                      "type": "minecraft:block",
+                      "result_state": "minecraft:coarse_dirt"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
               "type": "minecraft:y_above",
               "anchor": {
                 "absolute": 62
@@ -2733,6 +3163,151 @@
             "if_true": {
               "type": "minecraft:biome",
               "biome_is": [
+                "terra:volcano"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.35,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:tuff"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:lava_fields"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.2,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:blackstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:glacier"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:stone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:alluvial_fan"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.0,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:sandstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:karst"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:steep"
+              },
+              "then_run": {
+                "type": "minecraft:sequence",
+                "sequence": [
+                  {
+                    "type": "minecraft:condition",
+                    "if_true": {
+                      "type": "minecraft:noise_threshold",
+                      "noise": "minecraft:surface",
+                      "min_threshold": 0.15,
+                      "max_threshold": 1.7976931348623157e+308
+                    },
+                    "then_run": {
+                      "type": "minecraft:block",
+                      "result_state": "minecraft:calcite"
+                    }
+                  },
+                  {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:stone"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
                 "terra:polar_desert"
               ]
             },
@@ -3130,6 +3705,74 @@
             }
           },
           {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:geothermal_basin"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.0,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:calcite"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:white_terracotta"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:yosemite"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:steep"
+              },
+              "then_run": {
+                "type": "minecraft:sequence",
+                "sequence": [
+                  {
+                    "type": "minecraft:condition",
+                    "if_true": {
+                      "type": "minecraft:noise_threshold",
+                      "noise": "minecraft:surface",
+                      "min_threshold": 0.2,
+                      "max_threshold": 1.7976931348623157e+308
+                    },
+                    "then_run": {
+                      "type": "minecraft:block",
+                      "result_state": "minecraft:calcite"
+                    }
+                  },
+                  {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:diorite"
+                  }
+                ]
+              }
+            }
+          },
+          {
             "type": "minecraft:block",
             "result_state": "minecraft:dirt"
           }
@@ -3167,6 +3810,1125 @@
               "then_run": {
                 "type": "minecraft:block",
                 "result_state": "minecraft:diorite"
+              }
+            },
+            {
+              "type": "minecraft:block",
+              "result_state": "minecraft:calcite"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "minecraft:condition",
+      "if_true": {
+        "type": "minecraft:biome",
+        "biome_is": [
+          "terra:yosemite"
+        ]
+      },
+      "then_run": {
+        "type": "minecraft:condition",
+        "if_true": {
+          "type": "minecraft:stone_depth",
+          "offset": 40,
+          "surface_type": "floor",
+          "add_surface_depth": false,
+          "secondary_depth_range": 0
+        },
+        "then_run": {
+          "type": "minecraft:sequence",
+          "sequence": [
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:noise_threshold",
+                "noise": "minecraft:surface",
+                "min_threshold": 0.2,
+                "max_threshold": 1.7976931348623157e+308
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:block",
+              "result_state": "minecraft:diorite"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "minecraft:condition",
+      "if_true": {
+        "type": "minecraft:biome",
+        "biome_is": [
+          "terra:mirage_isles"
+        ]
+      },
+      "then_run": {
+        "type": "minecraft:condition",
+        "if_true": {
+          "type": "minecraft:stone_depth",
+          "offset": 60,
+          "surface_type": "floor",
+          "add_surface_depth": false,
+          "secondary_depth_range": 0
+        },
+        "then_run": {
+          "type": "minecraft:sequence",
+          "sequence": [
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 160
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 158
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 156
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 154
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 152
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 150
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 148
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 146
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 144
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 142
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 140
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 138
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 136
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 134
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 132
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 130
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 128
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 126
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 124
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 122
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 120
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 118
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 116
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 114
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 112
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 110
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 108
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 106
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 104
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 102
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 100
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 98
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 96
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 94
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 92
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 90
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 88
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 86
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 84
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 82
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 80
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 78
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 76
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 74
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 72
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 70
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 68
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 66
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 64
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 62
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 60
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 58
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 56
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 54
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 52
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 50
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 48
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 46
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 44
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 42
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 40
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 38
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 36
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:pink_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 34
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 32
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 30
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 28
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 26
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:smooth_sandstone"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 24
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:calcite"
+              }
+            },
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:y_above",
+                "anchor": {
+                  "absolute": 22
+                },
+                "surface_depth_multiplier": 0,
+                "add_stone_depth": false
+              },
+              "then_run": {
+                "type": "minecraft:block",
+                "result_state": "minecraft:white_terracotta"
               }
             },
             {

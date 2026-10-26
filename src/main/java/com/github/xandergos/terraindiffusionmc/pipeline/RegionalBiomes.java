@@ -38,6 +38,8 @@ public final class RegionalBiomes {
     public static final short GLACIER = 88;
     /** Dry-land landforms (v1.4 round C): canyon walls, badlands mesas, alluvial fans (by the tile), karst towers. */
     public static final short CANYON = 89, BADLANDS_MESA = 90, ALLUVIAL_FAN = 91, KARST = 92;
+    /** Showpieces (v1.4 round D): geothermal fields, Yosemite valleys, mirage isles. */
+    public static final short GEOTHERMAL = 93, YOSEMITE = 94, MIRAGE_ISLES = 95;
 
     /** Id → biome name in the {@code terra} namespace, for the biome source and the explorer. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -48,7 +50,8 @@ public final class RegionalBiomes {
                 "mediterranean_scrub", "forested_highland", "temperate_highland", "rocky_desert", "cloud_forest",
                 "tropical_dry_forest", "aspen_grove", "shingle_beach", "salt_marsh", "tidal_flats", "white_cliffs",
                 "painted_mountains", "desert_oasis", "blooming_plateau", "blooming_valley", "lush_valley", "salt_flats", "arctic", "volcano", "lava_fields",
-                "glacier", "canyon", "badlands_mesa", "alluvial_fan", "karst"};
+                "glacier", "canyon", "badlands_mesa", "alluvial_fan", "karst",
+                "geothermal_basin", "yosemite", "mirage_isles"};
         for (int k = 0; k < n.length; k++) NAMES.put((short) (TUNDRA + k), n[k]);
     }
 

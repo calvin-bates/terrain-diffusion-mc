@@ -438,9 +438,15 @@ public final class LocalTerrainProvider {
                 for (int gj = cj - ring; gj <= cj + ring; gj++) {
                     if (Math.max(Math.abs(gi - ci), Math.abs(gj - cj)) != ring) continue;
                     final int a = gi, b = gj;
-                    List<OceanFeatures.Landmark> ms = submitToInferenceThread(() -> getInstance().pipeline.landforms().cellMarkers(a, b));
+                    List<OceanFeatures.Landmark> ms = submitToInferenceThread(() -> {
+                        List<OceanFeatures.Landmark> all = new ArrayList<>(getInstance().pipeline.landforms().cellMarkers(a, b));
+                        if (TerrainDiffusionConfig.showpieces()) all.addAll(getInstance().pipeline.showpieces().cellMarkers(a, b));
+                        return all;
+                    });
                     for (OceanFeatures.Landmark m : ms) {
-                        boolean ok = type.equals("volcano") ? !m.type().equals("lava_field") : m.type().equals(type);
+                        boolean ok = type.equals("volcano")
+                                ? !m.type().equals("lava_field") && !m.type().equals("geothermal_basin") && !m.type().equals("mirage_isles")
+                                : m.type().equals(type);
                         if (!ok) continue;
                         double d = Math.hypot(m.i() - pi, m.j() - pj);
                         if (d < bestD) { bestD = d; best = m; }
@@ -992,6 +998,8 @@ public final class LocalTerrainProvider {
         byte[][] blockTags1 = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
         mushroomFields(blockTags1, elevFlat, biomeFlat, W);
         volcanicBiomes(blockTags1, elevFlat, biomeFlat, W);
+        showpieceBiomes(blockTags1, elevFlat, biomeFlat, W);
+        mirageCliffs(elevFlat, biomeFlat, i1, j1, H, W, 1);
         GlacierShaper.Result ice = TerrainDiffusionConfig.glaciers()
                 ? GlacierShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat, blockTags1)
                 : null;
@@ -1077,6 +1085,8 @@ public final class LocalTerrainProvider {
         byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
         volcanicBiomes(blockTagsUp, elevOut, biomeFlat, W);
+        showpieceBiomes(blockTagsUp, elevOut, biomeFlat, W);
+        mirageCliffs(elevOut, biomeFlat, i1, j1, H, W, scale);
         GlacierShaper.Result ice = TerrainDiffusionConfig.glaciers()
                 ? GlacierShaper.apply(elevUp, cropI1, cropJ1, H, W, scale, i1, j1, climate, elevOut, biomeFlat, blockTagsUp)
                 : null;
@@ -1105,14 +1115,16 @@ public final class LocalTerrainProvider {
     public void landformsRoundC(float[] elev, short[] biomes, float[] climate, float[][] up, int cropI, int cropJ,
                                 int upI0, int upJ0, float[] climNative, int ni0, int nj0, int nH, int nW,
                                 int i1, int j1, int H, int W, int scale, boolean full, float[] riverDist) {
-        if (!TerrainDiffusionConfig.aridLandforms() || climate == null || climNative == null) return;
+        if (climate == null || climNative == null) return;
+        boolean aridOn = TerrainDiffusionConfig.aridLandforms();
         int HW = H * W, nN = nH * nW;
         if (climNative.length < 3 * nN) return;
-        boolean arid = false, tropic = false;
+        boolean arid = false, tropic = false, temperate = false;
         for (int k = 0; k < nN; k++) {
             float t = climNative[k], p = climNative[2 * nN + k];
             if (p < 450f && t > 2f) arid = true;
             if (t >= 19f && p >= 1000f) tropic = true;
+            if (t > 1f && t < 17f && p > 400f) temperate = true;
         }
         float mpb = NATIVE_RESOLUTION / scale;
         AridLandforms.Field field = new AridLandforms.Field() {
@@ -1127,7 +1139,7 @@ public final class LocalTerrainProvider {
             }
         };
         try {
-            if (arid) {
+            if (arid && aridOn) {
                 AridLandforms.mesas(elev, biomes, climate, riverDist, i1, j1, H, W, mpb);
                 if (TerrainDiffusionConfig.riversEnabled()) {
                     AridLandforms.canyons(elev, biomes, canyonSegments(i1, j1, H, W, scale), i1, j1, H, W, scale);
@@ -1138,7 +1150,10 @@ public final class LocalTerrainProvider {
                     AridLandforms.hoodoos(elev, biomes, riverDist, field, i1, j1, H, W, scale);
                 }
             }
-            if (tropic && KarstTowers.mayApply(i1, j1, H, W, mpb)) {
+            if (temperate && TerrainDiffusionConfig.showpieces() && TerrainDiffusionConfig.riversEnabled()) {
+                AridLandforms.canyons(elev, biomes, canyonSegments(i1, j1, H, W, scale, true), i1, j1, H, W, scale, true);
+            }
+            if (tropic && aridOn && KarstTowers.mayApply(i1, j1, H, W, mpb)) {
                 KarstTowers.RiverNear rivers = TerrainDiffusionConfig.riversEnabled() ? this::riverNear : null;
                 KarstTowers.apply(elev, biomes, field, rivers, i1, j1, H, W, scale);
             }
@@ -1168,6 +1183,11 @@ public final class LocalTerrainProvider {
 
     /** River segments (channel pixel to the next downstream) whose canyons may reach the tile's blocks. */
     private List<AridLandforms.Segment> canyonSegments(int i1, int j1, int H, int W, int scale) {
+        return canyonSegments(i1, j1, H, W, scale, false);
+    }
+
+    /** As above, for Yosemite valleys ({@code yosemite}: rivers and main rivers only, the Yosemite weight). */
+    private List<AridLandforms.Segment> canyonSegments(int i1, int j1, int H, int W, int scale, boolean yosemite) {
         int R = AridLandforms.CANYON_REACH_PX + 1;
         int pi0 = Math.floorDiv(i1, scale) - R, pj0 = Math.floorDiv(j1, scale) - R;
         int pi1 = Math.floorDiv(i1 + H - 1, scale) + R, pj1 = Math.floorDiv(j1 + W - 1, scale) + R;
@@ -1181,12 +1201,14 @@ public final class LocalTerrainProvider {
                 int k = reg.index(i, j);
                 if (k < 0 || reg.temp == null || reg.precip == null) continue;
                 byte cls = reg.cls[k];
-                if (cls < RiverMap.STREAM || cls > RiverMap.MAIN) continue;
+                if (cls < (yosemite ? RiverMap.RIVER : RiverMap.STREAM) || cls > RiverMap.MAIN) continue;
                 int d = reg.downstream[k];
                 if (d < 0) continue;
                 int di = reg.i0 + d / reg.width, dj = reg.j0 + d % reg.width;
-                float wA = AridLandforms.canyonWeight(i, j, reg.temp[k], reg.precip[k]);
-                float wB = AridLandforms.canyonWeight(di, dj, reg.temp[d], reg.precip[d]);
+                float wA = yosemite ? AridLandforms.yosemiteWeight(i, j, reg.temp[k], reg.precip[k])
+                        : AridLandforms.canyonWeight(i, j, reg.temp[k], reg.precip[k]);
+                float wB = yosemite ? AridLandforms.yosemiteWeight(di, dj, reg.temp[d], reg.precip[d])
+                        : AridLandforms.canyonWeight(di, dj, reg.temp[d], reg.precip[d]);
                 if (wA <= 0f && wB <= 0f) continue;
                 float sA = reg.size != null ? reg.size[k] : cls;
                 byte cd = reg.cls[d];
@@ -1431,6 +1453,54 @@ public final class LocalTerrainProvider {
                 if (!cone && !lava) continue;
                 if (CoastShaper.isSnowy(biomes[k]) && t != Landforms.TAG_LAVA_LAKE && t != Landforms.TAG_LAVA_CHANNEL) continue;
                 biomes[k] = cone ? RegionalBiomes.VOLCANO : RegionalBiomes.LAVA_FIELDS;
+            }
+        }
+    }
+
+    /**
+     * Showpieces (biomes plan v1.4 round D): geothermal fields and mirage isles from the showpiece stage's tags.
+     */
+    static void showpieceBiomes(byte[][] tags, float[] elev, short[] biomes, int W) {
+        if (tags == null) return;
+        for (int r = 0; r < tags.length; r++) {
+            for (int c = 0; c < W; c++) {
+                int k = r * W + c;
+                byte t = tags[r][c];
+                if (elev[k] < 0f) continue;
+                if (t == Showpieces.TAG_GEOTHERMAL) biomes[k] = RegionalBiomes.GEOTHERMAL;
+                else if (t == Showpieces.TAG_MIRAGE) biomes[k] = RegionalBiomes.MIRAGE_ISLES;
+            }
+        }
+    }
+
+    /**
+     * Mirage isles at block resolution: the isle's exact table top inside its outline and a sheer drop to the sea right
+     * outside it (the native drawing is only good to a pixel), from the isles' analytic shapes, so tiles agree.
+     */
+    private void mirageCliffs(float[] elev, short[] biomes, int i1, int j1, int H, int W, int scale) {
+        if (!TerrainDiffusionConfig.showpieces()) return;
+        int pi0 = Math.floorDiv(i1, scale) - 1, pj0 = Math.floorDiv(j1, scale) - 1;
+        List<Showpieces.Mirage> isles = pipeline.showpieces().isles(pi0, pj0, Math.floorDiv(i1 + H, scale) + 2,
+                Math.floorDiv(j1 + W, scale) + 2);
+        if (isles.isEmpty()) return;
+        for (int r = 0; r < H; r++) {
+            double z = (i1 + r + 0.5) / scale;
+            for (int c = 0; c < W; c++) {
+                double x = (j1 + c + 0.5) / scale;
+                int k = r * W + c;
+                for (Showpieces.Mirage m : isles) {
+                    double o = m.outline(z, x);
+                    if (o < 1.0) {
+                        elev[k] = (float) m.height(z, x);
+                        biomes[k] = RegionalBiomes.MIRAGE_ISLES;
+                        break;
+                    }
+                    if (o < 1.0 + 1.5 / m.radius) {
+                        // Within ~1.5 native pixels of the cliff: sea, a few metres deep at the foot, then falling away.
+                        elev[k] = Math.min(elev[k], (float) (-4.0 - 40.0 * (o - 1.0) * m.radius));
+                        if (!BiomeClassifier.isOceanBiome(biomes[k])) biomes[k] = BiomeClassifier.WARM_OCEAN;
+                    }
+                }
             }
         }
     }

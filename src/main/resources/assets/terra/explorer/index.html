@@ -1323,6 +1323,8 @@
     shield_volcano:  { name: 'Shield volcano',  color: '#b45309', on: true },
     lava_field:      { name: 'Lava field',      color: '#3f3f46', on: true },
     active_island:   { name: 'Active island',   color: '#ef4444', on: true },
+    geothermal_basin: { name: 'Geothermal basin', color: '#f59e0b', on: true },
+    mirage_isles:    { name: 'Mirage isles',    color: '#2dd4bf', on: true },
   };
   const coarseFeatures = document.getElementById('coarse-features');
   const detailFeatures = document.getElementById('detail-features');
@@ -1362,6 +1364,8 @@
       case 'shield_volcano': return `broad shield volcano, summit about ${Math.round(v)} m, pit craters along its rift zones`;
       case 'lava_field': return 'lava flows (basalt and blackstone; live lava on active volcanoes)';
       case 'active_island': return `active island volcano: lava lake in the summit crater, lava flows to the coast; peak ${Math.round(v)} m`;
+      case 'geothermal_basin': return `geothermal basin: hot spring pools on a levelled basin floor about ${v} m up`;
+      case 'mirage_isles': return `${v} mirage isles: flat-topped, cliff-walled islands with teal jungle and giant mushrooms`;
       default: return '';
     }
   }

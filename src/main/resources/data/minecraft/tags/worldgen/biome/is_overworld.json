@@ -10,6 +10,13 @@
     "terra:lava_fields",
     "terra:volcano",
     "terra:alluvial_fan",
+    "terra:badlands_mesa",
+    "terra:canyon",
+    "terra:glacier",
+    "terra:karst",
+    "terra:lava_fields",
+    "terra:volcano",
+    "terra:alluvial_fan",
     "terra:arctic",
     "terra:aspen_grove",
     "terra:aspen_parkland",
@@ -24,12 +31,14 @@
     "terra:desert_oasis",
     "terra:floodplain_forest",
     "terra:forested_highland",
+    "terra:geothermal_basin",
     "terra:glacier",
     "terra:karst",
     "terra:lava_fields",
     "terra:lush_valley",
     "terra:marsh",
     "terra:mediterranean_scrub",
+    "terra:mirage_isles",
     "terra:moorland",
     "terra:painted_mountains",
     "terra:polar_desert",
@@ -51,6 +60,7 @@
     "terra:tropical_dry_forest",
     "terra:tundra",
     "terra:volcano",
-    "terra:white_cliffs"
+    "terra:white_cliffs",
+    "terra:yosemite"
   ]
 }

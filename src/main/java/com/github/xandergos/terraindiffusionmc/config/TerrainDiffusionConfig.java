@@ -173,6 +173,8 @@ public final class TerrainDiffusionConfig {
     public static boolean glaciers() { return readBoolean("landforms.glaciers", true); }
     /** Canyons, badlands mesas, hoodoos, desert dunes, alluvial fans and karst towers (biomes plan v1.4 round C). */
     public static boolean aridLandforms() { return readBoolean("landforms.arid", true); }
+    /** Geothermal basins, Yosemite valleys, waterfalls and mirage isles (biomes plan v1.4 round D). */
+    public static boolean showpieces() { return readBoolean("landforms.showpieces", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */

@@ -84,6 +84,8 @@ public final class FeatureFinder {
         KINDS.put("caldera", new String[]{"caldera", "volcano with a caldera"});
         KINDS.put("lava_field", new String[]{"lava_field", "lava field"});
         KINDS.put("active_island", new String[]{"active_island", "active island volcano"});
+        KINDS.put("geothermal_basin", new String[]{"geothermal_basin", "geothermal basin (hot springs)"});
+        KINDS.put("mirage_isles", new String[]{"mirage_isles", "mirage isles"});
     }
 
     /** Farthest search, in native pixels (1200 km). */
@@ -126,7 +128,7 @@ public final class FeatureFinder {
             return 1;
         }
         if (word.equals("volcano") || word.equals("stratovolcano") || word.equals("shield_volcano") || word.equals("caldera")
-                || word.equals("lava_field")) {
+                || word.equals("lava_field") || word.equals("geothermal_basin") || word.equals("mirage_isles")) {
             findVolcano(source, server, word, kind[1], pi, pj, scale);
             return 1;
         }
@@ -351,7 +353,9 @@ public final class FeatureFinder {
                     if (l == null) {
                         source.sendFailure(Component.literal("No " + name + " within about "
                                 + Math.round((VOLCANO_RINGS + 0.5f) * com.github.xandergos.terraindiffusionmc.pipeline.Landforms.cellPx() * 30 / 1000f)
-                                + " km. Stratovolcanoes need prominent mountain peaks, shields broad, gentle high ground."));
+                                + (word.equals("geothermal_basin") ? " km. Geothermal basins form in wide basins among cool, forested mountains (1200-3200 m)."
+                                : word.equals("mirage_isles") ? " km. Mirage isles stand in warm, deep open ocean far from any land."
+                                : " km. Stratovolcanoes need prominent mountain peaks, shields broad, gentle high ground.")));
                         return;
                     }
                     report(source, name, l, pi, pj, scale);
@@ -534,6 +538,8 @@ public final class FeatureFinder {
             case "landslide_scar" -> "on an island " + v + " m high";
             case "stratovolcano", "shield_volcano", "caldera" -> "summit about " + v + " m";
             case "active_island" -> "lava lake in the summit crater, lava flows to the coast; peak about " + v + " m";
+            case "geothermal_basin" -> "hot springs on the basin floor, about " + v + " m up";
+            case "mirage_isles" -> v + " cliff-walled isles";
             case "atoll" -> "reef at sea level";
             case "raised_coral_island" -> "old reef rim about " + v + " m up";
             case "aseismic_ridge" -> "crest about " + (-v) + " m down";

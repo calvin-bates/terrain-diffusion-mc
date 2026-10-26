@@ -8,10 +8,14 @@
     "terra:glacier",
     "terra:lava_fields",
     "terra:volcano",
+    "terra:glacier",
+    "terra:lava_fields",
+    "terra:volcano",
     "terra:arctic",
     "terra:birch_taiga",
     "terra:boreal_forest",
     "terra:forested_highland",
+    "terra:geothermal_basin",
     "terra:glacier",
     "terra:lava_fields",
     "terra:moorland",
@@ -23,6 +27,7 @@
     "terra:temperate_rainforest",
     "terra:treeline",
     "terra:tundra",
-    "terra:volcano"
+    "terra:volcano",
+    "terra:yosemite"
   ]
 }

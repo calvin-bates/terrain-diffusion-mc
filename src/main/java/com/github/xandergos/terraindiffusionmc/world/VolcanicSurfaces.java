@@ -156,7 +156,7 @@ public final class VolcanicSurfaces {
      * a lava lake or flow running over a tile's edge needs both sides, or the checks below failed along every tile edge
      * and left lines of rock across lava lakes, Calvin, Oct 25).
      */
-    private static HeightmapData tileAt(HeightmapData data, int startX, int startZ, int x, int z) {
+    static HeightmapData tileAt(HeightmapData data, int startX, int startZ, int x, int z) {
         int size = TerrainDiffusionConfig.tileSize();
         if (x >= startX && x < startX + size && z >= startZ && z < startZ + size) return data;
         int shift = Integer.numberOfTrailingZeros(size);
@@ -165,7 +165,7 @@ public final class VolcanicSurfaces {
     }
 
     /** Top solid block Y of block column (x, z) from its tile (rivers included). */
-    private static int tileTop(HeightmapData data, int startX, int startZ, int x, int z, int scale) {
+    static int tileTop(HeightmapData data, int startX, int startZ, int x, int z, int scale) {
         HeightmapData d = tileAt(data, startX, startZ, x, z);
         if (d == null) return Integer.MIN_VALUE;
         int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);

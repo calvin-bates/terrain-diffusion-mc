@@ -142,6 +142,16 @@ public final class AridLandforms {
      */
     public static void canyons(float[] elev, short[] biomes, List<Segment> segments, int i1, int j1, int H, int W,
                                int scale) {
+        canyons(elev, biomes, segments, i1, j1, H, W, scale, false);
+    }
+
+    /**
+     * As above; {@code yosemite} cuts Yosemite valleys instead (biomes plan v1.4 round D): a U-shaped glacial valley
+     * with a broad flat floor (the inner 35% of its half-width), sheer granite walls rising most of the way to the rim
+     * within the next 12%, and rounded domes above. Only valleys at least 250-500 m deep.
+     */
+    public static void canyons(float[] elev, short[] biomes, List<Segment> segments, int i1, int j1, int H, int W,
+                               int scale, boolean yosemite) {
         if (segments.isEmpty()) return;
         float metresPerBlock = WorldPipelineModelConfig.nativeResolution() / scale;
         final float NONE = 1e9f;
@@ -175,9 +185,9 @@ public final class AridLandforms {
                     float level = s.levelA() + (s.levelB() - s.levelA()) * t;
                     float depth = Math.max(0f, s.rimA() + (s.rimB() - s.rimA()) * t - level);
                     // Only deep valleys become canyons: shallow ones (grassland streams) were flagged as canyon too.
-                    w *= smoothstep(80f, 200f, depth);
+                    w *= yosemite ? smoothstep(250f, 500f, depth) : smoothstep(80f, 200f, depth);
                     if (w <= 0f) continue;
-                    float tgt = level + (1f - w) * 600f + profile(u, depth, f1, f2);
+                    float tgt = level + (1f - w) * 600f + (yosemite ? uProfile(u, depth) : profile(u, depth, f1, f2));
                     int k = r * nw + c;
                     if (tgt < tn[k]) tn[k] = tgt;
                     float inside = w * (1f - smoothstep(0.9f, 1.05f, u));
@@ -205,7 +215,7 @@ public final class AridLandforms {
                 int k = r * W + c;
                 if (BiomeClassifier.isOceanBiome(biomes[k])) continue;
                 if (tgt < elev[k]) elev[k] = tgt;
-                if (bilerp(in, nw, z0, x0, tz, tx) > 0.4f) biomes[k] = RegionalBiomes.CANYON;
+                if (bilerp(in, nw, z0, x0, tz, tx) > 0.4f) biomes[k] = yosemite ? RegionalBiomes.YOSEMITE : RegionalBiomes.CANYON;
             }
         }
     }
@@ -231,6 +241,27 @@ public final class AridLandforms {
                 + 10f * smoothstep(0.83f, 1f, u);
         if (u > 1f) g += (u - 1f) * 6000f;
         return g;
+    }
+
+    /** A Yosemite valley's walls (m over its river) at u half-widths out: floor, sheer walls, domes, then steeply on. */
+    static float uProfile(float u, float depth) {
+        float g = 4f * smoothstep(0f, 0.35f, u)
+                + 0.85f * depth * smoothstep(0.35f, 0.47f, u)
+                + 0.15f * depth * smoothstep(0.47f, 0.95f, u);
+        if (u > 1f) g += (u - 1f) * 6000f;
+        return g;
+    }
+
+    private static final FastNoiseLite YOSEMITE_ZONE = noise(7411, 1f / 9000f, 2);
+    /** Zone level for Yosemite valleys (~10% of the world in the zone). */
+    static final float YOSEMITE_ZONE_LEVEL = 0.55f;
+
+    /** Yosemite weight (0..1) at native pixel (i, j) with climate t, p: temperate, wet mountains in Yosemite zones. */
+    public static float yosemiteWeight(int i, int j, float t, float p) {
+        float climate = smoothstep(1f, 5f, t) * (1f - smoothstep(13f, 17f, t)) * smoothstep(400f, 700f, p);
+        if (climate <= 0f) return 0f;
+        float m = WorldPipelineModelConfig.nativeResolution();
+        return climate * smoothstep(YOSEMITE_ZONE_LEVEL, YOSEMITE_ZONE_LEVEL + 0.12f, YOSEMITE_ZONE.GetNoise(j * m, i * m));
     }
 
     /** Most a canyon cuts (m): its rim over the river is capped at this. */
