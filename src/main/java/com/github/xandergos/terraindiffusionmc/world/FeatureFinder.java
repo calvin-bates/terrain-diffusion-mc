@@ -291,7 +291,7 @@ public final class FeatureFinder {
                                         float w = co.data[6 * np + px];
                                         if (w <= 1e-6f) continue;
                                         float e = co.data[px] / w, t = co.data[2 * np + px] / w;   // e: signed sqrt of metres
-                                        boolean ok = island ? e < -14f && t < -7f : e < 0f && t < 0f;
+                                        boolean ok = island ? e < -10f && t < -3f : e < 0f && t < 0f;
                                         if (ok) cands.add(new int[]{gi + r, gj + c});
                                     }
                                 }
@@ -339,7 +339,7 @@ public final class FeatureFinder {
     }
 
     /** Farthest coarse search for cold seas (coarse pixels either way: 512 is about 3900 km) and most regions planned. */
-    private static final int ICE_COARSE_MAX_HALF = 512, ICE_MAX_CHECKS = 40;
+    private static final int ICE_COARSE_MAX_HALF = 512, ICE_MAX_CHECKS = 60;
 
     /** Landform cells (~123 km) searched around the player for volcanoes: about 550 km. */
     private static final int VOLCANO_RINGS = 4;

@@ -33,7 +33,7 @@ public final class IcebergPlan {
     /** Chance a fully cold cell right off a calving coast gets a field. */
     public static final float FIELD_CHANCE = 0.45f;
     /** Chance a region far out in the frozen sea gets one flat ice island. */
-    public static final float ICE_ISLAND_CHANCE = 0.12f;
+    public static final float ICE_ISLAND_CHANCE = 0.35f;
     /** Cold land (calving sources): land colder than this (°C). */
     static final float SOURCE_TEMP_C = -2f;
     /** Fields thin with distance from a calving coast over this many pixels (e-folding, 2.4 km). */
@@ -243,7 +243,8 @@ public final class IcebergPlan {
                 if (coldness <= 0f) continue;
                 float d = toSource[k];
                 float near = d == Float.MAX_VALUE ? 0f : (float) Math.exp(-d / SOURCE_FALLOFF_PX);
-                if (t < -8f && e < -200f && (d == Float.MAX_VALUE || d > 100f) && h < bestIsleH) {
+                // Far out in a very cold sea (Calvin, Oct 26: none within 3900 km at below -8 C, 200 m deep, 3 km from land).
+                if (t < -4f && e < -100f && (d == Float.MAX_VALUE || d > 50f) && h < bestIsleH) {
                     bestIsleH = h;
                     bestIsle = k;
                 }

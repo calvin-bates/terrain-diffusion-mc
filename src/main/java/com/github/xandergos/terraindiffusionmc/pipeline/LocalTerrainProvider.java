@@ -453,6 +453,9 @@ public final class LocalTerrainProvider {
         return best;
     }
 
+    /** Fjord search beyond the nearby rings: coarse squares up to this half-size (coarse pixels, ~7.7 km) and regions checked. */
+    private static final int FJORD_COARSE_MAX_HALF = 256, FJORD_MAX_CHECKS = 40;
+
     /** A ria: its mouth and where its traced valley ends, in native pixels. */
     public record Ria(float mouthI, float mouthJ, float headI, float headJ) {}
 
@@ -499,6 +502,72 @@ public final class LocalTerrainProvider {
             reached = ring * size + size / 2;
             progress.accept(reached);
             if (best != null && bestD <= ring * size) break;
+        }
+        if (best == null && fjord) {
+            // Farther: fjords need a cold, mountainous coast, often far from the player. Find coasts like that on the
+            // coarse map (one coarse pixel is ~one hydrology region) in growing squares, and look at the hydrology
+            // regions there, nearest first (Calvin, Oct 26: none within 27 km of an inland start).
+            java.util.Set<Long> done = new java.util.HashSet<>();
+            int checked = 0;
+            int ccI = Math.floorDiv((int) Math.floor(pi), 256), ccJ = Math.floorDiv((int) Math.floor(pj), 256);
+            for (int half = 16; half <= FJORD_COARSE_MAX_HALF && best == null && checked < FJORD_MAX_CHECKS; half *= 2) {
+                int n = 2 * half + 1;
+                List<int[]> cands = new ArrayList<>();
+                for (int r0 = 0; r0 < n; r0 += 128) {
+                    for (int c0 = 0; c0 < n; c0 += 128) {
+                        int bh = Math.min(128, n - r0), bw = Math.min(128, n - c0), np = bh * bw;
+                        int gi = ccI - half + r0, gj = ccJ - half + c0;
+                        // One coarse pixel of margin, for the coast and relief tests.
+                        FloatTensor co = getPipelineCoarse(gi - 1, gj - 1, gi + bh + 1, gj + bw + 1);
+                        int W2 = bw + 2, n2 = (bh + 2) * W2;
+                        for (int r = 1; r <= bh; r++) {
+                            for (int c = 1; c <= bw; c++) {
+                                int px = r * W2 + c;
+                                float w = co.data[6 * n2 + px];
+                                if (w <= 1e-6f) continue;
+                                float e = co.data[px] / w, t = co.data[2 * n2 + px] / w;   // e: signed sqrt of metres
+                                if (e <= 0f || t > 7f) continue;
+                                boolean sea = false;
+                                float hi = e;
+                                for (int dr = -1; dr <= 1; dr++) {
+                                    for (int dc = -1; dc <= 1; dc++) {
+                                        int q = (r + dr) * W2 + c + dc;
+                                        float wq = co.data[6 * n2 + q];
+                                        if (wq <= 1e-6f) continue;
+                                        float eq = co.data[q] / wq;
+                                        if (eq < 0f) sea = true;
+                                        hi = Math.max(hi, eq);
+                                    }
+                                }
+                                if (sea && hi > 14f) cands.add(new int[]{gi + r - 1, gj + c - 1});
+                            }
+                        }
+                    }
+                }
+                cands.sort(java.util.Comparator.comparingDouble(q -> Math.hypot(q[0] - ccI, q[1] - ccJ)));
+                for (int[] q : cands) {
+                    if (checked >= FJORD_MAX_CHECKS) break;
+                    int ri = Math.floorDiv(q[0] * 256 + 128, size), rj = Math.floorDiv(q[1] * 256 + 128, size);
+                    if (!done.add(((long) ri << 32) ^ (rj & 0xffffffffL))) continue;
+                    if (best != null && (Math.hypot(ri * size + size / 2.0 - pi, rj * size + size / 2.0 - pj) - size) > bestD) break;
+                    checked++;
+                    final int fri = ri, frj = rj;
+                    List<RiaPlan> plans = submitToInferenceThread(() -> {
+                        RiverService.Region reg = rivers().region(fri, frj, (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true));
+                        int[] st = RiaPlan.stats(reg, fri, frj, size);
+                        for (int z = 0; z < stats.length; z++) stats[z] += st[z];
+                        return RiaPlan.of(reg, fri, frj, size);
+                    });
+                    for (RiaPlan p : plans) {
+                        if (!p.fjord) continue;
+                        count++;
+                        double d = Math.hypot(p.mouthZ - pi, p.mouthX - pj);
+                        if (d < bestD) { bestD = d; best = new Ria(p.mouthZ, p.mouthX, p.headZ(), p.headX()); }
+                    }
+                }
+                reached = half * 256;
+                progress.accept(reached);
+            }
         }
         return new RiaSearch(best, count, reached, stats);
     }
