@@ -1,6 +1,8 @@
 {
   "replace": false,
   "values": [
+    "terra:geothermal_basin",
+    "terra:yosemite",
     "terra:birch_taiga",
     "terra:boreal_forest",
     "terra:forested_highland",

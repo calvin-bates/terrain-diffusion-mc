@@ -721,12 +721,15 @@ biome("karst", id=92, base="jungle", temp=0.95, downfall=0.9,
       no_tags=["has_structure/jungle_temple"])
 
 # ---- v1.4 round D: showpieces (set by the tile: Showpieces tags, AridLandforms yosemite cut) ----
-# Geothermal basin floors (Yellowstone): white sinter (calcite, white terracotta) with grey tuff and orange and yellow
-# runoff stains; world/Geothermal lays the hot spring pools. Bright turquoise water.
+# Geothermal basin floors (Yellowstone): white sinter (calcite, white terracotta) with grey tuff, orange and yellow
+# runoff stains, sulfur crusts and specks of cinnabar; world/Geothermal lays the hot spring pools and the geysers.
+# Bright turquoise water.
 biome("geothermal_basin", id=93, base="taiga", temp=0.3, downfall=0.6,
       colors={"grass_color": "#8aa05a", "foliage_color": "#5f8a4c", "water_color": "#22c6e0"},
       veg=["minecraft:patch_dead_bush_2"],
-      top=rule((noise("surface_secondary", 0.5), "minecraft:orange_terracotta"),
+      top=rule((noise("surface_secondary", 0.62), "minecraft:sulfur"),
+               (noise("surface", -1e9, -0.6), "minecraft:cinnabar"),
+               (noise("surface_secondary", 0.5), "minecraft:orange_terracotta"),
                (noise("surface_secondary", 0.38), "minecraft:yellow_terracotta"),
                (noise("surface", -1e9, -0.35), "minecraft:tuff"),
                (noise("surface", 0.3), "minecraft:calcite"),

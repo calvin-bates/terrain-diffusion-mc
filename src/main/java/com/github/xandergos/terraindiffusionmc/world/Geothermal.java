@@ -22,6 +22,9 @@ import org.slf4j.LoggerFactory;
  * a bowl 1-3 blocks deep with a pale blue floor, ringed by yellow, then orange, then brown terracotta (the bacterial mats
  * of Grand Prismatic Spring). A third of them boil: soul sand in the middle under a bubble column. Every test reads the
  * tiles (neighbouring ones too), so pools across chunk and tile edges come out whole.
+ *
+ * <p>Geysers too: one candidate per {@link #GEYSER_CELL}-block cell, a sinter cone with 26.3's own geyser in its crater
+ * (see {@link #geyser}); pools keep clear of them.
  */
 public final class Geothermal {
     private static final Logger LOG = LoggerFactory.getLogger(Geothermal.class);
@@ -29,7 +32,7 @@ public final class Geothermal {
     /** Cell (blocks) holding at most one pool, chance of one, and the largest pool radius plus rings. */
     private static final int CELL = 18;
     private static final double CHANCE = 0.65;
-    private static final int REACH = 13;
+    private static final int REACH = 13;   // also covers a geyser apron's test window
 
     private static final FastNoiseLite EDGE = noise(77501, 1f / 4f);
     private static final FastNoiseLite RING = noise(77502, 1f / 3f);
@@ -88,8 +91,127 @@ public final class Geothermal {
                         if (q != null && q[3] < p[3] && Math.hypot(q[0] - p[0], q[1] - p[1]) < (q[2] + p[2]) * 1.25 + 5) blocked = true;
                     }
                 }
-                if (blocked) continue;
+                if (blocked || nearGeyser(seed, p[0], p[1], p[2] + 4)) continue;
                 pool(chunk, data, startX, startZ, scale, cx, cz, Double.doubleToRawLongBits(p[4]));
+            }
+        }
+        // Geysers: sinter cones with a vanilla geyser (potent sulfur over magma, water above) in a crater on top.
+        for (int gz = Math.floorDiv(z0 - GEYSER_REACH, GEYSER_CELL); gz <= Math.floorDiv(z0 + 15 + GEYSER_REACH, GEYSER_CELL); gz++) {
+            for (int gx = Math.floorDiv(x0 - GEYSER_REACH, GEYSER_CELL); gx <= Math.floorDiv(x0 + 15 + GEYSER_REACH, GEYSER_CELL); gx++) {
+                double[] g = geyserParams(seed, gx, gz);
+                if (g == null) continue;
+                int cx = (int) g[0], cz = (int) g[1];
+                if (cx + GEYSER_REACH < x0 || cx - GEYSER_REACH > x0 + 15 || cz + GEYSER_REACH < z0 || cz - GEYSER_REACH > z0 + 15) continue;
+                geyser(chunk, data, startX, startZ, scale, cx, cz, g[2], (int) g[3], g[4] > 0, Double.doubleToRawLongBits(g[5]));
+            }
+        }
+    }
+
+    // ---- Geysers ----
+
+    /** Cell (blocks) holding at most one geyser, the chance of one, and the farthest a geyser's cone and apron reach. */
+    private static final int GEYSER_CELL = 56;
+    private static final double GEYSER_CHANCE = 0.55, CONTINUOUS_CHANCE = 0.12;
+    private static final int GEYSER_REACH = 12;
+
+    /** Cell (gx, gz)'s candidate geyser {x, z, cone radius, rise, continuous (1/0), hash}, or null. */
+    private static double[] geyserParams(long seed, int gx, int gz) {
+        long h = mix(seed ^ ((long) gx * 0x632BE59BD9B4E019L) ^ ((long) gz * 0x85EBCA77C2B2AE63L) ^ 0x6E7L);
+        if (unit(h) >= GEYSER_CHANCE) return null;
+        int cx = gx * GEYSER_CELL + 12 + (int) ((GEYSER_CELL - 24) * unit(mix(h + 1)));
+        int cz = gz * GEYSER_CELL + 12 + (int) ((GEYSER_CELL - 24) * unit(mix(h + 2)));
+        double rc = 4 + 2.5 * unit(mix(h + 3));
+        int rise = 2 + (int) (3 * unit(mix(h + 4)));
+        return new double[]{cx, cz, rc, rise, unit(mix(h + 5)) < CONTINUOUS_CHANCE ? 1 : 0, Double.longBitsToDouble(h)};
+    }
+
+    /** Whether a geyser candidate stands within {@code reach} blocks (plus its cone) of (x, z). */
+    private static boolean nearGeyser(long seed, double x, double z, double reach) {
+        int gx0 = Math.floorDiv((int) x, GEYSER_CELL), gz0 = Math.floorDiv((int) z, GEYSER_CELL);
+        for (int gz = gz0 - 1; gz <= gz0 + 1; gz++) {
+            for (int gx = gx0 - 1; gx <= gx0 + 1; gx++) {
+                double[] g = geyserParams(seed, gx, gz);
+                if (g != null && Math.hypot(g[0] - x, g[1] - z) < reach + g[2] + 3) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A geyser: a cone of sinter (calcite, white terracotta, yellow at the top) rising {@code rise} blocks over the
+     * highest ground under it, a crater on top holding one block of water, and in its middle a vanilla geyser: potent
+     * sulfur over magma (erupting every so often; over lava for the continuous ones). Around its foot, an apron of sulfur
+     * with a few sulfur spikes. Reads the tiles, so cones across chunk and tile edges come out whole.
+     */
+    private static void geyser(ChunkAccess chunk, HeightmapData data, int startX, int startZ, int scale, int cx, int cz,
+                               double rc, int rise, boolean continuous, long h) {
+        HeightmapData centre = VolcanicSurfaces.tileAt(data, startX, startZ, cx, cz);
+        if (centre == null || centre.oceanTags == null) return;
+        int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
+        int lcx = cx - ((cx >> shift) << shift), lcz = cz - ((cz >> shift) << shift);
+        if (centre.oceanTags[lcz][lcx] != Showpieces.TAG_GEOTHERMAL) return;
+        int R = (int) Math.ceil(rc) + 4;
+        int base = Integer.MIN_VALUE;
+        for (int dz = -R; dz <= R; dz++) {
+            for (int dx = -R; dx <= R; dx++) {
+                if (Math.hypot(dx, dz) > rc) continue;
+                HeightmapData t = VolcanicSurfaces.tileAt(data, startX, startZ, cx + dx, cz + dz);
+                if (t == null) return;
+                int lx = cx + dx - (((cx + dx) >> shift) << shift), lz = cz + dz - (((cz + dz) >> shift) << shift);
+                if (t.waterY != null && t.waterY[lz][lx] != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE) return;
+                base = Math.max(base, VolcanicSurfaces.tileTop(data, startX, startZ, cx + dx, cz + dz, scale));
+            }
+        }
+        if (base == Integer.MIN_VALUE) return;
+        int top = base + rise;
+        ChunkPos cp = chunk.getPos();
+        int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        BlockState air = Blocks.AIR.defaultBlockState(), water = Blocks.WATER.defaultBlockState();
+        BlockState sulfur = Blocks.SULFUR.defaultBlockState(), calcite = Blocks.CALCITE.defaultBlockState();
+        BlockState white = Blocks.DYED_TERRACOTTA.white().defaultBlockState(), yellow = Blocks.DYED_TERRACOTTA.yellow().defaultBlockState();
+        for (int z = Math.max(z0, cz - R); z <= Math.min(z0 + 15, cz + R); z++) {
+            for (int x = Math.max(x0, cx - R); x <= Math.min(x0 + 15, cx + R); x++) {
+                double d = Math.hypot(x - cx, z - cz);
+                int ground = VolcanicSurfaces.tileTop(data, startX, startZ, x, z, scale);
+                if (d < rc) {
+                    // The cone: from the ground up to its surface, sinter inside, yellow and sulfur near the top.
+                    int surf = d < 2.6 ? top : (int) Math.round(top - (top - base) * Math.pow((d - 2.6) / Math.max(0.5, rc - 2.6), 1.2));
+                    for (int y = ground + 1; y <= Math.max(surf, ground) + 2; y++) chunk.setBlockState(pos.set(x, y, z), air, 0);
+                    for (int y = ground + 1; y <= surf; y++) {
+                        BlockState b = top - y <= 1 && d < 3.6 ? (RING.GetNoise(x * 2f, y * 3f, z * 2f) > 0f ? sulfur : yellow)
+                                : RING.GetNoise(x * 1.3f + 77, y * 2f, z * 1.3f) > 0.15f ? calcite : white;
+                        chunk.setBlockState(pos.set(x, y, z), b, 0);
+                    }
+                    if (d < 1.6) {
+                        // The crater: one block of water over a yellow floor; the vent in the middle.
+                        chunk.setBlockState(pos.set(x, top, z), air, 0);
+                        chunk.setBlockState(pos.set(x, top - 1, z), water, 0);
+                        boolean vent = x == cx && z == cz;
+                        if (vent) {
+                            BlockState potent = Blocks.POTENT_SULFUR.defaultBlockState().setValue(
+                                    net.minecraft.world.level.block.PotentSulfurBlock.STATE,
+                                    continuous ? net.minecraft.world.level.block.state.properties.PotentSulfurState.CONTINUOUS
+                                            : net.minecraft.world.level.block.state.properties.PotentSulfurState.DORMANT);
+                            chunk.setBlockState(pos.set(x, top - 2, z), potent, 0);
+                            chunk.setBlockEntity(new net.minecraft.world.level.block.entity.PotentSulfurBlockEntity(pos.immutable(), potent));
+                            chunk.setBlockState(pos.set(x, top - 3, z), continuous ? Blocks.LAVA.defaultBlockState() : Blocks.MAGMA_BLOCK.defaultBlockState(), 0);
+                            chunk.setBlockState(pos.set(x, top - 4, z), Blocks.STONE.defaultBlockState(), 0);
+                        } else {
+                            chunk.setBlockState(pos.set(x, top - 2, z), yellow, 0);
+                        }
+                    }
+                    continue;
+                }
+                // The apron: sulfur crust on the ground around the cone's foot, a few spikes on it.
+                if (d > rc + 3.5 || RING.GetNoise(x * 1.1f + 900, z * 1.1f) < -0.2f) continue;
+                BlockState st = chunk.getBlockState(pos.set(x, ground, z));
+                if (st.isAir() || !st.getFluidState().isEmpty()) continue;
+                BlockState above = chunk.getBlockState(pos.set(x, ground + 1, z));
+                if (!above.isAir() && !above.is(Blocks.SNOW) && !above.is(Blocks.SHORT_GRASS)) continue;
+                chunk.setBlockState(pos.set(x, ground, z), sulfur, 0);
+                if (above.is(Blocks.SNOW) || above.is(Blocks.SHORT_GRASS)) chunk.setBlockState(pos.set(x, ground + 1, z), air, 0);
+                if (unit(mix(h + 31L * x + 17L * z)) < 0.12) chunk.setBlockState(pos.set(x, ground + 1, z), Blocks.SULFUR_SPIKE.defaultBlockState(), 0);
             }
         }
     }
