@@ -6,7 +6,7 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
  * ({@link CoastShaper}) as the game, on the pipeline's elevation and climate.
  *
  * <p>Riverside and floodplain forests use the game's river regions ({@link LocalTerrainProvider#riverDistances}).
- * Leaves out the block-level steps that happen after {@link WorldPipeline#get} in the game (rias, spits and the other
+ * Leaves out the block-level steps that happen after {@link WorldPipeline#get} in the game (spits and the other
  * coastal plans, deltas, the elevation noise) and the river-mouth mask, so shores can differ by a pixel or two and a
  * river mouth may show a cliff the game doesn't make. Inland biomes are exactly the game's (the classifier is pointwise
  * and the patches are sampled in world metres, so they match at every scale).

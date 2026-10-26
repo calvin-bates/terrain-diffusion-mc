@@ -405,9 +405,6 @@ public final class DeltaPlan {
                     if (!RiverCarver.isDeltaHead(reg, k)) continue;
                     int m = RiverCarver.deltaMouth(reg, k);
                     if (m < 0) continue;
-                    // The last land pixel before the sea: a hilly, warm mouth may be a ria instead (see RiaPlan).
-                    int last = lastLand(reg, k);
-                    if (last >= 0 && RiaPlan.claims(reg, last)) continue;
                     list.add(new DeltaPlan(reg, k, m));
                 }
             }
@@ -417,18 +414,6 @@ public final class DeltaPlan {
             CACHE.put(reg, result);
         }
         return result;
-    }
-
-    /** The last land pixel on the flow path from k to the sea (within the delta's reach), or -1. */
-    private static int lastLand(RiverService.Region reg, int k) {
-        int cur = k;
-        for (int s = 0; s <= 40; s++) {
-            int d = reg.downstream[cur];
-            if (d < 0) return -1;
-            if (reg.elev[d] <= 0f) return cur;
-            cur = d;
-        }
-        return -1;
     }
 
     /**

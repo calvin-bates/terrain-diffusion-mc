@@ -2,7 +2,6 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.hydrology.DeltaPlan;
-import com.github.xandergos.terraindiffusionmc.hydrology.RiaPlan;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverMap;
 import com.github.xandergos.terraindiffusionmc.hydrology.RiverService;
@@ -233,34 +232,6 @@ public final class LocalTerrainProvider {
         });
     }
 
-    /** Largest window (native pixels a side) the explorer gets fjord and ria markers for: they need the hydrology. */
-    private static final int INLET_MARKER_MAX_PX = 1536;
-
-    /**
-     * Fjords and rias with their mouths in a native-pixel window, as explorer markers ({@code value} = how far the
-     * inlet's traced valley runs, km); empty for windows wider than {@link #INLET_MARKER_MAX_PX} (each hydrology region
-     * is computed if needed). Each region on the inference thread by itself.
-     */
-    public static java.util.List<OceanFeatures.Landmark> getInletLandmarks(int i1, int j1, int i2, int j2) throws Exception {
-        java.util.List<OceanFeatures.Landmark> out = new java.util.ArrayList<>();
-        if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.oceanFeatures()) return out;
-        if (i2 - i1 > INLET_MARKER_MAX_PX || j2 - j1 > INLET_MARKER_MAX_PX) return out;
-        int size = rivers().regionSize();
-        for (int ri = Math.floorDiv(i1, size); ri <= Math.floorDiv(i2 - 1, size); ri++) {
-            for (int rj = Math.floorDiv(j1, size); rj <= Math.floorDiv(j2 - 1, size); rj++) {
-                final int fri = ri, frj = rj;
-                List<RiaPlan> plans = submitToInferenceThread(() -> RiaPlan.of(
-                        rivers().region(fri, frj, (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true)), fri, frj, size));
-                for (RiaPlan p : plans) {
-                    if (p.mouthZ < i1 || p.mouthZ >= i2 || p.mouthX < j1 || p.mouthX >= j2) continue;
-                    float km = (float) Math.hypot(p.headX() - p.mouthX, p.headZ() - p.mouthZ) * NATIVE_RESOLUTION / 1000f;
-                    out.add(new OceanFeatures.Landmark(p.fjord ? "fjord" : "ria", p.mouthZ, p.mouthX, km));
-                }
-            }
-        }
-        return out;
-    }
-
     /** Ocean features centred in a native-pixel window (see {@link WorldPipeline#oceanLandmarks}). Inference thread. */
     public static java.util.List<OceanFeatures.Landmark> getOceanLandmarks(int i1, int j1, int i2, int j2) throws Exception {
         return submitToInferenceThread(() -> getInstance().pipeline.oceanLandmarks(i1, j1, i2, j2));
@@ -481,125 +452,6 @@ public final class LocalTerrainProvider {
         return best;
     }
 
-    /** Fjord search beyond the nearby rings: coarse squares up to this half-size (coarse pixels, ~7.7 km) and regions checked. */
-    private static final int FJORD_COARSE_MAX_HALF = 256, FJORD_MAX_CHECKS = 40;
-
-    /** A ria: its mouth and where its traced valley ends, in native pixels. */
-    public record Ria(float mouthI, float mouthJ, float headI, float headJ) {}
-
-    /** Result of a ria search: the nearest ria (or null), how many were seen, and how far the search reached. */
-    public record RiaSearch(Ria nearest, int count, int searchedRadiusPx, int[] stats) {}
-
-    /**
-     * The nearest ria (see {@link RiaPlan}) to native pixel (pi, pj), searching the hydrology regions ring by ring out to
-     * {@code maxRings} regions, like {@link #findNearestDelta}. Never call this on the server thread.
-     */
-    public static RiaSearch findNearestRia(double pi, double pj, int maxRings, java.util.function.IntConsumer progress)
-            throws Exception {
-        return findNearestRia(pi, pj, maxRings, false, progress);
-    }
-
-    /** As above, for fjords ({@code fjord}) or rias only. */
-    public static RiaSearch findNearestRia(double pi, double pj, int maxRings, boolean fjord,
-                                           java.util.function.IntConsumer progress) throws Exception {
-        int size = rivers().regionSize();
-        int ci = Math.floorDiv((int) Math.floor(pi), size), cj = Math.floorDiv((int) Math.floor(pj), size);
-        Ria best = null;
-        double bestD = Double.MAX_VALUE;
-        int count = 0, reached = 0;
-        int[] stats = new int[RiaPlan.REASONS.length];
-        for (int ring = 0; ring <= maxRings; ring++) {
-            for (int ri = ci - ring; ri <= ci + ring; ri++) {
-                for (int rj = cj - ring; rj <= cj + ring; rj++) {
-                    if (Math.max(Math.abs(ri - ci), Math.abs(rj - cj)) != ring) continue;
-                    final int fri = ri, frj = rj;
-                    List<RiaPlan> plans = submitToInferenceThread(() -> {
-                        RiverService.Region reg = rivers().region(fri, frj, (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true));
-                        int[] st = RiaPlan.stats(reg, fri, frj, size);
-                        for (int q = 0; q < stats.length; q++) stats[q] += st[q];
-                        return RiaPlan.of(reg, fri, frj, size);
-                    });
-                    for (RiaPlan p : plans) {
-                        if (p.fjord != fjord) continue;
-                        count++;
-                        double d = Math.hypot(p.mouthZ - pi, p.mouthX - pj);
-                        if (d < bestD) { bestD = d; best = new Ria(p.mouthZ, p.mouthX, p.headZ(), p.headX()); }
-                    }
-                }
-            }
-            reached = ring * size + size / 2;
-            progress.accept(reached);
-            if (best != null && bestD <= ring * size) break;
-        }
-        if (best == null && fjord) {
-            // Farther: fjords need a cold, mountainous coast, often far from the player. Find coasts like that on the
-            // coarse map (one coarse pixel is ~one hydrology region) in growing squares, and look at the hydrology
-            // regions there, nearest first (Calvin, Oct 26: none within 27 km of an inland start).
-            java.util.Set<Long> done = new java.util.HashSet<>();
-            int checked = 0;
-            int ccI = Math.floorDiv((int) Math.floor(pi), 256), ccJ = Math.floorDiv((int) Math.floor(pj), 256);
-            for (int half = 16; half <= FJORD_COARSE_MAX_HALF && best == null && checked < FJORD_MAX_CHECKS; half *= 2) {
-                int n = 2 * half + 1;
-                List<int[]> cands = new ArrayList<>();
-                for (int r0 = 0; r0 < n; r0 += 128) {
-                    for (int c0 = 0; c0 < n; c0 += 128) {
-                        int bh = Math.min(128, n - r0), bw = Math.min(128, n - c0), np = bh * bw;
-                        int gi = ccI - half + r0, gj = ccJ - half + c0;
-                        // One coarse pixel of margin, for the coast and relief tests.
-                        FloatTensor co = getPipelineCoarse(gi - 1, gj - 1, gi + bh + 1, gj + bw + 1);
-                        int W2 = bw + 2, n2 = (bh + 2) * W2;
-                        for (int r = 1; r <= bh; r++) {
-                            for (int c = 1; c <= bw; c++) {
-                                int px = r * W2 + c;
-                                float w = co.data[6 * n2 + px];
-                                if (w <= 1e-6f) continue;
-                                float e = co.data[px] / w, t = co.data[2 * n2 + px] / w;   // e: signed sqrt of metres
-                                if (e <= 0f || t > 7f) continue;
-                                boolean sea = false;
-                                float hi = e;
-                                for (int dr = -1; dr <= 1; dr++) {
-                                    for (int dc = -1; dc <= 1; dc++) {
-                                        int q = (r + dr) * W2 + c + dc;
-                                        float wq = co.data[6 * n2 + q];
-                                        if (wq <= 1e-6f) continue;
-                                        float eq = co.data[q] / wq;
-                                        if (eq < 0f) sea = true;
-                                        hi = Math.max(hi, eq);
-                                    }
-                                }
-                                if (sea && hi > 14f) cands.add(new int[]{gi + r - 1, gj + c - 1});
-                            }
-                        }
-                    }
-                }
-                cands.sort(java.util.Comparator.comparingDouble(q -> Math.hypot(q[0] - ccI, q[1] - ccJ)));
-                for (int[] q : cands) {
-                    if (checked >= FJORD_MAX_CHECKS) break;
-                    int ri = Math.floorDiv(q[0] * 256 + 128, size), rj = Math.floorDiv(q[1] * 256 + 128, size);
-                    if (!done.add(((long) ri << 32) ^ (rj & 0xffffffffL))) continue;
-                    if (best != null && (Math.hypot(ri * size + size / 2.0 - pi, rj * size + size / 2.0 - pj) - size) > bestD) break;
-                    checked++;
-                    final int fri = ri, frj = rj;
-                    List<RiaPlan> plans = submitToInferenceThread(() -> {
-                        RiverService.Region reg = rivers().region(fri, frj, (a, b, c, d) -> getInstance().pipeline.get(a, b, c, d, true));
-                        int[] st = RiaPlan.stats(reg, fri, frj, size);
-                        for (int z = 0; z < stats.length; z++) stats[z] += st[z];
-                        return RiaPlan.of(reg, fri, frj, size);
-                    });
-                    for (RiaPlan p : plans) {
-                        if (!p.fjord) continue;
-                        count++;
-                        double d = Math.hypot(p.mouthZ - pi, p.mouthX - pj);
-                        if (d < bestD) { bestD = d; best = new Ria(p.mouthZ, p.mouthX, p.headZ(), p.headX()); }
-                    }
-                }
-                reached = half * 256;
-                progress.accept(reached);
-            }
-        }
-        return new RiaSearch(best, count, reached, stats);
-    }
-
     /** Change to a random new seed; returns the new seed value. */
     public static long generateRandomSeedFromExplorer() throws Exception {
         long newSeed = new Random().nextLong();
@@ -777,83 +629,6 @@ public final class LocalTerrainProvider {
         }
     }
 
-    /**
-     * Rias (drowned river valleys, see {@link RiaPlan}) that may reach the native window [pi0, pi1) x [pj0, pj1), from
-     * the hydrology regions that own their mouths; empty if rivers or ocean features are off, the window has no ground
-     * near sea level, or the hydrology is unavailable. Runs on the inference thread.
-     */
-    private List<RiaPlan> riaPlansNear(float[] elevNative, int pi0, int pj0, int pi1, int pj1) {
-        if (!TerrainDiffusionConfig.riversEnabled() || !TerrainDiffusionConfig.oceanFeatures()) return List.of();
-        try {
-            RiverService svc = rivers();
-            int size = svc.regionSize();
-            RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
-            if (!mayHaveInlet(svc, source, elevNative, pi0, pj0, pi1, pj1)) return List.of();
-            int pad = RiaPlan.MAX_REACH_PX;
-            List<RiaPlan> out = new ArrayList<>();
-            float cx = (pj0 + pj1) / 2f, cz = (pi0 + pi1) / 2f, half = Math.max(pi1 - pi0, pj1 - pj0) / 2f;
-            for (int ri = Math.floorDiv(pi0 - pad, size); ri <= Math.floorDiv(pi1 + pad, size); ri++) {
-                for (int rj = Math.floorDiv(pj0 - pad, size); rj <= Math.floorDiv(pj1 + pad, size); rj++) {
-                    for (RiaPlan p : RiaPlan.of(svc.region(ri, rj, source), ri, rj, size)) {
-                        if (p.near(cx, cz, half + 2)) out.add(p);
-                    }
-                }
-            }
-            return out;
-        } catch (RuntimeException e) {
-            LOG.warn("Terra: rias unavailable for ({}, {}): {}", pj0, pi0, e.toString());
-            return List.of();
-        }
-    }
-
-    /**
-     * Whether a ria or fjord could change ground in native window [pi0, pi1) x [pj0, pj1): ground low enough for one lies
-     * within their sideways reach of it. Checked on the hydrology regions there (rivers need them anyway), so a tile
-     * showing only a fjord's high walls still finds the fjord. Rias are at most
-     * ~50 m up their valley floor, fjords (only where the river region is cold) up to {@link RiaPlan#FJORD_LOW_M}.
-     */
-    private static boolean mayHaveInlet(RiverService svc, RiverService.Source source, float[] elevNative,
-                                        int pi0, int pj0, int pi1, int pj1) {
-        for (float e : elevNative) if (e < 45f) return true;
-        int R = RiaPlan.MAX_SIDE_REACH_PX, size = svc.regionSize();
-        int a0 = pi0 - R, a1 = pi1 + R, b0 = pj0 - R, b1 = pj1 + R;
-        for (int ri = Math.floorDiv(a0, size); ri <= Math.floorDiv(a1 - 1, size); ri++) {
-            for (int rj = Math.floorDiv(b0, size); rj <= Math.floorDiv(b1 - 1, size); rj++) {
-                RiverService.Region reg = svc.region(ri, rj, source);
-                if (reg.elev == null) continue;
-                // This region's own square, within the window and its reach.
-                int i0 = Math.max(a0, ri * size), i1 = Math.min(a1, (ri + 1) * size);
-                int j0 = Math.max(b0, rj * size), j1 = Math.min(b1, (rj + 1) * size);
-                for (int i = i0; i < i1; i += 2) {
-                    for (int j = j0; j < j1; j += 2) {
-                        int k = reg.index(i, j);
-                        if (k < 0) continue;
-                        float e = reg.elev[k];
-                        if (e < 55f) return true;
-                        if (e < RiaPlan.FJORD_LOW_M && reg.temp != null && reg.temp[k] < RiaPlan.MIN_TEMP + 1f) return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Drowns the rias into a grid of ground heights (metres) at block resolution, in place: {@code grid[r][c]} is world
-     * block (bi0 + r, bj0 + c). Before biomes and the coast pass, so the inlets get ocean biomes and shores.
-     */
-    private static void applyRias(List<RiaPlan> plans, float[][] grid, int bi0, int bj0, int scale) {
-        if (plans.isEmpty()) return;
-        for (int r = 0; r < grid.length; r++) {
-            float z = (bi0 + r + 0.5f) / scale;
-            float[] row = grid[r];
-            for (int c = 0; c < row.length; c++) {
-                float x = (bj0 + c + 0.5f) / scale;
-                for (RiaPlan p : plans) row[c] = p.drown(x, z, row[c]);
-            }
-        }
-    }
-
     // ---- Spits, tombolos and cuspate forelands (CoastPlan) ----
 
     /** Coastal region plans, most recently used last. Plans are small (their distance grids are built on demand). */
@@ -878,7 +653,7 @@ public final class LocalTerrainProvider {
 
     /**
      * The coastal region plans (sand landforms) that may reach the native window [pi0, pi1) x [pj0, pj1), whose ground
-     * (at any resolution, after the rias) is {@code ground}; empty if ocean features are off or no ground in the window
+     * (at any resolution) is {@code ground}; empty if ocean features are off or no ground in the window
      * is low enough for a plan to change ({@link CoastPlan#touches}). Runs on the inference thread.
      */
     private List<CoastPlan> coastPlansNear(float[][] ground, int pi0, int pj0, int pi1, int pj1) {
@@ -899,7 +674,7 @@ public final class LocalTerrainProvider {
         }
     }
 
-    /** Builds the sand landforms into block-resolution ground (as {@link #applyRias}), in place. */
+    /** Builds the sand landforms into block-resolution ground, in place. */
     private static void applyCoastPlans(List<CoastPlan> plans, float[][] grid, int bi0, int bj0, int scale) {
         if (plans.isEmpty()) return;
         for (int r = 0; r < grid.length; r++) {
@@ -1195,8 +970,6 @@ public final class LocalTerrainProvider {
         final int M = CoastShaper.PLATFORM_LOOK_PX;
         float[] elevMargin = pipeline.get(i1 - M, j1 - M, i2 + M, j2 + M, false)[0];
         float[][] elevMargin2D = to2D(elevMargin, H + 2 * M, W + 2 * M);
-        List<RiaPlan> rias = riaPlansNear(elevMargin, i1 - M, j1 - M, i2 + M, j2 + M);
-        applyRias(rias, elevMargin2D, i1 - M, j1 - M, 1);
         List<CoastPlan> sand = coastPlansNear(elevMargin2D, i1 - M, j1 - M, i2 + M, j2 + M);
         applyCoastPlans(sand, elevMargin2D, i1 - M, j1 - M, 1);
         float[] elevPadded = cropFlat(elevMargin2D, M - 1, M - 1, H + 2, W + 2, H + 2 * M, W + 2 * M);
@@ -1204,7 +977,7 @@ public final class LocalTerrainProvider {
         float[][] out = pipeline.get(i1, j1, i2, j2, true, tags);
         float[] elevFlat = out[0];
         float[] climate  = out[1];
-        if (!rias.isEmpty() || !sand.isEmpty()) {
+        if (!sand.isEmpty()) {
             for (int r = 0; r < H; r++) System.arraycopy(elevMargin2D[r + M], M, elevFlat, r * W, W);
         }
 
@@ -1269,7 +1042,6 @@ public final class LocalTerrainProvider {
         // Bicubic, not bilinear: bilinear leaves creases along the 30 m pixel grid, which shows as square shores and terraces.
         float[][] elevUp = LaplacianUtils.bicubicResize(elevNative2D, nH * scale, nW * scale);
         settleShoreline(elevUp, i1p * scale, j1p * scale, scale);
-        applyRias(riaPlansNear(elevNativeFlat, i1p, j1p, i2p, j2p), elevUp, i1p * scale, j1p * scale, scale);
         applyCoastPlans(coastPlansNear(elevUp, i1p, j1p, i2p, j2p), elevUp, i1p * scale, j1p * scale, scale);
 
         // Crop offsets in the upsampled array
