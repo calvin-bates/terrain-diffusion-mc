@@ -104,6 +104,10 @@ public final class BiomePalette {
         put(86, "Volcano", 0x6E6A66);
         put(87, "Lava fields", 0x2B2626);
         put(88, "Glacier", 0xA8D8EC);
+        put(89, "Canyon", 0xB5512A);
+        put(90, "Badlands mesa", 0xC9733E);
+        put(91, "Alluvial fan", 0xB8A58A);
+        put(92, "Karst", 0x3F8F5A);
         put(133, "Mushroom Fields", 0xA070B0);
         // Shores
         put(130, "Beach", 0xF5E08A);

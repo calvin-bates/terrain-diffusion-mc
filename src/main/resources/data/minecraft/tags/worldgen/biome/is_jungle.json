@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
-    "terra:cloud_forest"
+    "terra:cloud_forest",
+    "terra:karst"
   ]
 }

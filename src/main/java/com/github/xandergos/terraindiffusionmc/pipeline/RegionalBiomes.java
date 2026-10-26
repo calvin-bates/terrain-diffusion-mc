@@ -36,6 +36,8 @@ public final class RegionalBiomes {
     public static final short VOLCANO = 86, LAVA_FIELDS = 87;
     /** Land glaciers (v1.4 round B), set by {@link GlacierShaper} where ice lies. */
     public static final short GLACIER = 88;
+    /** Dry-land landforms (v1.4 round C): canyon walls, badlands mesas, alluvial fans (by the tile), karst towers. */
+    public static final short CANYON = 89, BADLANDS_MESA = 90, ALLUVIAL_FAN = 91, KARST = 92;
 
     /** Id → biome name in the {@code terra} namespace, for the biome source and the explorer. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -46,7 +48,7 @@ public final class RegionalBiomes {
                 "mediterranean_scrub", "forested_highland", "temperate_highland", "rocky_desert", "cloud_forest",
                 "tropical_dry_forest", "aspen_grove", "shingle_beach", "salt_marsh", "tidal_flats", "white_cliffs",
                 "painted_mountains", "desert_oasis", "blooming_plateau", "blooming_valley", "lush_valley", "salt_flats", "arctic", "volcano", "lava_fields",
-                "glacier"};
+                "glacier", "canyon", "badlands_mesa", "alluvial_fan", "karst"};
         for (int k = 0; k < n.length; k++) NAMES.put((short) (TUNDRA + k), n[k]);
     }
 

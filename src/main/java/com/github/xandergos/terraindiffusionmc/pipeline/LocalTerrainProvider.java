@@ -1117,6 +1117,8 @@ public final class LocalTerrainProvider {
         CoastShaper.apply(elevMargin2D, M, M, H, W, 1, i1, j1, climate, elevFlat, biomeFlat,
                 riverMouthMask(elevFlat, i1, j1, H, W, 1));
         DeltaShaper.apply(deltaPlansNear(elevFlat, i1, j1, H, W, 1), elevFlat, biomeFlat, climate, i1, j1, H, W, 1);
+        landformsRoundC(elevFlat, biomeFlat, climate, elevMargin2D, M, M, i1 - M, j1 - M, climate, i1, j1, H, W,
+                i1, j1, H, W, 1, true);
         byte[][] blockTags1 = blockTags(tags, i1, j1, H, W, i1, j1, H, W, 1);
         mushroomFields(blockTags1, elevFlat, biomeFlat, W);
         volcanicBiomes(blockTags1, elevFlat, biomeFlat, W);
@@ -1201,6 +1203,8 @@ public final class LocalTerrainProvider {
         TerraPerf.end("tile.coast", t0);
         t0 = TerraPerf.start();
         DeltaShaper.apply(deltaPlansNear(elevOut, i1, j1, H, W, scale), elevOut, biomeFlat, climate, i1, j1, H, W, scale);
+        landformsRoundC(elevOut, biomeFlat, climate, elevUp, cropI1, cropJ1, i1p * scale, j1p * scale,
+                climateNativeFlat, i1p, j1p, nH, nW, i1, j1, H, W, scale, true);
         byte[][] blockTagsUp = blockTags(tagsNative, i1p, j1p, nH, nW, i1, j1, H, W, scale);
         mushroomFields(blockTagsUp, elevOut, biomeFlat, W);
         volcanicBiomes(blockTagsUp, elevOut, biomeFlat, W);
@@ -1215,6 +1219,204 @@ public final class LocalTerrainProvider {
         }
         TerraPerf.end("tile.deltas", t0);
         return data;
+    }
+
+    /**
+     * The dry-land and karst landforms of v1.4 round C on a tile's final ground: badlands mesas, canyons, alluvial fans,
+     * desert dunes and hoodoos ({@link AridLandforms}, {@link com.github.xandergos.terraindiffusionmc.hydrology.FanPlan})
+     * where it is arid, karst towers ({@link KarstTowers}) where it is hot and wet. {@code full} = false (the explorer's
+     * biome map) runs only the passes that change biomes.
+     *
+     * @param up        smooth upsampled ground with the tile's margin; {@code up[0][0]} is world block (upI0, upJ0)
+     * @param climNative climate at native pixels, {@code nH x nW} from native pixel (ni0, nj0), channels stacked
+     */
+    public void landformsRoundC(float[] elev, short[] biomes, float[] climate, float[][] up, int cropI, int cropJ,
+                                int upI0, int upJ0, float[] climNative, int ni0, int nj0, int nH, int nW,
+                                int i1, int j1, int H, int W, int scale, boolean full) {
+        if (!TerrainDiffusionConfig.aridLandforms() || climate == null || climNative == null) return;
+        int HW = H * W, nN = nH * nW;
+        if (climNative.length < 3 * nN) return;
+        boolean arid = false, tropic = false;
+        for (int k = 0; k < nN; k++) {
+            float t = climNative[k], p = climNative[2 * nN + k];
+            if (p < 450f && t > 2f) arid = true;
+            if (t >= 19f && p >= 1000f) tropic = true;
+        }
+        float mpb = NATIVE_RESOLUTION / scale;
+        AridLandforms.Field field = new AridLandforms.Field() {
+            @Override public float ground(float bi, float bj) {
+                return bilinearClamped(up, bi - upI0 - 0.5f, bj - upJ0 - 0.5f);
+            }
+            @Override public float temp(float bi, float bj) {
+                return nativeClimate(climNative, nH, nW, 0, bi / scale - 0.5f - ni0, bj / scale - 0.5f - nj0);
+            }
+            @Override public float precip(float bi, float bj) {
+                return nativeClimate(climNative, nH, nW, 2, bi / scale - 0.5f - ni0, bj / scale - 0.5f - nj0);
+            }
+        };
+        try {
+            if (arid) {
+                AridLandforms.mesas(elev, biomes, climate, i1, j1, H, W, mpb);
+                if (TerrainDiffusionConfig.riversEnabled()) {
+                    AridLandforms.canyons(elev, biomes, canyonSegments(i1, j1, H, W, scale), i1, j1, H, W, scale);
+                    alluvialFans(elev, biomes, i1, j1, H, W, scale);
+                }
+                if (full) {
+                    AridLandforms.dunes(elev, biomes, up, cropI, cropJ, i1, j1, H, W, mpb);
+                    AridLandforms.hoodoos(elev, biomes, field, i1, j1, H, W, scale);
+                }
+            }
+            if (tropic && KarstTowers.mayApply(i1, j1, H, W, mpb)) {
+                KarstTowers.RiverNear rivers = TerrainDiffusionConfig.riversEnabled() ? this::riverNear : null;
+                KarstTowers.apply(elev, biomes, field, rivers, i1, j1, H, W, scale);
+            }
+        } catch (RuntimeException e) {
+            LOG.warn("Terra: round C landforms unavailable for ({}, {}): {}", j1, i1, e.toString());
+        }
+    }
+
+    private static float bilinearClamped(float[][] a, float r, float c) {
+        int h = a.length, w = a[0].length;
+        r = Math.max(0f, Math.min(h - 1.001f, r));
+        c = Math.max(0f, Math.min(w - 1.001f, c));
+        int r0 = (int) r, c0 = (int) c;
+        float fr = r - r0, fc = c - c0;
+        return (a[r0][c0] * (1 - fc) + a[r0][c0 + 1] * fc) * (1 - fr) + (a[r0 + 1][c0] * (1 - fc) + a[r0 + 1][c0 + 1] * fc) * fr;
+    }
+
+    /** Channel {@code ch} of a native climate grid at fractional native pixel (fi, fj) (pixel centres at integers). */
+    private static float nativeClimate(float[] clim, int nH, int nW, int ch, float fi, float fj) {
+        fi = Math.max(0f, Math.min(nH - 1.001f, fi));
+        fj = Math.max(0f, Math.min(nW - 1.001f, fj));
+        int r0 = (int) fi, c0 = (int) fj, o = ch * nH * nW;
+        float fr = fi - r0, fc = fj - c0;
+        return (clim[o + r0 * nW + c0] * (1 - fc) + clim[o + r0 * nW + c0 + 1] * fc) * (1 - fr)
+                + (clim[o + (r0 + 1) * nW + c0] * (1 - fc) + clim[o + (r0 + 1) * nW + c0 + 1] * fc) * fr;
+    }
+
+    /** River segments (channel pixel to the next downstream) whose canyons may reach the tile's blocks. */
+    private List<AridLandforms.Segment> canyonSegments(int i1, int j1, int H, int W, int scale) {
+        int R = AridLandforms.CANYON_REACH_PX + 1;
+        int pi0 = Math.floorDiv(i1, scale) - R, pj0 = Math.floorDiv(j1, scale) - R;
+        int pi1 = Math.floorDiv(i1 + H - 1, scale) + R, pj1 = Math.floorDiv(j1 + W - 1, scale) + R;
+        RiverService svc = rivers();
+        RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+        List<AridLandforms.Segment> out = new ArrayList<>();
+        Map<Long, float[]> shapes = new java.util.HashMap<>();
+        for (int i = pi0; i <= pi1; i++) {
+            for (int j = pj0; j <= pj1; j++) {
+                RiverService.Region reg = svc.regionOfPixel(i, j, source);
+                int k = reg.index(i, j);
+                if (k < 0 || reg.temp == null || reg.precip == null) continue;
+                byte cls = reg.cls[k];
+                if (cls < RiverMap.STREAM || cls > RiverMap.MAIN) continue;
+                int d = reg.downstream[k];
+                if (d < 0) continue;
+                int di = reg.i0 + d / reg.width, dj = reg.j0 + d % reg.width;
+                float wA = AridLandforms.canyonWeight(i, j, reg.temp[k], reg.precip[k]);
+                float wB = AridLandforms.canyonWeight(di, dj, reg.temp[d], reg.precip[d]);
+                if (wA <= 0f && wB <= 0f) continue;
+                float sA = reg.size != null ? reg.size[k] : cls;
+                byte cd = reg.cls[d];
+                float sB = cd >= RiverMap.STREAM && cd <= RiverMap.MAIN ? (reg.size != null ? reg.size[d] : cd) : sA;
+                float[] shA = canyonShape(shapes, reg, i, j, AridLandforms.halfWidth(sA, i, j));
+                RiverService.Region regB = svc.regionOfPixel(di, dj, source);
+                float[] shB = canyonShape(shapes, regB, di, dj, AridLandforms.halfWidth(sB, di, dj));
+                out.add(new AridLandforms.Segment(j + 0.5f, i + 0.5f, dj + 0.5f, di + 0.5f, reg.surface[k], reg.surface[d],
+                        shA[1], shB[1], wA, wB, shA[0], shB[0], (long) i * 0x9E3779B97F4A7C15L ^ (long) j * 0xC2B2AE3D27D4EB4FL));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * A canyon's rim (m) and half-width (native pixels) at channel pixel (i, j): the highest model ground within
+     * {@link AridLandforms#CANYON_MAX_HW_PX} (rings of 16 samples every 2 pixels), and the radius where the ground
+     * first comes within a quarter of the canyon's depth of that rim (so the canyon spans the valley it is cut into),
+     * at least the channel's own half-width {@code minHw}. From the region that owns the pixel (its margin covers the
+     * rings), so it is the same in every tile.
+     */
+    private static float[] canyonShape(Map<Long, float[]> cache, RiverService.Region reg, int i, int j, float minHw) {
+        long key = ((long) i << 32) ^ (j & 0xFFFFFFFFL);
+        float[] v = cache.get(key);
+        if (v != null) return v;
+        int k0 = reg.index(i, j);
+        float level = k0 >= 0 && reg.elev != null ? reg.elev[k0] : 0f;
+        int maxR = (int) AridLandforms.CANYON_MAX_HW_PX;
+        float[] ring = new float[maxR / 2 + 1];
+        float rim = level;
+        for (int q = 1; q <= maxR / 2; q++) {
+            int rr = 2 * q;
+            float m = -Float.MAX_VALUE;
+            for (int a = 0; a < 16; a++) {
+                double ang = a * Math.PI / 8;
+                int ii = i + (int) Math.round(rr * Math.sin(ang)), jj = j + (int) Math.round(rr * Math.cos(ang));
+                int k = reg.index(ii, jj);
+                if (k >= 0 && reg.elev != null) m = Math.max(m, reg.elev[k]);
+            }
+            ring[q] = m == -Float.MAX_VALUE ? level : m;
+            rim = Math.max(rim, ring[q]);
+        }
+        rim = Math.min(rim, level + AridLandforms.CANYON_MAX_DEPTH_M);
+        float need = level + 0.75f * (rim - level);
+        float hw = AridLandforms.CANYON_MAX_HW_PX;
+        for (int q = 1; q < ring.length; q++) {
+            if (ring[q] >= need) { hw = 2 * q * 1.15f; break; }
+        }
+        hw = Math.max(minHw, Math.min(AridLandforms.CANYON_MAX_HW_PX, hw));
+        v = new float[]{rim, hw};
+        cache.put(key, v);
+        return v;
+    }
+
+    /** Raises the alluvial fans near the tile ({@link com.github.xandergos.terraindiffusionmc.hydrology.FanPlan}). */
+    private void alluvialFans(float[] elev, short[] biomes, int i1, int j1, int H, int W, int scale) {
+        int pad = com.github.xandergos.terraindiffusionmc.hydrology.FanPlan.MAX_RADIUS_PX + 2;
+        int pi0 = Math.floorDiv(i1, scale), pj0 = Math.floorDiv(j1, scale);
+        int pi1 = Math.floorDiv(i1 + H - 1, scale) + 1, pj1 = Math.floorDiv(j1 + W - 1, scale) + 1;
+        RiverService svc = rivers();
+        int size = svc.regionSize();
+        RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+        float cx = (pj0 + pj1) / 2f, cz = (pi0 + pi1) / 2f, half = Math.max(pi1 - pi0, pj1 - pj0) / 2f;
+        List<com.github.xandergos.terraindiffusionmc.hydrology.FanPlan> fans = new ArrayList<>();
+        for (int ri = Math.floorDiv(pi0 - pad, size); ri <= Math.floorDiv(pi1 + pad, size); ri++) {
+            for (int rj = Math.floorDiv(pj0 - pad, size); rj <= Math.floorDiv(pj1 + pad, size); rj++) {
+                // Only regions the rivers already need nearby, or that the fans can reach.
+                for (var f : com.github.xandergos.terraindiffusionmc.hydrology.FanPlan.of(svc.region(ri, rj, source), ri, rj, size)) {
+                    if (f.near(cx, cz, half + 2)) fans.add(f);
+                }
+            }
+        }
+        if (fans.isEmpty()) return;
+        for (int r = 0; r < H; r++) {
+            float z = (i1 + r + 0.5f) / scale;
+            for (int c = 0; c < W; c++) {
+                float x = (j1 + c + 0.5f) / scale;
+                int k = r * W + c;
+                float e = elev[k], best = 0f;
+                for (var f : fans) best = Math.max(best, f.raise(x, z, e));
+                if (best <= 0f) continue;
+                elev[k] = e + best;
+                if (best > 1.5f && !BiomeClassifier.isOceanBiome(biomes[k])) biomes[k] = RegionalBiomes.ALLUVIAL_FAN;
+            }
+        }
+    }
+
+    /** Whether a river, stream or lake runs within {@code px} native pixels of native point (i, j). */
+    private boolean riverNear(float i, float j, float px) {
+        RiverService svc = rivers();
+        RiverService.Source source = (a, b, c, d) -> pipeline.get(a, b, c, d, true);
+        int r = (int) Math.ceil(px);
+        int ci = (int) Math.floor(i), cj = (int) Math.floor(j);
+        for (int a = ci - r; a <= ci + r; a++) {
+            for (int b = cj - r; b <= cj + r; b++) {
+                if ((a + 0.5f - i) * (a + 0.5f - i) + (b + 0.5f - j) * (b + 0.5f - j) > px * px) continue;
+                RiverService.Region reg = svc.regionOfPixel(a, b, source);
+                int k = reg.index(a, b);
+                if (k >= 0 && reg.cls[k] >= RiverMap.STREAM) return true;
+            }
+        }
+        return false;
     }
 
     /** Raised marine terraces ({@link MarineTerraces}) on the tile's ground, where a terrace zone meets the sea. */

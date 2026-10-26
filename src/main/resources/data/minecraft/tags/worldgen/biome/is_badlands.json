@@ -1,6 +1,8 @@
 {
   "replace": false,
   "values": [
+    "terra:badlands_mesa",
+    "terra:canyon",
     "terra:painted_mountains"
   ]
 }

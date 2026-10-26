@@ -78,6 +78,78 @@
     {
       "type": "minecraft:condition",
       "if_true": {
+        "type": "minecraft:biome",
+        "biome_is": [
+          "terra:canyon"
+        ]
+      },
+      "then_run": {
+        "type": "minecraft:condition",
+        "if_true": {
+          "type": "minecraft:stone_depth",
+          "offset": 80,
+          "surface_type": "floor",
+          "add_surface_depth": false,
+          "secondary_depth_range": 0
+        },
+        "then_run": {
+          "type": "minecraft:bandlands"
+        }
+      }
+    },
+    {
+      "type": "minecraft:condition",
+      "if_true": {
+        "type": "minecraft:biome",
+        "biome_is": [
+          "terra:badlands_mesa"
+        ]
+      },
+      "then_run": {
+        "type": "minecraft:condition",
+        "if_true": {
+          "type": "minecraft:stone_depth",
+          "offset": 70,
+          "surface_type": "floor",
+          "add_surface_depth": false,
+          "secondary_depth_range": 0
+        },
+        "then_run": {
+          "type": "minecraft:sequence",
+          "sequence": [
+            {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:not",
+                "invert": {
+                  "type": "minecraft:steep"
+                }
+              },
+              "then_run": {
+                "type": "minecraft:condition",
+                "if_true": {
+                  "type": "minecraft:stone_depth",
+                  "offset": 0,
+                  "surface_type": "floor",
+                  "add_surface_depth": false,
+                  "secondary_depth_range": 0
+                },
+                "then_run": {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:red_sand"
+                }
+              }
+            },
+            {
+              "type": "minecraft:bandlands"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "minecraft:condition",
+      "if_true": {
         "type": "minecraft:stone_depth",
         "offset": 0,
         "surface_type": "floor",
@@ -608,6 +680,132 @@
                 {
                   "type": "minecraft:block",
                   "result_state": "minecraft:blackstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:volcano"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.35,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.05,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:tuff"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface_secondary",
+                    "min_threshold": 0.2,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:andesite"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:lava_fields"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.3,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:smooth_basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": -0.15,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:blackstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:glacier"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.25,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:stone"
                 }
               ]
             }
@@ -2009,6 +2207,102 @@
           {
             "type": "minecraft:condition",
             "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:alluvial_fan"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.25,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": -0.2,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:coarse_dirt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:sand"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:karst"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:steep"
+                  },
+                  "then_run": {
+                    "type": "minecraft:sequence",
+                    "sequence": [
+                      {
+                        "type": "minecraft:condition",
+                        "if_true": {
+                          "type": "minecraft:noise_threshold",
+                          "noise": "minecraft:surface",
+                          "min_threshold": 0.15,
+                          "max_threshold": 1.7976931348623157e+308
+                        },
+                        "then_run": {
+                          "type": "minecraft:block",
+                          "result_state": "minecraft:calcite"
+                        }
+                      },
+                      {
+                        "type": "minecraft:block",
+                        "result_state": "minecraft:stone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.3,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:moss_block"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
               "type": "minecraft:y_above",
               "anchor": {
                 "absolute": 62
@@ -2359,6 +2653,86 @@
             "if_true": {
               "type": "minecraft:biome",
               "biome_is": [
+                "terra:volcano"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.35,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:tuff"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:lava_fields"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.2,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:basalt"
+                  }
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:blackstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:glacier"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:stone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
                 "terra:polar_desert"
               ]
             },
@@ -2688,6 +3062,71 @@
                   "result_state": "minecraft:stone"
                 }
               ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:alluvial_fan"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:sequence",
+              "sequence": [
+                {
+                  "type": "minecraft:condition",
+                  "if_true": {
+                    "type": "minecraft:noise_threshold",
+                    "noise": "minecraft:surface",
+                    "min_threshold": 0.0,
+                    "max_threshold": 1.7976931348623157e+308
+                  },
+                  "then_run": "minecraft:overworld/gravel_or_stone_if_ceiling"
+                },
+                {
+                  "type": "minecraft:block",
+                  "result_state": "minecraft:sandstone"
+                }
+              ]
+            }
+          },
+          {
+            "type": "minecraft:condition",
+            "if_true": {
+              "type": "minecraft:biome",
+              "biome_is": [
+                "terra:karst"
+              ]
+            },
+            "then_run": {
+              "type": "minecraft:condition",
+              "if_true": {
+                "type": "minecraft:steep"
+              },
+              "then_run": {
+                "type": "minecraft:sequence",
+                "sequence": [
+                  {
+                    "type": "minecraft:condition",
+                    "if_true": {
+                      "type": "minecraft:noise_threshold",
+                      "noise": "minecraft:surface",
+                      "min_threshold": 0.15,
+                      "max_threshold": 1.7976931348623157e+308
+                    },
+                    "then_run": {
+                      "type": "minecraft:block",
+                      "result_state": "minecraft:calcite"
+                    }
+                  },
+                  {
+                    "type": "minecraft:block",
+                    "result_state": "minecraft:stone"
+                  }
+                ]
+              }
             }
           },
           {

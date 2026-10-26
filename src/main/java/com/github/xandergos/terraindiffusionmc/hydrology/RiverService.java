@@ -29,6 +29,8 @@ public final class RiverService {
         public final float[] elev;
         /** Mean annual temperature (deg C) per pixel, or null if the source gave no climate. */
         public final float[] temp;
+        /** Annual precipitation (mm) per pixel, or null if the source gave no climate. */
+        public final float[] precip;
         /** Continuous channel size per pixel ({@link RiverMap.Result#size}), or null. */
         public final float[] size;
         /** The region's index and side (its own square is [ri*size, (ri+1)*size) on each axis). */
@@ -50,6 +52,8 @@ public final class RiverService {
             this.size = res.size;
             this.temp = climate == null || climate.length < height * width ? null
                     : java.util.Arrays.copyOf(climate, height * width);   // channel 0 of the climate is temperature
+            this.precip = climate == null || climate.length < 3 * height * width ? null
+                    : java.util.Arrays.copyOfRange(climate, 2 * height * width, 3 * height * width);
             // Lake components.
             int n = height * width;
             lakeComp = new int[n];

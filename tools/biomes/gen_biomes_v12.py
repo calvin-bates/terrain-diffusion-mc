@@ -671,6 +671,48 @@ biome("glacier", id=88, base="frozen_peaks", temp=-0.7, downfall=0.6,
       no_tags=["has_structure/village_snowy", "has_structure/pillager_outpost"])
 
 
+# ---- v1.4 round C: dry-land landforms and karst (set by the tile: pipeline/AridLandforms, FanPlan, KarstTowers) ----
+TOP_BLOCK = {"type": "minecraft:stone_depth", "offset": 0, "surface_type": "floor", "add_surface_depth": False,
+             "secondary_depth_range": 0}
+NOT_STEEP = {"type": "minecraft:not", "invert": STEEP}
+BADLANDS_VEG = ["minecraft:patch_grass_badlands", "minecraft:patch_dry_grass_badlands", "minecraft:patch_dead_bush_badlands",
+                "minecraft:patch_cactus_decorated"]
+# Canyon walls and floors: banded terracotta 80 blocks down every column (the cliffs show the bands).
+biome("canyon", id=89, base="badlands", temp=2.0, downfall=0.0,
+      colors={"grass_color": "#90814d", "foliage_color": "#9e814d"},
+      veg=BADLANDS_VEG,
+      top=None, deep=(80, {"type": "minecraft:bandlands"}, "before"),
+      no_tags=["has_structure/village_plains", "has_structure/village_desert"])
+# Badlands mesas: banded terracotta layers, red sand on the flat tops and benches.
+biome("badlands_mesa", id=90, base="badlands", temp=2.0, downfall=0.0,
+      colors={"grass_color": "#90814d", "foliage_color": "#9e814d"},
+      veg=BADLANDS_VEG,
+      top=None, deep=(70, {"type": "minecraft:sequence", "sequence": [
+          {"type": "minecraft:condition", "if_true": NOT_STEEP, "then_run": {
+              "type": "minecraft:condition", "if_true": TOP_BLOCK, "then_run": block("minecraft:red_sand")}},
+          {"type": "minecraft:bandlands"}]}, "before"),
+      no_tags=["has_structure/village_plains", "has_structure/village_desert"])
+# Alluvial fans: gravel, coarse dirt and sand spread from desert valley mouths.
+biome("alluvial_fan", id=91, base="desert", temp=1.8, downfall=0.0, precip=False,
+      colors={"grass_color": "#bfb77a", "foliage_color": "#aea06a"},
+      veg=["minecraft:patch_dead_bush_2", "minecraft:patch_dry_grass_desert"],
+      top=rule((noise("surface", 0.25), GRAVEL), (noise("surface", -0.2), "minecraft:coarse_dirt"), (None, "minecraft:sand")),
+      under=rule((noise("surface", 0.0), GRAVEL), (None, "minecraft:sandstone")), top_wet=True,
+      no_tags=["has_structure/village_desert", "has_structure/desert_pyramid"])
+# Karst towers: bare limestone (stone and calcite) on the cliffs, moss and jungle on the tops.
+KARST_ROCK = {"type": "minecraft:sequence", "sequence": [
+    {"type": "minecraft:condition", "if_true": noise("surface", 0.15), "then_run": block("minecraft:calcite")},
+    block("minecraft:stone")]}
+biome("karst", id=92, base="jungle", temp=0.95, downfall=0.9,
+      colors={"grass_color": "#59c93c", "foliage_color": "#30bb0b"},
+      veg=["minecraft:trees_sparse_jungle", "minecraft:flower_warm", "minecraft:patch_grass_jungle",
+           "minecraft:patch_sugar_cane", "minecraft:vines", "terra:patch_moss_carpet"],
+      top={"type": "minecraft:sequence", "sequence": [
+          {"type": "minecraft:condition", "if_true": STEEP, "then_run": KARST_ROCK},
+          {"type": "minecraft:condition", "if_true": noise("surface", 0.3), "then_run": block("minecraft:moss_block")}]},
+      under={"type": "minecraft:condition", "if_true": STEEP, "then_run": KARST_ROCK}, top_wet=True,
+      no_tags=["has_structure/jungle_temple"])
+
 
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
