@@ -88,7 +88,7 @@ public final class RegionalBiomes {
     static final float ASPEN_SHARE = 0.45f, MOORLAND_SHARE = 0.4f, STEPPE_SHARE = 0.5f, PRAIRIE_SHARE = 0.5f;
     static final float MEDITERRANEAN_SHARE = 0.65f, TROPICAL_DRY_SHARE = 0.6f, ROCKY_DESERT_SHARE = 0.7f;
     /** v1.3 rare land biomes. */
-    static final float PAINTED_SHARE = 0.15f, OASIS_SHARE = 0.06f, BLOOMING_PLATEAU_SHARE = 0.15f;
+    static final float PAINTED_SHARE = 0.1f, OASIS_SHARE = 0.06f, BLOOMING_PLATEAU_SHARE = 0.15f;
     static final float BLOOMING_VALLEY_SHARE = 0.12f, LUSH_VALLEY_SHARE = 0.15f;
     private static final float BROAD_M = 12000f, MID_M = 6500f, SMALL_M = 3500f;
     /** Oases are small: ~1.2 km wavelength after the biome size factor, patches a few hundred metres across. */
@@ -112,10 +112,12 @@ public final class RegionalBiomes {
         this.seed = seed;
         int s = (int) (seed ^ (seed >>> 32)) + 200;
         rules = new Rule[]{
-                // Banded terracotta mountains in hot, arid land (sea-level temperature, so high ground counts).
-                rule(s, PAINTED_MOUNTAINS, MID_M, PAINTED_SHARE, p -> ramp(p.temp + 0.0065f * p.altM, 20f, 24f)
-                        * ramp(p.altM, 700f, 1100f) * (1f - ramp(p.treeMoisture, 0.12f, 0.2f)),
-                        DESERT, WINDSWEPT_HILLS, BiomeClassifier.STONY_PEAKS, GROVE),
+                // Banded terracotta hills in hot desert only (Calvin, Oct 26: with the sea-level temperature and stony
+                // peaks, windswept hills and grove as parents they spread over cold high mountains): desert parents, warm
+                // where they stand, very dry, raised ground.
+                rule(s, PAINTED_MOUNTAINS, MID_M, PAINTED_SHARE, p -> ramp(p.temp, 14f, 18f)
+                        * ramp(p.altM, 600f, 900f) * (1f - ramp(p.treeMoisture, 0.06f, 0.12f)) * (1f - ramp(p.precip, 200f, 320f)),
+                        DESERT),
                 // Small water-and-palm clusters on flat, low desert.
                 rule(s, DESERT_OASIS, OASIS_M, OASIS_SHARE, p -> (1f - ramp(p.altM, 600f, 900f))
                         * (1f - ramp(p.slope, 0.05f, 0.1f)), DESERT),
