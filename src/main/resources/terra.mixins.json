@@ -10,6 +10,8 @@
     "ChunkGeneratorMixin",
     "LakeFeatureMixin",
     "MinecraftServerMixin",
+    "MirageMooshroomMixin",
+    "MushroomCowAccessor",
     "MonumentBuildingAccessor",
     "NoiseBasedChunkGeneratorMixin",
     "OceanMonumentMixin",

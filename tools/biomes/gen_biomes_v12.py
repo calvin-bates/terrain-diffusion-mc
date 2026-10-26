@@ -752,6 +752,7 @@ biome("yosemite", id=94, base="old_growth_pine_taiga", temp=0.35, downfall=0.8,
       deep=(40, WHITE_GRANITE, "after"),
       no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
 # Mirage isles: sheer pale cliffs in bands (calcite, white and pink terracotta), teal jungle and giant mushrooms on top.
+# Like mushroom fields: no monsters, mooshrooms (red and brown, see MirageMooshroomMixin; grass counts for them).
 MIRAGE_BANDS = ["minecraft:calcite", "minecraft:white_terracotta", "minecraft:pink_terracotta", "minecraft:white_terracotta",
                 "minecraft:calcite", "minecraft:smooth_sandstone", "minecraft:white_terracotta", "minecraft:terracotta"]
 MIRAGE_STRATA = {"type": "minecraft:sequence", "sequence": [
@@ -762,7 +763,7 @@ MIRAGE_STRATA = {"type": "minecraft:sequence", "sequence": [
 biome("mirage_isles", id=95, base="sparse_jungle", temp=0.9, downfall=0.8,
       colors={"grass_color": "#5fd2b0", "foliage_color": "#36d1bd", "water_color": "#43c8e0"},
       veg=["terra:trees_mirage", "minecraft:patch_grass_jungle", "minecraft:flower_warm", "minecraft:vines"],
-      top=None, deep=(60, MIRAGE_STRATA, "after"),
+      top=None, deep=(60, MIRAGE_STRATA, "after"), spawns_from="mushroom_fields",
       no_tags=["has_structure/jungle_temple"])
 
 
@@ -793,6 +794,16 @@ def main():
     for name, d in B.items():
         base = load(f"{VANILLA}/worldgen/biome/{d['base']}.json")
         out = dict(base)
+        if d.get("spawns_from"):
+            # Mob spawns (and the no-patrols flag) from another vanilla biome, e.g. mushroom fields' mooshrooms only.
+            src = load(f"{VANILLA}/worldgen/biome/{d['spawns_from']}.json").get("attributes", {})
+            attrs = dict(out.get("attributes", {}))
+            for key in ("minecraft:gameplay/natural_mob_spawns", "minecraft:gameplay/can_pillager_patrol_spawn"):
+                if key in src:
+                    attrs[key] = src[key]
+                else:
+                    attrs.pop(key, None)
+            out["attributes"] = attrs
         out["temperature"] = d["temp"]
         out["downfall"] = d["downfall"]
         out["has_precipitation"] = d.get("precip", True)
