@@ -34,8 +34,8 @@ public final class AridLandforms {
     private static final FastNoiseLite DUNE_BREAK = noise(7409, 1f / 260f, 1);
     private static final FastNoiseLite HOODOO_ZONE = noise(7410, 1f / 700f, 2);
 
-    /** Zone noise levels (2-octave simplex, about -0.7..0.7): higher = rarer. */
-    static final float MESA_ZONE_LEVEL = 0.1f, CANYON_ZONE_LEVEL = 0.05f, ERG_ZONE_LEVEL = 0.0f, HOODOO_ZONE_LEVEL = 0.2f;
+    /** Zone noise levels (2-octave simplex; 0.55 leaves ~10% of the world in the zone, 0.6 ~7%): higher = rarer. */
+    static final float MESA_ZONE_LEVEL = 0.6f, CANYON_ZONE_LEVEL = 0.55f, ERG_ZONE_LEVEL = 0.0f, HOODOO_ZONE_LEVEL = 0.2f;
     /** Canyon half-width (native pixels) for a stream, a river and a main river (times 0.8-1.2 by channel). */
     static final float CANYON_HW_STREAM = 6f, CANYON_HW_RIVER = 10f, CANYON_HW_MAIN = 14f;
     /** How far past its half-width (fraction) a canyon segment is looked at; its profile is far above any rim there. */
@@ -174,6 +174,9 @@ public final class AridLandforms {
                     if (w <= 0f) continue;
                     float level = s.levelA() + (s.levelB() - s.levelA()) * t;
                     float depth = Math.max(0f, s.rimA() + (s.rimB() - s.rimA()) * t - level);
+                    // Only deep valleys become canyons: shallow ones (grassland streams) were flagged as canyon too.
+                    w *= smoothstep(80f, 200f, depth);
+                    if (w <= 0f) continue;
                     float tgt = level + (1f - w) * 600f + profile(u, depth, f1, f2);
                     int k = r * nw + c;
                     if (tgt < tn[k]) tn[k] = tgt;
