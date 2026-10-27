@@ -14,6 +14,7 @@ Usage (from the repo root):
 Re-running is safe: it rewrites its own files and replaces its own entries in tags and the material rule.
 """
 import json
+import math
 import os
 import sys
 
@@ -874,10 +875,32 @@ YS_PATCH = "terra:yellowstone/calcite_patch"
 YS_VEIN = "terra:yellowstone/gravel"
 YS_DIRT = "terra:yellowstone/dirt"
 YS_CLIFF = "terra:yellowstone/calcite_cliff"
-NOISES = {"yellowstone/calcite_patch": {"firstOctave": -6, "amplitudes": [1.6, 0.9, 1.0, 2.5, 0.0, 1.25, 4.3]},
-          "yellowstone/gravel": {"firstOctave": -5, "amplitudes": [1.0, 0.25]},
-          "yellowstone/dirt": {"firstOctave": -2, "amplitudes": [1.0, 0.75, 1.5]},
-          "yellowstone/calcite_cliff": {"firstOctave": -7, "amplitudes": [1.0, 1.0, 0.5, 1.25]}}
+def parity_noise(first_octave, amplitudes):
+    """An old-format noise (firstOctave, amplitudes) in 26.3's format, as NormalNoise.createParity converts it."""
+    n = len(amplitudes)
+    amp = 2.0 ** (n - 1) / (2.0 ** n - 1.0)
+    octs = []
+    for a in amplitudes:
+        if a != 0.0:
+            octs.append(abs(amp * a))
+        amp *= 0.5
+    target = sum(octs)
+    dev = math.sqrt(sum((0.2702247831245211 * o) ** 2 for o in octs)) * math.sqrt(2.0)
+    new_norm = (target / 3.0) / dev
+    nz = [i for i, a in enumerate(amplitudes) if a != 0.0]
+    old_norm = 0.5 / 3.0 / (0.1 * (1.0 + 1.0 / (nz[-1] - nz[0] + 1)))
+    out = {"base_amplitude": old_norm / new_norm, "base_octave": first_octave, "octave_count": n}
+    if any(a != 1.0 for a in amplitudes):
+        out["amplitude_modifiers"] = list(amplitudes)
+    return out
+
+
+assert abs(parity_noise(-6, [1.0, 1.0, 1.0])["base_amplitude"] - 0.9381732587751008) < 1e-9   # vanilla's surface noise
+# Terralith's own noises (old format), converted.
+NOISES = {"yellowstone/calcite_patch": parity_noise(-6, [1.6, 0.9, 1.0, 2.5, 0.0, 1.25, 4.3]),
+          "yellowstone/gravel": parity_noise(-5, [1.0, 0.25]),
+          "yellowstone/dirt": parity_noise(-2, [1.0, 0.75, 1.5]),
+          "yellowstone/calcite_cliff": parity_noise(-7, [1.0, 1.0, 0.5, 1.25])}
 
 
 def tnoise(n, lo, hi=None):
