@@ -291,7 +291,8 @@ public final class AridLandforms {
                     float level = s.levelA() + (s.levelB() - s.levelA()) * t;
                     float depth = Math.max(0f, s.rimA() + (s.rimB() - s.rimA()) * t - level);
                     float wall = 0.75f * depth / Math.max(1f, hw * res);   // mean wall gradient
-                    w *= smoothstep(280f, 450f, depth) * smoothstep(0.45f, 0.7f, wall);
+                    // A valley deep and steep-walled enough already (eased Oct 27, was 280-450 m and 0.45-0.7).
+                    w *= smoothstep(200f, 360f, depth) * smoothstep(0.38f, 0.6f, wall);
                     float inside = w * (1f - smoothstep(1.1f, CANYON_LOOK, u));
                     int k = r * nw + c;
                     if (inside > in[k]) {
@@ -368,12 +369,15 @@ public final class AridLandforms {
     }
 
     private static final FastNoiseLite YOSEMITE_ZONE = noise(7411, 1f / 9000f, 2);
-    /** Zone level for Yosemite valleys (~10% of the world in the zone). */
-    static final float YOSEMITE_ZONE_LEVEL = 0.55f;
+    /**
+     * Zone level for Yosemite valleys. Oct 27 (Calvin: too rare): 0.35, so about 22% of the world is in a zone and 14% at
+     * full strength (was 0.55: 10% and 5%).
+     */
+    static final float YOSEMITE_ZONE_LEVEL = 0.35f;
 
     /** Yosemite weight (0..1) at native pixel (i, j) with climate t, p: temperate, wet mountains in Yosemite zones. */
     public static float yosemiteWeight(int i, int j, float t, float p) {
-        float climate = smoothstep(1f, 5f, t) * (1f - smoothstep(13f, 17f, t)) * smoothstep(400f, 700f, p);
+        float climate = smoothstep(1f, 5f, t) * (1f - smoothstep(13f, 17f, t)) * smoothstep(300f, 550f, p);
         if (climate <= 0f) return 0f;
         float m = WorldPipelineModelConfig.nativeResolution();
         return climate * smoothstep(YOSEMITE_ZONE_LEVEL, YOSEMITE_ZONE_LEVEL + 0.12f, YOSEMITE_ZONE.GetNoise(j * m, i * m));
