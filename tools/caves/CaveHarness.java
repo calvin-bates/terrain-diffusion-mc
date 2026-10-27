@@ -29,7 +29,7 @@ public class CaveHarness {
         public int inlandWater(int x, int z) { return Math.abs(z - 300) < 4 && z <= 470 ? surfaceTop(x, z) + 3 : Integer.MIN_VALUE; }
     };
     static SeaCaves SEA = SeaCaves.forSeed(SEED);
-    static java.util.List<CaveSites.Shaft> SHAFTS;
+    static java.util.List<CaveSites.Cut> SHAFTS;
 
     // Synthetic surface: rolling hills around Y 100 with a cliff and a mountain.
     static int surfaceTop(int x, int z) {
@@ -84,7 +84,7 @@ public class CaveHarness {
             float cv = cave + CaveShapes.roof(ref - y, roof);
             v = Math.min(v, cv);
         }
-        for (CaveSites.Shaft sh : SHAFTS) v = Math.min(v, sh.value(x, y, z));
+        for (CaveSites.Cut sh : SHAFTS) v = Math.min(v, sh.value(x, y, z));
         int sd = SEA.seaDistance(x, z, SURF);
         if (sd > 0) v = Math.min(v, SEA.value(x, y, z, top, sd));
         return v;
