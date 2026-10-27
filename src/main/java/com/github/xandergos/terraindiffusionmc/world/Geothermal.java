@@ -25,6 +25,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Geysers too: one candidate per {@link #GEYSER_CELL}-block cell, a sinter cone with 26.3's own geyser in its crater
  * (see {@link #geyser}); pools keep clear of them.
+ *
+ * <p>And travertine terraces (caves plan v1.5 part four round B, Mammoth Hot Springs): on the slopes of geothermal
+ * fields, steps of white calcite each holding a shallow pool behind a raised lip (see {@link #terraces}).
  */
 public final class Geothermal {
     private static final Logger LOG = LoggerFactory.getLogger(Geothermal.class);
@@ -93,6 +96,19 @@ public final class Geothermal {
                 }
                 if (blocked || nearGeyser(seed, p[0], p[1], p[2] + 4)) continue;
                 pool(chunk, data, startX, startZ, scale, cx, cz, Double.doubleToRawLongBits(p[4]));
+            }
+        }
+        // Travertine terraces on the slopes.
+        if (TerrainDiffusionConfig.caveFormations()) {
+            for (int gz = Math.floorDiv(z0 - TERRACE_REACH, TERRACE_CELL); gz <= Math.floorDiv(z0 + 15 + TERRACE_REACH, TERRACE_CELL); gz++) {
+                for (int gx = Math.floorDiv(x0 - TERRACE_REACH, TERRACE_CELL); gx <= Math.floorDiv(x0 + 15 + TERRACE_REACH, TERRACE_CELL); gx++) {
+                    double[] t = terraceParams(seed, gx, gz);
+                    if (t == null) continue;
+                    int cx = (int) t[0], cz = (int) t[1];
+                    if (cx + TERRACE_REACH < x0 || cx - TERRACE_REACH > x0 + 15 || cz + TERRACE_REACH < z0 || cz - TERRACE_REACH > z0 + 15) continue;
+                    if (nearGeyser(seed, cx, cz, t[2] + 4) || nearPool(seed, cx, cz, t[2] + 3)) continue;
+                    terraces(chunk, data, startX, startZ, scale, cx, cz, t[2], Double.doubleToRawLongBits(t[3]));
+                }
             }
         }
         // Geysers: sinter cones with a vanilla geyser (potent sulfur over magma, water above) in a crater on top.
@@ -212,6 +228,109 @@ public final class Geothermal {
                 chunk.setBlockState(pos.set(x, ground, z), sulfur, 0);
                 if (above.is(Blocks.SNOW) || above.is(Blocks.SHORT_GRASS)) chunk.setBlockState(pos.set(x, ground + 1, z), air, 0);
                 if (unit(mix(h + 31L * x + 17L * z)) < 0.12) chunk.setBlockState(pos.set(x, ground + 1, z), Blocks.SULFUR_SPIKE.defaultBlockState(), 0);
+            }
+        }
+    }
+
+    // ---- Travertine terraces (part four round B) ----
+
+    /** Cell (blocks) holding at most one terrace patch, the chance of one, and the farthest a patch reaches. */
+    private static final int TERRACE_CELL = 48;
+    private static final double TERRACE_CHANCE = 0.5;
+    private static final int TERRACE_REACH = 17;
+
+    /** Cell (gx, gz)'s candidate terraces {x, z, radius, hash}, or null. */
+    private static double[] terraceParams(long seed, int gx, int gz) {
+        long h = mix(seed ^ ((long) gx * 0x5851F42D4C957F2DL) ^ ((long) gz * 0x14057B7EF767814FL) ^ 0x7EAL);
+        if (unit(h) >= TERRACE_CHANCE) return null;
+        int cx = gx * TERRACE_CELL + 10 + (int) ((TERRACE_CELL - 20) * unit(mix(h + 1)));
+        int cz = gz * TERRACE_CELL + 10 + (int) ((TERRACE_CELL - 20) * unit(mix(h + 2)));
+        return new double[]{cx, cz, 9 + 6 * unit(mix(h + 3)), Double.longBitsToDouble(h)};
+    }
+
+    /** Whether a hot spring pool candidate lies within {@code reach} blocks (plus its rings) of (x, z). */
+    private static boolean nearPool(long seed, double x, double z, double reach) {
+        int gx0 = Math.floorDiv((int) x, CELL), gz0 = Math.floorDiv((int) z, CELL);
+        int n = (int) Math.ceil((reach + REACH) / CELL) + 1;
+        for (int gz = gz0 - n; gz <= gz0 + n; gz++) {
+            for (int gx = gx0 - n; gx <= gx0 + n; gx++) {
+                double[] p = params(seed, gx, gz);
+                if (p != null && Math.hypot(p[0] - x, p[1] - z) < reach + p[2] + 4) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Travertine terraces: on a geothermal slope (at least 1 in 5), the ground inside a ragged patch is cut into flat
+     * steps (1 block high, 2 where the slope is steep). A step column whose four neighbours all stand at least as high
+     * holds a pool of water over a calcite bed; the others are calcite, with a raised calcite lip beside the pools and
+     * orange stains here and there. Every test reads the tiles, so a patch across chunk edges comes out whole.
+     */
+    private static void terraces(ChunkAccess chunk, HeightmapData data, int startX, int startZ, int scale, int cx, int cz,
+                                 double r, long h) {
+        HeightmapData centre = VolcanicSurfaces.tileAt(data, startX, startZ, cx, cz);
+        if (centre == null || centre.oceanTags == null) return;
+        int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
+        int lcx = cx - ((cx >> shift) << shift), lcz = cz - ((cz >> shift) << shift);
+        if (centre.oceanTags[lcz][lcx] != Showpieces.TAG_GEOTHERMAL) return;
+        int g0 = VolcanicSurfaces.tileTop(data, startX, startZ, cx, cz, scale);
+        int ge = VolcanicSurfaces.tileTop(data, startX, startZ, cx + 8, cz, scale), gw = VolcanicSurfaces.tileTop(data, startX, startZ, cx - 8, cz, scale);
+        int gs = VolcanicSurfaces.tileTop(data, startX, startZ, cx, cz + 8, scale), gn = VolcanicSurfaces.tileTop(data, startX, startZ, cx, cz - 8, scale);
+        double slope = Math.max(Math.abs(ge - gw), Math.abs(gs - gn)) / 16.0;
+        if (slope < 0.2) return;
+        int step = slope > 0.6 ? 2 : 1;
+        int R = (int) Math.ceil(r * 1.25) + 2, W = 2 * R + 1;
+        int[] T = new int[W * W], G = new int[W * W];
+        boolean[] in = new boolean[W * W];
+        for (int dz = -R; dz <= R; dz++) {
+            for (int dx = -R; dx <= R; dx++) {
+                int x = cx + dx, z = cz + dz, i = (dz + R) * W + dx + R;
+                if (edgeDist(x, z, cx, cz) >= r) continue;
+                HeightmapData t = VolcanicSurfaces.tileAt(data, startX, startZ, x, z);
+                if (t == null) return;
+                int lx = x - ((x >> shift) << shift), lz = z - ((z >> shift) << shift);
+                if (t.waterY != null && t.waterY[lz][lx] != com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.NONE) return;
+                int g = VolcanicSurfaces.tileTop(data, startX, startZ, x, z, scale);
+                G[i] = g;
+                T[i] = g0 + Math.floorDiv(g - g0, step) * step;
+                in[i] = true;
+            }
+        }
+        boolean[] pool = new boolean[W * W];
+        for (int dz = -R + 1; dz < R; dz++) {
+            for (int dx = -R + 1; dx < R; dx++) {
+                int i = (dz + R) * W + dx + R;
+                if (!in[i] || edgeDist(cx + dx, cz + dz, cx, cz) >= r - 1.2) continue;
+                boolean ok = true;
+                for (int k = 0; k < 4 && ok; k++) {
+                    int j = i + (k == 0 ? 1 : k == 1 ? -1 : k == 2 ? W : -W);
+                    ok = in[j] && T[j] >= T[i];
+                }
+                pool[i] = ok;
+            }
+        }
+        ChunkPos cp = chunk.getPos();
+        int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        BlockState air = Blocks.AIR.defaultBlockState(), water = Blocks.WATER.defaultBlockState();
+        BlockState calcite = Blocks.CALCITE.defaultBlockState(), stain = Blocks.DYED_TERRACOTTA.orange().defaultBlockState();
+        for (int z = Math.max(z0, cz - R); z <= Math.min(z0 + 15, cz + R); z++) {
+            for (int x = Math.max(x0, cx - R); x <= Math.min(x0 + 15, cx + R); x++) {
+                int i = (z - cz + R) * W + x - cx + R;
+                if (!in[i]) continue;
+                int t = T[i];
+                for (int y = t + 1; y <= G[i] + 2; y++) chunk.setBlockState(pos.set(x, y, z), air, 0);
+                chunk.setBlockState(pos.set(x, t - 1, z), calcite, 0);
+                if (pool[i]) {
+                    chunk.setBlockState(pos.set(x, t, z), water, 0);
+                    chunk.setBlockState(pos.set(x, t - 2, z), calcite, 0);
+                    continue;
+                }
+                boolean byPool = pool[i + 1] || pool[i - 1] || pool[i + W] || pool[i - W];
+                boolean orange = byPool && RING.GetNoise(x * 1.9f + 51, z * 1.9f) > 0.45f;
+                chunk.setBlockState(pos.set(x, t, z), orange ? stain : calcite, 0);
+                if (byPool) chunk.setBlockState(pos.set(x, t + 1, z), calcite, 0);
             }
         }
     }

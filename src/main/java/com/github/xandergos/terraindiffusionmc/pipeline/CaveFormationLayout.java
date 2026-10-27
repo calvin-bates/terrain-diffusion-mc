@@ -3,8 +3,9 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
 import java.util.List;
 
 /**
- * Where the natural cave formations go (caves plan v1.5 part four round A): columns, stalactite and stalagmite zones,
- * boxwork and crystal rooms. Pure functions of world position and seed (anchors on jittered grids, picked by the cave
+ * Where the natural cave formations go (caves plan v1.5 part four): round A's columns, stalactite and stalagmite
+ * zones, boxwork and crystal rooms; round B's flowstone zones and floor patches (rimstone pools, waterfalls with plunge
+ * pools, travertine terraces in thermal caves). Pure functions of world position and seed (anchors on jittered grids, picked by the cave
  * biome at the anchor), so every chunk agrees about a formation that crosses its border; world/CaveFormations fits
  * them to the cave air each chunk actually has.
  *
@@ -15,8 +16,8 @@ public final class CaveFormationLayout {
     private CaveFormationLayout() {
     }
 
-    /** Formation kinds: none, plain stone caves and the stone caves, dripstone caves, karst-like, salt, ice. */
-    public static final byte K_NONE = 0, K_PLAIN = 1, K_DRIP = 2, K_KARST = 3, K_SALT = 4, K_ICE = 5;
+    /** Formation kinds: none, plain stone caves and the stone caves, dripstone caves, karst-like, salt, ice, thermal. */
+    public static final byte K_NONE = 0, K_PLAIN = 1, K_DRIP = 2, K_KARST = 3, K_SALT = 4, K_ICE = 5, K_THERMAL = 6;
 
     public static byte kind(short caveId) {
         return switch (caveId) {
@@ -27,6 +28,7 @@ public final class CaveFormationLayout {
             case CaveBiomes.UNDERGROUND_LAKES, CaveBiomes.GLOWWORM_GROTTO, CaveBiomes.KARST_CAVES -> K_KARST;
             case CaveBiomes.SALT_CAVES -> K_SALT;
             case CaveBiomes.ICY_CAVES, CaveBiomes.GLACIER_CAVES -> K_ICE;   // frostfire caves have Terralith's own pillars
+            case CaveBiomes.THERMAL_CAVES -> K_THERMAL;   // travertine terraces only (round B)
             // Their own look already (fungal, jungle, mud, lush, thermal, the rare caves and halls, the cuts).
             default -> K_NONE;
         };
@@ -35,13 +37,21 @@ public final class CaveFormationLayout {
     // ---- Tunables: the chance a grid cell has the formation, per kind (index = kind) ----
 
     /** Columns: chance per column cell (14 x 24 x 14 blocks), by kind. */
-    public static float[] COLUMN_CHANCE = {0f, 0.07f, 0.30f, 0.30f, 0.25f, 0.30f};
+    public static float[] COLUMN_CHANCE = {0f, 0.07f, 0.30f, 0.30f, 0.25f, 0.30f, 0f};
     /** Stalactites: chance per ceiling block inside a drip zone, by kind (dripstone caves have vanilla's own). */
-    public static float[] DRIP_CHANCE = {0f, 0.09f, 0f, 0.16f, 0.12f, 0f};
+    public static float[] DRIP_CHANCE = {0f, 0.09f, 0f, 0.16f, 0.12f, 0f, 0f};
     /** Boxwork: chance per boxwork cell (96 x 48 x 96), by kind. Starts rarest. */
-    public static float[] BOXWORK_CHANCE = {0f, 0.012f, 0f, 0.025f, 0.02f, 0f};
+    public static float[] BOXWORK_CHANCE = {0f, 0.012f, 0f, 0.025f, 0.02f, 0f, 0f};
     /** Crystal rooms: chance per crystal cell (72 x 48 x 72), by kind. Starts rarest. */
-    public static float[] CRYSTAL_CHANCE = {0f, 0.01f, 0.012f, 0.012f, 0.012f, 0f};
+    public static float[] CRYSTAL_CHANCE = {0f, 0.01f, 0.012f, 0.012f, 0.012f, 0f, 0f};
+    /** Flowstone (round B): chance per flowstone cell (64 x 40 x 64), by kind. */
+    public static float[] FLOWSTONE_CHANCE = {0f, 0.05f, 0.18f, 0.16f, 0.06f, 0f, 0f};
+    /** Rimstone pools (round B): chance per chunk and 32-block slab, by kind. */
+    public static float[] RIMSTONE_CHANCE = {0f, 0.025f, 0.10f, 0.10f, 0.04f, 0f, 0f};
+    /** Waterfalls into plunge pools (round B): chance per chunk and 32-block slab, by kind. */
+    public static float[] WATERFALL_CHANCE = {0f, 0.03f, 0.04f, 0.09f, 0f, 0f, 0f};
+    /** Travertine terraces (round B): chance per chunk and 32-block slab, by kind (thermal caves only). */
+    public static float[] TRAVERTINE_CHANCE = {0f, 0f, 0f, 0f, 0f, 0f, 0.3f};
 
     // ---- Columns ----
 
@@ -99,8 +109,9 @@ public final class CaveFormationLayout {
 
     // ---- Zones: boxwork and crystal rooms ----
 
-    public static final int ZONE_BOXWORK = 0, ZONE_CRYSTAL = 1;
-    private static final int[] ZONE_XZ = {96, 72}, ZONE_Y = {48, 48};
+    public static final int ZONE_BOXWORK = 0, ZONE_CRYSTAL = 1, ZONE_FLOWSTONE = 2;
+    private static final int[] ZONE_XZ = {96, 72, 64}, ZONE_Y = {48, 48, 40};
+    private static final long[] ZONE_SALT = {0xB0C5L, 0xC4157AL, 0xF105L};
 
     /**
      * A zone: an ellipsoid of radius r (and {@code r * stretch} up and down) at (x, y, z) where cave surfaces get a
@@ -118,7 +129,7 @@ public final class CaveFormationLayout {
                              int x1, int y1, int z1, List<Zone> out) {
         out.clear();
         int sxz = ZONE_XZ[type], sy = ZONE_Y[type], reach = 36, reachY = 70;
-        float[] chance = type == ZONE_BOXWORK ? BOXWORK_CHANCE : CRYSTAL_CHANCE;
+        float[] chance = zoneChance(type);
         int ax = Math.floorDiv(x0 - reach, sxz), bx = Math.floorDiv(x1 + reach, sxz);
         int az = Math.floorDiv(z0 - reach, sxz), bz = Math.floorDiv(z1 + reach, sxz);
         int ay = Math.floorDiv(y0 - reachY, sy), by = Math.floorDiv(y1 + reachY, sy);
@@ -138,7 +149,7 @@ public final class CaveFormationLayout {
     public static Zone zone(int type, long seed, CaveBiomes layer, CaveBiomes.Surface surface, int cx, int cy, int cz,
                             float[] chance) {
         int sxz = ZONE_XZ[type], sy = ZONE_Y[type];
-        long h = hash(seed ^ (type == ZONE_BOXWORK ? 0xB0C5L : 0xC4157AL), cx, cy, cz);
+        long h = hash(seed ^ ZONE_SALT[type], cx, cy, cz);
         float u = unit(h, 0);
         if (u >= max(chance)) return null;   // skip the biome pick early
         int px = cx * sxz + 16 + (int) (unit(h, 8) * (sxz - 32));
@@ -146,8 +157,9 @@ public final class CaveFormationLayout {
         int py = cy * sy + 12 + (int) (unit(h, 24) * (sy - 24));
         byte k = kind(layer.pick(px, py, pz, surface));
         if (u >= chance[k]) return null;
-        float r = type == ZONE_BOXWORK ? 22f + 12f * unit(h, 32) : 7f + 6f * unit(h, 32);
-        return new Zone(type, px, py, pz, r, type == ZONE_BOXWORK ? 2f : 1f, k);
+        float r = type == ZONE_BOXWORK ? 22f + 12f * unit(h, 32) : type == ZONE_FLOWSTONE ? 14f + 10f * unit(h, 32)
+                : 7f + 6f * unit(h, 32);
+        return new Zone(type, px, py, pz, r, type == ZONE_BOXWORK ? 2f : type == ZONE_FLOWSTONE ? 1.5f : 1f, k);
     }
 
     /** The grid cell size of a zone type: xz, y. */
@@ -160,7 +172,50 @@ public final class CaveFormationLayout {
     }
 
     public static float[] zoneChance(int type) {
-        return type == ZONE_BOXWORK ? BOXWORK_CHANCE : CRYSTAL_CHANCE;
+        return type == ZONE_BOXWORK ? BOXWORK_CHANCE : type == ZONE_FLOWSTONE ? FLOWSTONE_CHANCE : CRYSTAL_CHANCE;
+    }
+
+    // ---- Floor patches (round B): rimstone pools, waterfalls with plunge pools, travertine terraces ----
+
+    public static final int P_RIMSTONE = 0, P_WATERFALL = 1, P_TRAVERTINE = 2;
+    /** Patches are tried once per chunk and slab of this many blocks of height. */
+    public static final int PATCH_SLAB = 32;
+
+    /**
+     * A floor patch, kept inside one chunk so no chunk needs another's blocks: centred at (x, y, z) (y a height in its
+     * slab; the patch takes the cave floor of its centre column nearest it), radius r.
+     */
+    public record Patch(int type, int x, int y, int z, float r, long hash, byte kind) {
+    }
+
+    /** The patch of chunk (chunkX, chunkZ) in slab {@code slab} (blocks slab * 32 to slab * 32 + 31), or null. */
+    public static Patch patch(long seed, CaveBiomes layer, CaveBiomes.Surface surface, int chunkX, int chunkZ, int slab) {
+        long h = hash(seed ^ 0x9A7C4L, chunkX, slab, chunkZ);
+        float u = unit(h, 0);
+        if (u >= maxPatch()) return null;   // skip the biome pick early
+        int x = chunkX * 16 + 5 + (int) (unit(h, 8) * 6), z = chunkZ * 16 + 5 + (int) (unit(h, 16) * 6);
+        int y = slab * PATCH_SLAB + 2 + (int) (unit(h, 24) * (PATCH_SLAB - 4));
+        byte k = kind(layer.pick(x, y, z, surface));
+        float rim = RIMSTONE_CHANCE[k], fall = WATERFALL_CHANCE[k], trav = TRAVERTINE_CHANCE[k];
+        int type;
+        if (u < rim) type = P_RIMSTONE;
+        else if (u < rim + fall) type = P_WATERFALL;
+        else if (u < rim + fall + trav) type = P_TRAVERTINE;
+        else return null;
+        float r = switch (type) {
+            case P_WATERFALL -> 2f + 1.3f * unit(h, 32);
+            case P_TRAVERTINE -> 4f + 1.5f * unit(h, 32);
+            default -> 3.5f + 2f * unit(h, 32);
+        };
+        return new Patch(type, x, y, z, r, h, k);
+    }
+
+    /** The highest total patch chance of any kind. */
+    private static float maxPatch() {
+        float m = 0f;
+        for (int k = 0; k < RIMSTONE_CHANCE.length; k++)
+            m = Math.max(m, RIMSTONE_CHANCE[k] + WATERFALL_CHANCE[k] + TRAVERTINE_CHANCE[k]);
+        return m;
     }
 
     /**

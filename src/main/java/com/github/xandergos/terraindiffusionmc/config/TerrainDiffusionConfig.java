@@ -183,7 +183,10 @@ public final class TerrainDiffusionConfig {
     public static boolean waterCaves() { return readBoolean("caves.water", true); }
     /** Sea caves in coastal cliffs, and caves opening onto the sea floor in places. */
     public static boolean seaCaves() { return readBoolean("caves.sea", true); }
-    /** Natural cave formations: columns, stalactites and stalagmites, boxwork, crystal rooms (caves plan v1.5 part four). */
+    /**
+     * Natural cave formations (caves plan v1.5 part four): columns, stalactites and stalagmites, boxwork, crystal rooms;
+     * flowstone, rimstone pools, cave waterfalls, travertine terraces, natural bridges, collapse domes, rock shelters.
+     */
     public static boolean caveFormations() { return readBoolean("caves.formations", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }

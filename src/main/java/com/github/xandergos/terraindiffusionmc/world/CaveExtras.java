@@ -10,7 +10,8 @@ import java.util.List;
 
 /**
  * The cave shapes that may cut through the surface (caves plan v1.5 parts two and three), for one block rectangle:
- * river sinks, cenotes, canyon ravines, deep shafts, sinkhole jungles and blue holes ({@link CaveSites}) and sea caves
+ * river sinks, cenotes, canyon ravines (with natural bridges), deep shafts, sinkhole jungles, blue holes, cave mouths,
+ * collapse domes and rock shelters ({@link CaveSites}) and sea caves
  * ({@link SeaCaves}). The terrain density takes the minimum with them
  * after the cave roof, and so do the explorer's slices.
  */
@@ -40,6 +41,7 @@ final class CaveExtras {
     static CaveExtras of(int x0, int z0, int sx, int sz) {
         long seed = LocalTerrainProvider.getSeed();
         CaveSurface surface = CaveSurface.get();
+        CaveSites.formations = TerrainDiffusionConfig.caveFormations();
         List<CaveSites.Cut> shafts = TerrainDiffusionConfig.caveBiomes() && TerrainDiffusionConfig.waterCaves()
                 ? CaveSites.near(x0, z0, x0 + sx - 1, z0 + sz - 1, CaveBiomes.forSeed(seed), surface) : List.of();
         SeaCaves sea = TerrainDiffusionConfig.seaCaves() ? SeaCaves.forSeed(seed) : null;

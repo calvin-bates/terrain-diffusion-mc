@@ -263,6 +263,14 @@ public final class FeatureFinder {
         CAVES.put("crystal_room", (short) -6);
         CAVES.put("cave_mouth", (short) -7);
         CAVES.put("ancient_city", (short) -8);
+        // Part four round B.
+        CAVES.put("natural_bridge", (short) -9);
+        CAVES.put("collapse_dome", (short) -10);
+        CAVES.put("rock_shelter", (short) -11);
+        CAVES.put("flowstone", (short) -12);
+        CAVES.put("rimstone_pools", (short) -13);
+        CAVES.put("cave_waterfall", (short) -14);
+        CAVES.put("travertine_terraces", (short) -15);
     }
 
     /** How far around the player cave biomes are searched, in blocks, and the spacing of the searched columns. */
@@ -291,8 +299,14 @@ public final class FeatureFinder {
             try {
                 int px = (int) Math.floor(pos.x), pz = (int) Math.floor(pos.z);
                 String cutKind = id == -2 ? "cenote" : id == -3 ? "river_sink" : id == -7 ? "cave_mouth"
+                        : id == -9 ? "natural_bridge" : id == -10 ? "collapse_dome"
                         : CaveBiomes.isSurfaceCut(id) ? word : null;
                 int[] found = cutKind != null ? findCut(cutKind, px, pz) : id == -4 ? findSeaCave(px, pz)
+                        : id == -11 ? findShelter(px, pz)
+                        : id == -12 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_FLOWSTONE, px, pz)
+                        : id == -13 ? findPatch(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.P_RIMSTONE, px, pz)
+                        : id == -14 ? findPatch(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.P_WATERFALL, px, pz)
+                        : id == -15 ? findPatch(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.P_TRAVERTINE, px, pz)
                         : id == -5 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_BOXWORK, px, pz)
                         : id == -6 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_CRYSTAL, px, pz)
                         : id == -8 ? findCity(px, pz)
@@ -518,16 +532,92 @@ public final class FeatureFinder {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
                     var s = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.site((cx + dx) * r + half,
                             (cz + dz) * r + half, layer, surface);
-                    if (s == null || !s.kind().equals(kind)) continue;
+                    if (s == null) continue;
+                    int[] spot = null;
+                    if (kind.equals("natural_bridge")) {
+                        // On the deck of a ravine's bridge.
+                        if (s instanceof com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.Ravine rv) spot = rv.bridgeSpot(0);
+                        if (spot == null) continue;
+                    } else if (!s.kind().equals(kind)) continue;
                     double d = Math.hypot(s.x() - x0, s.z() - z0);
                     if (d < bestD) {
                         bestD = d;
                         // Arrive just above the surface beside the opening (top() is far above for open cuts).
                         int y = Math.min(s.top(), surface.groundTop(s.x(), s.z()) + 3) + 2;
-                        best = new int[]{s.x(), y, s.z()};
+                        best = spot != null ? spot : new int[]{s.x(), y, s.z()};
                     }
                 }
             }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /** The nearest rock shelter (CaveSites.shelter), out to about 2.5 km: a spot on its floor under the overhang. */
+    private static int[] findShelter(int x0, int z0) {
+        CaveSurface surface = CaveSurface.get();
+        int cell = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.SHELTER_CELL;
+        int gx0 = Math.floorDiv(x0, cell), gz0 = Math.floorDiv(z0, cell);
+        for (int ring = 0; ring <= 2500 / cell; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    var s = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.shelter(gx0 + dx, gz0 + dz, surface);
+                    if (s == null) continue;
+                    double d = Math.hypot(s.cx() - x0, s.cz() - z0);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = new int[]{Math.round(s.cx() + s.dirX() * 2), s.foot() + 1, Math.round(s.cz() + s.dirZ() * 2)};
+                    }
+                }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /**
+     * The nearest cave floor patch of a type (rimstone pools, waterfall, travertine terraces), chunk by chunk in rings
+     * out to about 1.5 km: a standing spot on the cave floor at its centre. Only Terra's noise caves are known here.
+     */
+    private static int[] findPatch(int type, int x0, int z0) {
+        long seed = LocalTerrainProvider.getSeed();
+        CaveBiomes layer = CaveBiomes.forSeed(seed);
+        CaveShapes shapes = CaveShapes.forSeed(seed);
+        CaveSurface surface = CaveSurface.get();
+        TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
+        int slab = com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.PATCH_SLAB;
+        int cx0 = x0 >> 4, cz0 = z0 >> 4;
+        for (int ring = 0; ring <= 96; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    for (int sl = Math.floorDiv(-64, slab); sl <= Math.floorDiv(255, slab); sl++) {
+                        var p = com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.patch(seed, layer, surface,
+                                cx0 + dx, cz0 + dz, sl);
+                        if (p == null || p.type() != type) continue;
+                        double d = Math.hypot(p.x() - x0, p.z() - z0);
+                        if (d >= bestD) continue;
+                        int ref = cache.caveRefTop(p.x(), p.z());
+                        if (ref == Integer.MIN_VALUE) continue;
+                        float roof = switch (cache.caveKind) {
+                            case TerrainDiffusionDensityFunction.TileCache.CAVE_SEA -> CaveShapes.ROOF_SEA;
+                            case TerrainDiffusionDensityFunction.TileCache.CAVE_WATER -> CaveShapes.ROOF_WATER;
+                            default -> shapes.landRoof(p.x(), p.z());
+                        };
+                        // A floor in the slab: air over rock.
+                        for (int y = Math.min(sl * slab + slab - 1, ref - 2); y > sl * slab; y--) {
+                            if (caveAir(shapes, p.x(), y, p.z(), ref, roof) && !caveAir(shapes, p.x(), y - 1, p.z(), ref, roof)) {
+                                bestD = d;
+                                best = new int[]{p.x(), y, p.z()};
+                                break;
+                            }
+                        }
+                    }
+                }
             if (best != null) return best;
         }
         return null;

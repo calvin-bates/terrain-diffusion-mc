@@ -17,6 +17,11 @@ import java.util.List;
  *   <li><b>Sinkhole jungles</b>: a collapse dome under karst or tropical ground with a round skylight, where a jungle
  *       grows on the floor.</li>
  *   <li><b>Blue holes</b>: round, deep sinkholes in the floor of warm shallow seas.</li>
+ *   <li><b>Cave mouths</b> (Oct 27): big arched tunnels from the surface down into the caves.</li>
+ *   <li>Part four round B formations: <b>natural bridges</b> (stone arches across canyon ravines), <b>collapse
+ *       domes</b> (a cavern whose roof fell in: a skylight over a rubble mound) and <b>rock shelters</b> (overhangs cut
+ *       into the foot of steep cliffs, on their own finer grid, {@link #shelters}). world/SurfaceFormations lays the
+ *       rubble and talus on them.</li>
  * </ul>
  *
  * <p>Sites sit on the cave layer's region anchors (every {@link CaveBiomes#REGION_XZ} blocks), decided from the cave
@@ -34,6 +39,11 @@ public final class CaveSites {
     private static final int PROBE_DEPTH = 44;
     /** Widest a site gets (cenote radius plus its chamber), for finding sites near an area. */
     public static final int MAX_REACH = 240;
+    /**
+     * Whether the part four round B formations are on (natural bridges, collapse domes, rock shelters). Set from the
+     * config by the callers in the mod (caves.formations); on by default (harnesses, explorer).
+     */
+    public static volatile boolean formations = true;
 
     /** A shape cut through the surface: its density, where it reaches, and its site's centre. */
     public interface Cut {
@@ -112,6 +122,7 @@ public final class CaveSites {
                 out.add(s);
             }
         }
+        if (formations) shelters(x0, z0, x1, z1, surface, out);
         return out;
     }
 
@@ -127,15 +138,17 @@ public final class CaveSites {
         float v = ((h >>> 16) & 0xFFFF) / 65536f;
         float w = ((h >>> 8) & 0xFF) / 256f;
         switch (id) {
-            case CaveBiomes.CANYON_RAVINE: return ravine(ax, az, ground, u, v, w);
+            case CaveBiomes.CANYON_RAVINE: return ravine(ax, az, ground, u, v, w, h);
             case CaveBiomes.DEEP_SHAFT: return pit(ax, az, ground, u, v, w);
             case CaveBiomes.SINKHOLE_JUNGLE: return dome(ax, az, ground, u, v, w);
             case CaveBiomes.BLUE_HOLE: return blueHole(ax, az, ground, u, v, w);
             default: break;
         }
         if (ground < 40) return null;
-        if (id != CaveBiomes.KARST_CAVES && id != CaveBiomes.UNDERGROUND_LAKES && id != CaveBiomes.GLOWWORM_GROTTO)
-            return mouth(ax, az, surface, h, u, v, w);
+        if (id != CaveBiomes.KARST_CAVES && id != CaveBiomes.UNDERGROUND_LAKES && id != CaveBiomes.GLOWWORM_GROTTO) {
+            if (u < MOUTH_CHANCE) return mouth(ax, az, surface, h, u, v, w);
+            return formations && u < MOUTH_CHANCE + COLLAPSE_CHANCE ? collapseDome(ax, az, surface, h, v, w) : null;
+        }
         if (id != CaveBiomes.KARST_CAVES && id != CaveBiomes.UNDERGROUND_LAKES && id != CaveBiomes.GLOWWORM_GROTTO) return null;
         int level = layer.waterLevel(cell);
         if (level >= ground - 12 || level < CaveBiomes.WATER_MIN_Y) return null;
@@ -171,17 +184,39 @@ public final class CaveSites {
     /** Lowest a cut goes: above the lava of the deepest caves. */
     private static final int CUT_FLOOR_Y = -50;
 
-    /** A canyon ravine: 180-340 blocks long, 18-40 wide at the top, 90-180 deep, wandering, narrowing downwards. */
-    static Cut ravine(int ax, int az, int ground, float u, float v, float w) {
+    /** Share of canyon ravines with one natural bridge, and with two (part four round B). */
+    public static float BRIDGE_CHANCE = 0.6f, TWO_BRIDGES_CHANCE = 0.25f;
+
+    /**
+     * A canyon ravine: 180-340 blocks long, 18-40 wide at the top, 90-180 deep, wandering, narrowing downwards. Most
+     * get a natural bridge or two: a stone arch spanning the ravine somewhere in its middle half.
+     */
+    static Cut ravine(int ax, int az, int ground, float u, float v, float w, long h) {
         float angle = (float) (u * Math.PI);
         float length = 180f + v * 160f, halfWidth = 9f + w * 11f;
         int bottom = Math.max(CUT_FLOOR_Y, ground - 90 - (int) (u * 90f));
+        float b1 = Float.NaN, b2 = Float.NaN, y1 = 0f, y2 = 0f;
+        float r0 = unit(h, 3), r1 = unit(h, 13), r2 = unit(h, 23), r3 = unit(h, 33), r4 = unit(h, 43);
+        if (formations && r0 < BRIDGE_CHANCE) {
+            b1 = (r1 - 0.5f) * length * 0.5f;   // in the middle half, where the ravine is at its deepest
+            y1 = 0.42f + 0.33f * r2;            // how far up from the floor to the rim
+            if (r0 < TWO_BRIDGES_CHANCE) {
+                b2 = b1 + (r3 < 0.5f ? 1 : -1) * (40f + 50f * r4);
+                if (Math.abs(b2) > length * 0.33f) b2 = b1 - (b2 - b1);
+                y2 = 0.42f + 0.33f * r3;
+            }
+        }
         return new Ravine(ax, az, (float) Math.cos(angle), (float) Math.sin(angle), length, halfWidth, bottom, ground,
-                8f + 12f * w, 50f + 50f * v, v * 6.28f);
+                8f + 12f * w, 50f + 50f * v, v * 6.28f, b1, y1, b2, y2, 3f + 3f * r4);
     }
 
+    /**
+     * A canyon ravine and its natural bridges: bridge k stands at {@code bk} along the ravine's axis (NaN for none),
+     * its deck {@code yk} of the way from the floor to the rim, {@code bridgeT} blocks thick along the axis (half).
+     */
     public record Ravine(int x, int z, float cos, float sin, float length, float halfWidth, int bottom, int ground,
-                         float wiggle, float wiggleLen, float phase) implements Cut {
+                         float wiggle, float wiggleLen, float phase, float b1, float y1, float b2, float y2,
+                         float bridgeT) implements Cut {
         @Override
         public float value(int px, int py, int pz) {
             if (py < bottom - 1) return Float.POSITIVE_INFINITY;
@@ -196,7 +231,40 @@ public final class CaveSites {
             float floor = bottom + (ground - bottom) * (1f - taper) * 0.8f;
             float up = Math.max(0f, Math.min(1f, (py - floor) / Math.max(1f, ground - floor)));
             float half = halfWidth * taper * (0.3f + 0.7f * up);
-            return Math.max(Math.abs(b) - half, floor - py);
+            float v = Math.max(Math.abs(b) - half, floor - py);
+            if (v < 0f) {
+                if (!Float.isNaN(b1)) v = Math.max(v, -bridge(a, b, py, b1, y1, floor, halfWidth * taper));
+                if (!Float.isNaN(b2)) v = Math.max(v, -bridge(a, b, py, b2, y2, floor, halfWidth * taper));
+            }
+            return v;
+        }
+
+        /**
+         * A natural bridge's distance field (negative inside the rock): a flat-topped arch across the ravine at
+         * {@code ba} along its axis, 6-12 blocks wide. 3-7 blocks thick in the middle, its underside curving down
+         * into the walls.
+         */
+        private float bridge(float a, float b, int py, float ba, float frac, float floor, float topHalf) {
+            float da = Math.abs(a - ba);
+            float T = bridgeT * (1f + 0.25f * (float) Math.sin(b / 3.7f + phase) + 0.15f * (float) Math.sin(py / 2.3f));
+            if (da > T + 3f) return Float.POSITIVE_INFINITY;
+            float deck = floor + (ground - floor) * frac;
+            float top = deck + 1.2f * (float) Math.sin(a / 4.1f + b / 5.3f + phase);
+            float q = b / Math.max(4f, topHalf);
+            float thick = 5f + 2f * (float) Math.sin(ba + phase);
+            float under = top - thick - 12f * q * q - 1.5f * (da / Math.max(1f, T)) * (da / Math.max(1f, T));
+            return Math.max(da - T, Math.max(py - top, under - py));
+        }
+
+        /** Where a bridge is: its middle (deck top), or null if the ravine has none. */
+        public int[] bridgeSpot(int k) {
+            float ba = k == 0 ? b1 : b2, frac = k == 0 ? y1 : y2;
+            if (Float.isNaN(ba)) return null;
+            float bm = wiggle * (float) Math.sin(ba / wiggleLen + phase);
+            int bx = Math.round(x + ba * cos - bm * sin), bz = Math.round(z + ba * sin + bm * cos);
+            float t = 2f * ba / length, taper = (float) Math.sqrt(Math.max(0f, 1f - t * t));
+            float floor = bottom + (ground - bottom) * (1f - taper) * 0.8f;
+            return new int[]{bx, (int) (floor + (ground - floor) * frac) + 3, bz};
         }
 
         @Override
@@ -282,30 +350,69 @@ public final class CaveSites {
         float rx = 50f + 20f * v, ry = 32f + 13f * w;
         int cy = ground - 20 - (int) ry;
         if (cy - ry * 0.55f < CUT_FLOOR_Y) return null;
-        return new Dome(ax, az, cy, rx, ry, 12f + 10f * u, ground, (int) ((u - 0.5f) * rx * 0.6f), (int) ((w - 0.5f) * rx * 0.6f));
+        return new Dome(ax, az, cy, rx, ry, 12f + 10f * u, ground, (int) ((u - 0.5f) * rx * 0.6f), (int) ((w - 0.5f) * rx * 0.6f),
+                0f, false);
     }
 
-    public record Dome(int x, int z, int cy, float rx, float ry, float skylight, int ground, int lightDx, int lightDz)
-            implements Cut {
+    /** Share of land region anchors (without a cave mouth) that get a collapse dome (part four round B). */
+    public static float COLLAPSE_CHANCE = 0.08f;
+
+    /**
+     * A collapse dome: a cavern 56-90 blocks across and 36-52 tall whose roof fell in, 10-18 blocks under the ground,
+     * open to the sky through a ragged skylight 12-22 across, a mound of fallen rock under it (world/SurfaceFormations
+     * covers it with rubble). On land away from rivers and lakes.
+     */
+    static Cut collapseDome(int ax, int az, CaveBiomes.Surface surface, long h, float v, float w) {
+        int x = ax + (int) ((v - 0.5f) * 120), z = az + (int) ((w - 0.5f) * 120);
+        int ground = surface.groundTop(x, z);
+        if (ground == Integer.MIN_VALUE || ground < 64 || surface.nearInlandWater(x, z)) return null;
+        float a = unit(h, 3), b = unit(h, 13), c = unit(h, 23);
+        float rx = 28f + 17f * a, ry = 18f + 8f * b;
+        int cy = ground - 10 - (int) (8 * c) - (int) ry;
+        if (cy - ry * 0.55f < CUT_FLOOR_Y + 4) return null;
+        float sky = 6f + 5f * c;
+        return new Dome(x, z, cy, rx, ry, sky, ground, (int) ((b - 0.5f) * rx * 0.4f), (int) ((a - 0.5f) * rx * 0.4f),
+                ry * (0.45f + 0.25f * a), true);
+    }
+
+    /**
+     * A dome: the sinkhole jungle's (flat floor), or a collapse dome's ({@code collapse}, with a mound {@code rubble}
+     * blocks high under its skylight).
+     */
+    public record Dome(int x, int z, int cy, float rx, float ry, float skylight, int ground, int lightDx, int lightDz,
+                       float rubble, boolean collapse) implements Cut {
         @Override
         public float value(int px, int py, int pz) {
             float dx = (px - x) / rx, dy = (py - cy) / ry, dz = (pz - z) / rx;
             float e = ((float) Math.sqrt(dx * dx + dy * dy + dz * dz) - 1f) * ry;
-            float floorY = cy - ry * 0.55f;
-            e = Math.max(e, floorY - py);   // a flat floor
+            e = Math.max(e, floorAt(px, pz) - py);   // a flat floor, or a rubble mound
             // The skylight: a round opening from the dome's upper half to the sky, a little off centre.
             float v = Float.POSITIVE_INFINITY;
             if (py >= cy) {
                 float sx = px - (x + lightDx), sz = pz - (z + lightDz);
-                v = (float) Math.sqrt(sx * sx + sz * sz) - skylight * (1f + 0.08f * (float) Math.sin(py / 4f));
+                float rag = collapse ? 0.18f * (float) Math.sin(Math.atan2(sz, sx) * 4 + py / 6f) : 0f;
+                v = (float) Math.sqrt(sx * sx + sz * sz) - skylight * (1f + 0.08f * (float) Math.sin(py / 4f) + rag);
             }
-            return Math.min(e, v);
+            // The mound stands up into the skylight too.
+            return rubble > 0f ? Math.max(Math.min(e, v), floorAt(px, pz) - py) : Math.min(e, v);
         }
 
         @Override
         public boolean covers(int px, int pz) {
             float dx = px - x, dz = pz - z, r = reach() + 1;
             return dx * dx + dz * dz <= r * r;
+        }
+
+        /** The dome's floor at a column: flat, or for a collapse dome a mound under the skylight. */
+        public float floorAt(int px, int pz) {
+            float floorY = cy - ry * 0.55f;
+            if (rubble <= 0f) return floorY;
+            float sx = px - (x + lightDx), sz = pz - (z + lightDz);
+            float d = (float) Math.sqrt(sx * sx + sz * sz) / (skylight * 2.6f);
+            d *= 1f + 0.12f * (float) Math.sin(Math.atan2(sz, sx) * 5 + skylight);
+            if (d >= 1f) return floorY;
+            float m = 1f - d;
+            return floorY + rubble * m * m * (3f - 2f * m);
         }
 
         @Override
@@ -325,7 +432,7 @@ public final class CaveSites {
 
         @Override
         public String kind() {
-            return "sinkhole_jungle";
+            return collapse ? "collapse_dome" : "sinkhole_jungle";
         }
     }
 
@@ -481,6 +588,142 @@ public final class CaveSites {
         public String kind() {
             return "cave_mouth";
         }
+    }
+
+    // ---- Rock shelters (part four round B) ----
+
+    /** Shelter candidates: one per cell (blocks) at this chance; most fail the cliff test. */
+    public static final int SHELTER_CELL = 40;
+    public static float SHELTER_CHANCE = 0.55f;
+    /** The rise (blocks) over 12 blocks that counts as a cliff. */
+    public static int SHELTER_RISE = 14;
+    private static final int SHELTER_REACH = 24;
+
+    /** The rock shelters reaching the block rectangle, added to out. */
+    public static void shelters(int x0, int z0, int x1, int z1, CaveBiomes.Surface surface, List<Cut> out) {
+        int gx0 = Math.floorDiv(x0 - SHELTER_REACH, SHELTER_CELL), gx1 = Math.floorDiv(x1 + SHELTER_REACH, SHELTER_CELL);
+        int gz0 = Math.floorDiv(z0 - SHELTER_REACH, SHELTER_CELL), gz1 = Math.floorDiv(z1 + SHELTER_REACH, SHELTER_CELL);
+        for (int gz = gz0; gz <= gz1; gz++)
+            for (int gx = gx0; gx <= gx1; gx++) {
+                Shelter s = shelter(gx, gz, surface);
+                if (s == null) continue;
+                float r = s.reach();
+                if (s.cx + r < x0 || s.cx - r > x1 || s.cz + r < z0 || s.cz - r > z1) continue;
+                out.add(s);
+            }
+    }
+
+    /**
+     * The rock shelter of a grid cell, or null: at a random point of the cell, on land above the sea and off rivers,
+     * where the ground rises at least {@link #SHELTER_RISE} blocks within 12 (a cliff), an overhang cut into the
+     * cliff's foot: 12-28 blocks wide, 5-9 deep, 5-9 tall, its floor the ground at the foot.
+     */
+    public static Shelter shelter(int gx, int gz, CaveBiomes.Surface surface) {
+        long h = mixL(gx * 0x9E3779B97F4A7C15L ^ gz * 0xC2B2AE3D27D4EB4FL ^ 0x5E1735L);
+        if (unit(h, 0) >= SHELTER_CHANCE) return null;
+        int qx = gx * SHELTER_CELL + 4 + (int) (unit(h, 8) * (SHELTER_CELL - 8));
+        int qz = gz * SHELTER_CELL + 4 + (int) (unit(h, 16) * (SHELTER_CELL - 8));
+        int g0 = surface.groundTop(qx, qz);
+        if (g0 == Integer.MIN_VALUE || g0 < 64 || surface.inlandWater(qx, qz) != Integer.MIN_VALUE) return null;
+        // The steepest of eight directions.
+        int bestRise = 0;
+        float dirX = 0, dirZ = 0;
+        for (int k = 0; k < 8; k++) {
+            double ang = k * Math.PI / 4 + unit(h, 24) * 0.7;
+            float cx = (float) Math.cos(ang), cz = (float) Math.sin(ang);
+            int g = surface.groundTop(qx + Math.round(12 * cx), qz + Math.round(12 * cz));
+            if (g != Integer.MIN_VALUE && g - g0 > bestRise) {
+                bestRise = g - g0;
+                dirX = cx;
+                dirZ = cz;
+            }
+        }
+        if (bestRise < SHELTER_RISE) return null;
+        // The cliff's foot: the last point along that direction before the ground starts to rise.
+        int fx = qx, fz = qz, foot = g0;
+        for (int k = 1; k <= 12; k++) {
+            int x = qx + Math.round(k * dirX), z = qz + Math.round(k * dirZ);
+            int g = surface.groundTop(x, z);
+            if (g == Integer.MIN_VALUE) return null;
+            if (g - foot >= 3) break;
+            fx = x;
+            fz = z;
+            foot = Math.min(foot, g);
+        }
+        float depth = 5f + 4f * unit(h, 32), width = 6f + 8f * unit(h, 40), height = 5f + 4f * unit(h, 48);
+        // A roof: the cliff stays well above the shelter's top all the way in.
+        int in = surface.groundTop(fx + Math.round((depth + 2) * dirX), fz + Math.round((depth + 2) * dirZ));
+        if (in == Integer.MIN_VALUE) return null;
+        height = Math.min(height, in - foot - 4f);
+        if (height < 4f) return null;
+        return new Shelter(fx, fz, foot, dirX, dirZ, depth, width, height, unit(h, 56) * 6.28f);
+    }
+
+    /**
+     * A rock shelter: an overhang cut into a cliff whose foot is at (cx, foot, cz), the cliff rising towards (dirX,
+     * dirZ). Half an ellipsoid reaching {@code depth} into the cliff, {@code width} to each side, {@code height} up,
+     * on a floor at the foot's ground.
+     */
+    public record Shelter(int cx, int cz, int foot, float dirX, float dirZ, float depth, float width, float height,
+                          float phase) implements Cut {
+        @Override
+        public float value(int px, int py, int pz) {
+            if (py <= foot || py > foot + height + 2) return Float.POSITIVE_INFINITY;
+            float ox = px - cx, oz = pz - cz;
+            float along = ox * dirX + oz * dirZ, across = -ox * dirZ + oz * dirX;
+            if (along < -4f) return Float.POSITIVE_INFINITY;
+            float ht = height * (1f + 0.15f * (float) Math.sin(across / 3.1f + phase));
+            float dp = depth * (1f + 0.2f * (float) Math.sin(across / 4.3f + 2 * phase) + 0.1f * (float) Math.sin(py / 2.2f));
+            float qa = along / dp, qc = across / width, qy = (py - foot - 0.5f) / ht;
+            return ((float) Math.sqrt(qa * qa + qc * qc + qy * qy) - 1f) * Math.min(ht, dp);
+        }
+
+        @Override
+        public boolean covers(int px, int pz) {
+            float dx = px - cx, dz = pz - cz, r = reach() + 1;
+            return dx * dx + dz * dz <= r * r;
+        }
+
+        @Override
+        public float reach() {
+            return Math.max(width, depth * 1.3f) + 2f;
+        }
+
+        @Override
+        public int x() {
+            return cx;
+        }
+
+        @Override
+        public int z() {
+            return cz;
+        }
+
+        @Override
+        public int top() {
+            return foot + (int) Math.ceil(height * 1.15f) + 3;
+        }
+
+        @Override
+        public int minY() {
+            return foot;
+        }
+
+        @Override
+        public String kind() {
+            return "rock_shelter";
+        }
+    }
+
+    /** 8 bits of h from bit {@code shift}, as [0, 1). */
+    private static float unit(long h, int shift) {
+        return ((h >>> shift) & 0xFF) / 256f;
+    }
+
+    private static long mixL(long z) {
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        return z ^ (z >>> 31);
     }
 
     private static long hash(long cell, CaveBiomes layer) {

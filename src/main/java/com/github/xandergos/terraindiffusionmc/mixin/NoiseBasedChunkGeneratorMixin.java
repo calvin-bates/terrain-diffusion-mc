@@ -67,6 +67,9 @@ public abstract class NoiseBasedChunkGeneratorMixin {
             com.github.xandergos.terraindiffusionmc.world.CaveFormations.place(built);
             TerraPerf.end("chunk.caveFormations", t0);
             t0 = TerraPerf.start();
+            com.github.xandergos.terraindiffusionmc.world.SurfaceFormations.place(built);
+            TerraPerf.end("chunk.surfaceFormations", t0);
+            t0 = TerraPerf.start();
             OceanSurfaces.place(built, seaLevel);
             VolcanicSurfaces.place(built);
             com.github.xandergos.terraindiffusionmc.world.Geothermal.place(built);
