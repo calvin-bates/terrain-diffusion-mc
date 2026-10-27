@@ -921,27 +921,39 @@ def vein(lo, hi, width, b):
     return cond(tnoise(YS_PATCH, lo, hi), cond(tnoise(YS_VEIN, -width, width), cond(FLOOR0, block(b))))
 
 
+# Oct 27 (Calvin: "more dirt and grass and less geothermal pools, the Terralith version did not look like that"): every
+# stain threshold raised by YS_SHIFT so the stained patches are rarer and smaller, the veins around them thinner, and the
+# ground between them grass and coarse dirt rather than calcite. Sulfur crusts in the yellow patches, specks of
+# cinnabar in the red ones (26.3's blocks).
+YS_SHIFT = 0.2
+def ys(t):
+    return t + YS_SHIFT
+
+
 YELLOWSTONE_TOP = {"type": "minecraft:sequence", "sequence": [
-    cond(tnoise(YS_PATCH, 0.725), cond(NOT_STEEP, block("minecraft:yellow_terracotta"))),
-    cond(tnoise(YS_PATCH, 0.675), cond(NOT_STEEP, block("minecraft:red_sand"))),
-    cond(tnoise(YS_PATCH, 0.615), block("minecraft:blackstone")),
-    cond(tnoise(YS_PATCH, 0.525), block("minecraft:smooth_basalt")),
-    cond(tnoise(YS_PATCH, 0.4), block("minecraft:gravel")),
-    vein(0.3, 0.4, 0.1, "minecraft:gravel"), vein(0.2, 0.3, 0.06, "minecraft:gravel"), vein(0.1, 0.2, 0.03, "minecraft:gravel"),
-    vein(0.0, 0.1, 0.015, "minecraft:gravel"), vein(-0.05, 0.0, 0.006, "minecraft:gravel"),
-    vein(0.28, 0.4, 0.16, "minecraft:calcite"), vein(0.16, 0.28, 0.11, "minecraft:calcite"), vein(0.04, 0.16, 0.05, "minecraft:calcite"),
-    vein(-0.08, 0.04, 0.025, "minecraft:calcite"), vein(-0.2, -0.08, 0.009, "minecraft:calcite"),
-    cond(tnoise(YS_PATCH, 0.225), block("minecraft:calcite")),
+    cond(tnoise(YS_PATCH, ys(0.725)), cond(NOT_STEEP, cond(tnoise(YS_VEIN, 0.25), block("minecraft:sulfur")))),
+    cond(tnoise(YS_PATCH, ys(0.725)), cond(NOT_STEEP, block("minecraft:yellow_terracotta"))),
+    cond(tnoise(YS_PATCH, ys(0.675)), cond(NOT_STEEP, cond(tnoise(YS_VEIN, -1e9, -0.45), block("minecraft:cinnabar")))),
+    cond(tnoise(YS_PATCH, ys(0.675)), cond(NOT_STEEP, block("minecraft:red_sand"))),
+    cond(tnoise(YS_PATCH, ys(0.615)), block("minecraft:blackstone")),
+    cond(tnoise(YS_PATCH, ys(0.525)), block("minecraft:smooth_basalt")),
+    cond(tnoise(YS_PATCH, ys(0.4)), block("minecraft:gravel")),
+    vein(ys(0.3), ys(0.4), 0.05, "minecraft:gravel"), vein(ys(0.2), ys(0.3), 0.03, "minecraft:gravel"),
+    vein(ys(0.1), ys(0.2), 0.015, "minecraft:gravel"),
+    vein(ys(0.28), ys(0.4), 0.08, "minecraft:calcite"), vein(ys(0.16), ys(0.28), 0.055, "minecraft:calcite"),
+    vein(ys(0.04), ys(0.16), 0.025, "minecraft:calcite"),
+    cond(tnoise(YS_PATCH, ys(0.225)), block("minecraft:calcite")),
     cond(STEEP, cond(tnoise(YS_CLIFF, -0.4), block("minecraft:calcite"))),
-    # Terralith's height bands (grass low, coarse dirt in the middle, calcite high) as a mix by its dirt noise.
-    cond(FLOOR0, cond(tnoise(YS_DIRT, 0.1), block("minecraft:grass_block"))),
-    cond(tnoise(YS_DIRT, -0.3), block("minecraft:coarse_dirt")),
-    block("minecraft:calcite")]}
+    # Mostly grass, with coarse dirt in patches (Terralith's height bands, grass low and coarse dirt higher, as a mix
+    # by its dirt noise), dirt under them.
+    cond(FLOOR0, cond(tnoise(YS_DIRT, -0.45), block("minecraft:grass_block"))),
+    cond(tnoise(YS_DIRT, -0.8), block("minecraft:coarse_dirt")),
+    block("minecraft:dirt")]}
 biome("yellowstone", id=97, base="taiga", temp=0.25, downfall=0.8,
       colors={"grass_color": "#c6d097", "water_color": "#77e0f7"},
       veg=["terra:tl_yellowstone_spruces", "terra:tl_yellowstone_spruces_alt", "terra:tl_yellowstone_birches",
            "terra:tl_yellowstone_birches_alt", "minecraft:patch_large_fern", "minecraft:flower_default"] + TAIGA_GROUND[1:],
-      top=YELLOWSTONE_TOP, under=rule((None, "minecraft:calcite")),
+      top=YELLOWSTONE_TOP, under=rule((None, "minecraft:dirt")),
       add_steps={8: ["minecraft:spring_lava"]},
       spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#e0e9ff", "minecraft:visual/sky_color": "#77a8ff"},
       no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])

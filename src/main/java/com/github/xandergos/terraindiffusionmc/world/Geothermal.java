@@ -118,6 +118,10 @@ public final class Geothermal {
                 if (g == null) continue;
                 int cx = (int) g[0], cz = (int) g[1];
                 if (cx + GEYSER_REACH < x0 || cx - GEYSER_REACH > x0 + 15 || cz + GEYSER_REACH < z0 || cz - GEYSER_REACH > z0 + 15) continue;
+                HeightmapData centre = VolcanicSurfaces.tileAt(data, startX, startZ, cx, cz);
+                if (centre == null || centre.oceanTags == null) continue;
+                int lcx = cx - ((cx >> shift) << shift), lcz = cz - ((cz >> shift) << shift);
+                if (centre.oceanTags[lcz][lcx] != Showpieces.TAG_GEOTHERMAL) continue;
                 geyser(chunk, data, startX, startZ, scale, cx, cz, g[2], (int) g[3], g[4] > 0, Double.doubleToRawLongBits(g[5]));
             }
         }
@@ -159,13 +163,9 @@ public final class Geothermal {
      * sulfur over magma (erupting every so often; over lava for the continuous ones). Around its foot, an apron of sulfur
      * with a few sulfur spikes. Reads the tiles, so cones across chunk and tile edges come out whole.
      */
-    private static void geyser(ChunkAccess chunk, HeightmapData data, int startX, int startZ, int scale, int cx, int cz,
-                               double rc, int rise, boolean continuous, long h) {
-        HeightmapData centre = VolcanicSurfaces.tileAt(data, startX, startZ, cx, cz);
-        if (centre == null || centre.oceanTags == null) return;
+    static void geyser(ChunkAccess chunk, HeightmapData data, int startX, int startZ, int scale, int cx, int cz,
+                       double rc, int rise, boolean continuous, long h) {
         int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
-        int lcx = cx - ((cx >> shift) << shift), lcz = cz - ((cz >> shift) << shift);
-        if (centre.oceanTags[lcz][lcx] != Showpieces.TAG_GEOTHERMAL) return;
         int R = (int) Math.ceil(rc) + 4;
         int base = Integer.MIN_VALUE;
         for (int dz = -R; dz <= R; dz++) {
@@ -179,6 +179,8 @@ public final class Geothermal {
             }
         }
         if (base == Integer.MIN_VALUE) return;
+        // Not over a cave that opens to the sky (it would hang in the air over the hole).
+        if (Yellowstone.caveCutNear(cx, cz, rc + 3.5, base - 6, base + 1)) return;
         int top = base + rise;
         ChunkPos cp = chunk.getPos();
         int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ();
@@ -372,6 +374,7 @@ public final class Geothermal {
             }
         }
         if (level == Integer.MAX_VALUE || level <= chunk.getMinY() + depth + 2) return;
+        if (Yellowstone.caveCutNear(cx, cz, r * 1.25 + 4, level - depth - 2, level + 1)) return;
         if (!loggedFirst) {
             loggedFirst = true;
             LOG.info("Terra: first hot spring at {} {} {}", cx, level, cz);

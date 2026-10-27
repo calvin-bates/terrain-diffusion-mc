@@ -25,12 +25,17 @@ import org.slf4j.LoggerFactory;
  *
  * <p>One candidate pool per {@link #CELL}-block cell; it forms where the tile's biome is Yellowstone and no river or
  * lake runs. Every test reads the tiles (neighbouring ones too), so pools across chunk and tile edges come out whole.
+ *
+ * <p>Oct 27 (Calvin): fewer pools with narrower stains, so the ground between is mostly grass and coarse dirt as in
+ * Terralith; sulfur crusts and specks of cinnabar (26.3's blocks) in the stains; geysers (Geothermal's sinter cones with
+ * a vanilla geyser in the crater) here and there; and nothing is built over a cave that opens to the sky (pools hung in
+ * the air over a collapse).
  */
 public final class Yellowstone {
     private static final Logger LOG = LoggerFactory.getLogger(Yellowstone.class);
 
     private static final int CELL = 11;
-    private static final double CHANCE = 0.6;
+    private static final double CHANCE = 0.22;   // was 0.6
     /** Largest pool radius plus its stained rim. */
     private static final int REACH = 13;
 
@@ -80,6 +85,18 @@ public final class Yellowstone {
         if (!any) return;
         int scale = WorldScaleManager.clampScale(WorldScaleManager.getCurrentScale());
         long seed = LocalTerrainProvider.getSeed();
+        // Geysers first; pools keep clear of them.
+        for (int gz = Math.floorDiv(z0 - GEYSER_REACH, GEYSER_CELL); gz <= Math.floorDiv(z0 + 15 + GEYSER_REACH, GEYSER_CELL); gz++) {
+            for (int gx = Math.floorDiv(x0 - GEYSER_REACH, GEYSER_CELL); gx <= Math.floorDiv(x0 + 15 + GEYSER_REACH, GEYSER_CELL); gx++) {
+                double[] g = geyserParams(seed, gx, gz);
+                if (g == null) continue;
+                int cx = (int) g[0], cz = (int) g[1];
+                if (cx + GEYSER_REACH < x0 || cx - GEYSER_REACH > x0 + 15 || cz + GEYSER_REACH < z0 || cz - GEYSER_REACH > z0 + 15) continue;
+                if (!isYellowstone(data, startX, startZ, cx, cz)) continue;
+                Geothermal.geyser(chunk, data, startX, startZ, scale, cx, cz, g[2], (int) g[3], g[4] > 0,
+                        Double.doubleToRawLongBits(g[5]));
+            }
+        }
         for (int gz = Math.floorDiv(z0 - REACH, CELL); gz <= Math.floorDiv(z0 + 15 + REACH, CELL); gz++) {
             for (int gx = Math.floorDiv(x0 - REACH, CELL); gx <= Math.floorDiv(x0 + 15 + REACH, CELL); gx++) {
                 double[] p = params(seed, gx, gz);
@@ -94,7 +111,7 @@ public final class Yellowstone {
                         double[] q = params(seed, nx, nz);
                         if (q != null && q[3] < p[3] && Math.hypot(q[0] - p[0], q[1] - p[1]) < (q[2] + p[2]) * 1.3 + 3) blocked = true;
                     }
-                if (blocked) continue;
+                if (blocked || nearGeyser(seed, p[0], p[1], p[2] + 6)) continue;
                 pool(chunk, data, startX, startZ, scale, cx, cz, p[2], Double.doubleToRawLongBits(p[4]));
             }
         }
@@ -130,6 +147,7 @@ public final class Yellowstone {
             }
         }
         if (level == Integer.MAX_VALUE || level <= chunk.getMinY() + depth + 3) return;
+        if (caveCutNear(cx, cz, r + 2, level - depth - 2, level + 1)) return;
         ChunkPos cp = chunk.getPos();
         int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -162,14 +180,17 @@ public final class Yellowstone {
                     }
                     continue;
                 }
-                // The stained rim (Terralith's acid disks around the water): yellow, red, black, grey, then gravel.
+                // The stained rim (Terralith's acid disks around the water): yellow with sulfur crusts, red with specks of
+                // cinnabar, black, grey, then a little gravel. Narrower than before, so grass shows between the pools.
                 double q = d - r + 0.9 * RING.GetNoise(x, z);
+                long sh = mix(h ^ ((long) x * 0x9E3779B97F4A7C15L) ^ ((long) z * 0xC2B2AE3D27D4EB4FL) ^ 0x5A1FL);
                 BlockState ring;
-                if (q < 1.2) ring = Blocks.DYED_TERRACOTTA.yellow().defaultBlockState();
-                else if (q < 2.8) ring = Blocks.RED_SAND.defaultBlockState();
-                else if (q < 3.8) ring = Blocks.BLACKSTONE.defaultBlockState();
-                else if (q < 5.6) ring = Blocks.SMOOTH_BASALT.defaultBlockState();
-                else if (q < 7.8 && RING.GetNoise(x * 1.7f + 300, z * 1.7f) > -0.25f) ring = Blocks.GRAVEL.defaultBlockState();
+                if (q < 1.0) ring = RING.GetNoise(x * 2.3f + 500, z * 2.3f) > 0.15f ? Blocks.SULFUR.defaultBlockState()
+                        : Blocks.DYED_TERRACOTTA.yellow().defaultBlockState();
+                else if (q < 2.2) ring = unit(sh) < 0.14 ? Blocks.CINNABAR.defaultBlockState() : Blocks.RED_SAND.defaultBlockState();
+                else if (q < 2.9) ring = Blocks.BLACKSTONE.defaultBlockState();
+                else if (q < 3.8) ring = Blocks.SMOOTH_BASALT.defaultBlockState();
+                else if (q < 5.0 && RING.GetNoise(x * 1.7f + 300, z * 1.7f) > 0.1f) ring = Blocks.GRAVEL.defaultBlockState();
                 else continue;
                 int y = top;
                 BlockState above = chunk.getBlockState(pos.set(x, y + 1, z));
@@ -182,6 +203,68 @@ public final class Yellowstone {
                 if (below.isAir()) chunk.setBlockState(pos, Blocks.CALCITE.defaultBlockState(), 0);
             }
         }
+    }
+
+    // ---- Geysers ----
+
+    /** Cell (blocks) holding at most one geyser, the chance of one, and the farthest a geyser's cone and apron reach. */
+    private static final int GEYSER_CELL = 64;
+    private static final double GEYSER_CHANCE = 0.4, CONTINUOUS_CHANCE = 0.1;
+    private static final int GEYSER_REACH = 12;
+
+    /** Cell (gx, gz)'s candidate geyser {x, z, cone radius, rise, continuous (1/0), hash}, or null. */
+    private static double[] geyserParams(long seed, int gx, int gz) {
+        long h = mix(seed ^ ((long) gx * 0x632BE59BD9B4E019L) ^ ((long) gz * 0x85EBCA77C2B2AE63L) ^ 0x7E6E7L);
+        if (unit(h) >= GEYSER_CHANCE) return null;
+        int cx = gx * GEYSER_CELL + 12 + (int) ((GEYSER_CELL - 24) * unit(mix(h + 1)));
+        int cz = gz * GEYSER_CELL + 12 + (int) ((GEYSER_CELL - 24) * unit(mix(h + 2)));
+        double rc = 3.5 + 2.5 * unit(mix(h + 3));
+        int rise = 2 + (int) (3 * unit(mix(h + 4)));
+        return new double[]{cx, cz, rc, rise, unit(mix(h + 5)) < CONTINUOUS_CHANCE ? 1 : 0, Double.longBitsToDouble(h)};
+    }
+
+    /** Whether a geyser candidate stands within {@code reach} blocks (plus its cone) of (x, z). */
+    private static boolean nearGeyser(long seed, double x, double z, double reach) {
+        int gx0 = Math.floorDiv((int) x, GEYSER_CELL), gz0 = Math.floorDiv((int) z, GEYSER_CELL);
+        for (int gz = gz0 - 1; gz <= gz0 + 1; gz++) {
+            for (int gx = gx0 - 1; gx <= gx0 + 1; gx++) {
+                double[] g = geyserParams(seed, gx, gz);
+                if (g != null && Math.hypot(g[0] - x, g[1] - z) < reach + g[2] + 3) return true;
+            }
+        }
+        return false;
+    }
+
+    // ---- Caves that open to the sky ----
+
+    /**
+     * Whether one of the cave cuts that break the surface (collapse domes, deep shafts, sinkholes, ravines, cave
+     * mouths, cenotes, river sinks: {@code CaveSites}) opens anywhere within {@code r} blocks of (cx, cz) between
+     * {@code yLo} and {@code yHi}. Pools, rims and cones built there hung in the air over the hole (Calvin, Oct 27,
+     * X 2700 Z -9852). The same cuts and the same answer whichever chunk asks, so a pool is kept or dropped whole.
+     */
+    static boolean caveCutNear(int cx, int cz, double r, int yLo, int yHi) {
+        if (!TerrainDiffusionConfig.caves() || !TerrainDiffusionConfig.caveBiomes() || !TerrainDiffusionConfig.waterCaves()) {
+            return false;
+        }
+        int R = (int) Math.ceil(r);
+        com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.formations = TerrainDiffusionConfig.caveFormations();
+        java.util.List<com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.Cut> cuts =
+                com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.near(cx - R, cz - R, cx + R, cz + R,
+                        com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.forSeed(LocalTerrainProvider.getSeed()),
+                        CaveSurface.get());
+        if (cuts.isEmpty()) return false;
+        for (int dz = -R; dz <= R; dz++) {
+            for (int dx = -R; dx <= R; dx++) {
+                if (dx * dx + dz * dz > r * r) continue;
+                int x = cx + dx, z = cz + dz;
+                for (var c : cuts) {
+                    if (!c.covers(x, z)) continue;
+                    for (int y = yLo; y <= yHi; y++) if (c.value(x, y, z) < 0f) return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Distance (blocks) from the pool's centre, roughened so the pool's edge wanders. */
