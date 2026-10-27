@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "terra:arctic",
+    "terra:deep_dark_caves",
     "terra:glacier",
     "terra:polar_desert",
     "terra:treeline",

@@ -35,6 +35,12 @@ public final class CaveBiomes {
     public static final short COPPER_CAVES = 153, SALT_CAVES = 154, MUD_CAVES = 155, BREAKDOWN_CHAMBERS = 156;
     // Part two round B: water caves (world/CaveWater fills them up to their region's water level).
     public static final short UNDERGROUND_LAKES = 157, GLOWWORM_GROTTO = 158, KARST_CAVES = 159;
+    // Part three: rare (160-171) and very rare (172-174) caves. Round A built: molten cavern, mantle cave, crystalline
+    // chasm, deep dark (vanilla's under mountains, Terra's copy elsewhere), lava tubes, slot canyon caves, glacier caves,
+    // giant geode hall. Ids 164, 168-172 and 174 are reserved for rounds B and C.
+    public static final short MOLTEN_CAVERN = 160, MANTLE_CAVE = 161, CRYSTALLINE_CHASM = 162, DEEP_DARK = 163;
+    public static final short LAVA_TUBES = 165, SLOT_CANYON_CAVES = 166, GLACIER_CAVES = 167;
+    public static final short GIANT_GEODE_HALL = 173, DEEP_DARK_CAVES = 175;
 
     /** Id → biome name ({@code terra} namespace unless it has its own), for the biome source and the finder. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -59,6 +65,15 @@ public final class CaveBiomes {
         NAMES.put(UNDERGROUND_LAKES, "terra:underground_lakes");
         NAMES.put(GLOWWORM_GROTTO, "terra:glowworm_grotto");
         NAMES.put(KARST_CAVES, "terra:karst_caves");
+        NAMES.put(MOLTEN_CAVERN, "terra:molten_cavern");
+        NAMES.put(MANTLE_CAVE, "terra:mantle_cave");
+        NAMES.put(CRYSTALLINE_CHASM, "terra:crystalline_chasm");
+        NAMES.put(DEEP_DARK, "minecraft:deep_dark");
+        NAMES.put(DEEP_DARK_CAVES, "terra:deep_dark_caves");
+        NAMES.put(LAVA_TUBES, "terra:lava_tubes");
+        NAMES.put(SLOT_CANYON_CAVES, "terra:slot_canyon_caves");
+        NAMES.put(GLACIER_CAVES, "terra:glacier_caves");
+        NAMES.put(GIANT_GEODE_HALL, "terra:giant_geode_hall");
     }
 
     // ---- Tier shares (fractions of cave regions; tune in testing) ----
@@ -166,10 +181,14 @@ public final class CaveBiomes {
         }
         if (u < COMMON_SHARE + UNCOMMON_SHARE) {
             float t = (u - COMMON_SHARE) / UNCOMMON_SHARE;
-            return uncommon(t, y, cell, surface);
+            return fromTier(UNCOMMON, UNCOMMON_WEIGHT, 0f, t, y, cell, surface);
         }
-        // Rare and very rare tiers: part three. Plain stone until then.
-        return NONE;
+        if (u < COMMON_SHARE + UNCOMMON_SHARE + RARE_SHARE) {
+            float t = (u - COMMON_SHARE - UNCOMMON_SHARE) / RARE_SHARE;
+            return fromTier(RARE, RARE_WEIGHT, RARE_RESERVED, t, y, cell, surface);
+        }
+        float t = Math.min(0.99999f, (u - COMMON_SHARE - UNCOMMON_SHARE - RARE_SHARE) / VERY_RARE_SHARE);
+        return fromTier(VERY_RARE, VERY_RARE_WEIGHT, VERY_RARE_RESERVED, t, y, cell, surface);
     }
 
     /** The region's draw in [0, 1). */
@@ -250,34 +269,79 @@ public final class CaveBiomes {
         return id >= 0 && id < group.length && group[id];
     }
 
+    // ---- Rare and very rare tiers (part three) ----
+
     /**
-     * Picks among the uncommon caves whose gates pass for this region (so the tier keeps its share wherever any of
-     * them fits), or plain stone if none does.
+     * Rare caves and their weights. Most are gated by depth or by the surface above (volcanoes, deserts, glaciers,
+     * mountains), so in shallow ordinary ground the rare tier usually falls back to plain stone: spectacle only where
+     * the geology suits it. Vanilla's deep dark only appears under mountains (where ancient cities may generate);
+     * Terra's copy of it, without ancient cities, everywhere else deep down.
      */
-    private short uncommon(float t, int y, long cell, Surface surface) {
-        if (UNCOMMON.length == 0) return NONE;
+    private static final short[] RARE = {MOLTEN_CAVERN, MANTLE_CAVE, CRYSTALLINE_CHASM, DEEP_DARK, DEEP_DARK_CAVES,
+            LAVA_TUBES, SLOT_CANYON_CAVES, GLACIER_CAVES};
+    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 30f, 6f, 10f, 10f, 10f};
+    private static final short[] VERY_RARE = {GIANT_GEODE_HALL};
+    private static final float[] VERY_RARE_WEIGHT = {0.5f};
+    /**
+     * Weight held for the caves of rounds B and C (deep dark forest, canyon ravine, sinkhole jungle, blue hole, deep
+     * shaft; deep dark incursion, selenite beams), plain stone until they exist, so adding them moves nothing.
+     */
+    private static final float RARE_RESERVED = 30f, VERY_RARE_RESERVED = 2f;
+
+    /**
+     * Picks a tier's cave for this region. With {@code reserved} 0 (the uncommon tier) the pick is among the caves
+     * whose gates pass, so the tier keeps its share wherever any of them fits. Otherwise (rare, very rare) each cave
+     * keeps its own share of the tier, plain stone where its gate fails, so a cave that fits everywhere doesn't take
+     * the whole tier where the others don't fit; {@code reserved} is weight held for caves still to come.
+     */
+    private short fromTier(short[] ids, float[] weights, float reserved, float t, int y, long cell, Surface surface) {
+        if (ids.length == 0) return NONE;
         short anchorBiome = surface == null ? -1 : surface.biomeAt(anchorX(cell), anchorZ(cell));
-        int nearWater = -1;   // looked up only if a water cave asks
+        int nearWater = -1, ground = Integer.MIN_VALUE + 1;   // looked up only if a cave asks
+        // Rare and very rare caves are whole set pieces (halls, chasms, tubes): their depth gates use the middle of the
+        // region, so a gate never slices a region in two.
+        if (reserved > 0f) y = unpack(cell, 21) * REGION_Y + REGION_Y / 2;
         float sum = 0;
-        float[] w = new float[UNCOMMON.length];
-        for (int i = 0; i < UNCOMMON.length; i++) {
-            short id = UNCOMMON[i];
+        float[] w = new float[ids.length];
+        for (int i = 0; i < ids.length; i++) {
+            short id = ids[i];
             boolean ok = eligible(id, y, anchorBiome);
             if (ok && needsInlandWater(id, anchorBiome)) {
                 if (nearWater < 0) nearWater = surface != null && surface.nearInlandWater(anchorX(cell), anchorZ(cell)) ? 1 : 0;
                 ok = nearWater == 1;
             }
-            w[i] = ok ? UNCOMMON_WEIGHT[i] : 0f;
+            if (ok && (id == DEEP_DARK || id == DEEP_DARK_CAVES)) {
+                if (ground == Integer.MIN_VALUE + 1) ground = surface == null ? Integer.MIN_VALUE : surface.groundTop(anchorX(cell), anchorZ(cell));
+                boolean mountain = in(MOUNTAIN, anchorBiome) || (ground != Integer.MIN_VALUE && ground >= MOUNTAIN_GROUND_Y);
+                ok = id == DEEP_DARK ? mountain : !mountain;
+            }
+            w[i] = ok ? weights[i] : 0f;
             sum += w[i];
+        }
+        if (reserved > 0f) {
+            float total = reserved;
+            for (float x : weights) total += x;
+            float target = t * total, acc = 0;
+            for (int i = 0; i < ids.length; i++) {
+                acc += weights[i];
+                if (target < acc) return w[i] > 0 ? ids[i] : NONE;
+            }
+            return NONE;
         }
         if (sum <= 0) return NONE;
         float target = t * sum, acc = 0;
-        for (int i = 0; i < UNCOMMON.length; i++) {
+        for (int i = 0; i < ids.length; i++) {
             acc += w[i];
-            if (target < acc && w[i] > 0) return UNCOMMON[i];
+            if (target < acc && w[i] > 0) return ids[i];
         }
         return NONE;
     }
+
+    /** Mountain surfaces (peaks, slopes, groves, windswept hills, taiga mountain) and ground this high count as mountains. */
+    private static final boolean[] MOUNTAIN = ids(19, 20, 31, 32, 33, 34, 35, 56, 88);
+    public static int MOUNTAIN_GROUND_Y = 260;
+    private static final boolean[] SANDSTONE_GROUND = ids(5, 26, 71, 79, 80, 84, 89, 90, 91);
+    private static final boolean[] GLACIAL = ids(88, 32, 33, 34);
 
     /** Vanilla's lush and sulfur cave features place only up to Y 256, like dripstone's. */
     public static int VANILLA_FEATURE_MAX_Y = 240;
@@ -293,6 +357,15 @@ public final class CaveBiomes {
             case SALT_CAVES -> in(DRY, anchorBiome);
             case MUD_CAVES -> in(WET, anchorBiome) && y >= -16;
             case INFESTED_CAVES -> y <= 200;
+            // Rare (part three).
+            case MOLTEN_CAVERN -> y <= 20 && (in(HOT_GROUND, anchorBiome) || y <= -28);
+            case MANTLE_CAVE -> y <= -24;
+            case CRYSTALLINE_CHASM -> y <= 40;
+            case DEEP_DARK, DEEP_DARK_CAVES -> y <= -8;
+            case LAVA_TUBES -> in(HOT_GROUND, anchorBiome) && y >= -40;
+            case SLOT_CANYON_CAVES -> in(SANDSTONE_GROUND, anchorBiome) && y >= -16;
+            case GLACIER_CAVES -> in(GLACIAL, anchorBiome);
+            case GIANT_GEODE_HALL -> y <= 30;
             // Water caves: above the lava of the deepest caves.
             case UNDERGROUND_LAKES -> y >= WATER_MIN_Y;
             case GLOWWORM_GROTTO -> y >= WATER_MIN_Y && (in(HUMID, anchorBiome) || in(TROPICAL, anchorBiome));
@@ -323,6 +396,63 @@ public final class CaveBiomes {
         return id == UNDERGROUND_LAKES || id == GLOWWORM_GROTTO || id == KARST_CAVES;
     }
 
+    /** Caves that hold lava pools and lakes (world/CaveWater fills them with lava instead of water). */
+    public static boolean isLavaCave(short id) {
+        return id == MOLTEN_CAVERN || id == LAVA_TUBES;
+    }
+
+    /** Cave biomes whose region holds a fluid (water or lava). */
+    public static boolean hasFluid(short id) {
+        return isWaterCave(id) || isLavaCave(id);
+    }
+
+    /**
+     * The fluid level of a region for a cave biome: water caves {@link #waterLevel}; molten caverns lava lakes 6 to 14
+     * blocks above the bottom of their cell; lava tubes shallow lava pools on the tube's floor.
+     */
+    public int fluidLevel(long cell, short id) {
+        if (id == MOLTEN_CAVERN) return unpack(cell, 21) * REGION_Y + 6 + (int) (draw2(cell) * 8f);
+        if (id == LAVA_TUBES) return tubeY(cell) - 3;
+        return waterLevel(cell);
+    }
+
+    // ---- Region shapes (part three): CaveShapes reads these through shapeFamily ----
+
+    /** Shape families: none, a tall chasm (mantle, crystalline), slot canyons, horizontal tubes, one giant hall. */
+    public static final int SHAPE_NONE = 0, SHAPE_CHASM = 1, SHAPE_SLOT = 2, SHAPE_TUBE = 3, SHAPE_HALL = 4;
+
+    public static int shapeFamily(short id) {
+        return switch (id) {
+            case MANTLE_CAVE, CRYSTALLINE_CHASM -> SHAPE_CHASM;
+            case SLOT_CANYON_CAVES -> SHAPE_SLOT;
+            case LAVA_TUBES, GLACIER_CAVES -> SHAPE_TUBE;
+            case GIANT_GEODE_HALL -> SHAPE_HALL;
+            default -> SHAPE_NONE;
+        };
+    }
+
+    /** Half-width of a chasm or slot, in noise units (CaveShapes turns it into blocks). */
+    public static float shapeWidth(short id) {
+        return switch (id) {
+            case MANTLE_CAVE -> 0.32f;
+            case CRYSTALLINE_CHASM -> 0.16f;
+            case SLOT_CANYON_CAVES -> 0.18f;
+            case GLACIER_CAVES -> 0.34f;
+            case LAVA_TUBES -> 0.30f;
+            default -> 0f;
+        };
+    }
+
+    /** The centre height of a region's tubes: 18 to 34 blocks above the bottom of its unwarped cell. */
+    public int tubeY(long cell) {
+        return unpack(cell, 21) * REGION_Y + 18 + (int) (draw2(cell) * 16f);
+    }
+
+    /** The centre of a region's giant hall: its anchor, halfway up its unwarped cell. */
+    public static int hallY(long cell) {
+        return unpack(cell, 21) * REGION_Y + REGION_Y / 2;
+    }
+
     /**
      * The water level of a region (top water block): 12 to 32 blocks above the bottom of its unwarped cell, so water
      * caves are part flooded, part dry above. Every block of cave air in the region at or below it is water.
@@ -342,6 +472,8 @@ public final class CaveBiomes {
         return switch (id) {
             case FUNGAL_CAVES -> 0.10f;
             case BREAKDOWN_CHAMBERS -> 0.17f;
+            case MOLTEN_CAVERN -> 0.14f;
+            case DEEP_DARK, DEEP_DARK_CAVES -> 0.08f;
             default -> 0f;
         };
     }

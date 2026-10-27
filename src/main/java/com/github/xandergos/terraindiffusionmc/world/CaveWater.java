@@ -34,7 +34,10 @@ import java.util.Map;
 public final class CaveWater {
     private static final Logger LOG = LoggerFactory.getLogger(CaveWater.class);
     private static final ResourceKey<Biome> LAKES = key("underground_lakes"), GROTTO = key("glowworm_grotto"),
-            KARST = key("karst_caves");
+            KARST = key("karst_caves"), MOLTEN = key("molten_cavern"), TUBES = key("lava_tubes");
+    private static final BlockState LAVA = Blocks.LAVA.defaultBlockState();
+    private static final BlockState[] LAVA_BED = {Blocks.MAGMA_BLOCK.defaultBlockState(), Blocks.BASALT.defaultBlockState(),
+            Blocks.BLACKSTONE.defaultBlockState()};
     private static final BlockState WATER = Blocks.WATER.defaultBlockState();
     private static final BlockState[] BED = {Blocks.GRAVEL.defaultBlockState(), Blocks.GRAVEL.defaultBlockState(),
             Blocks.CLAY.defaultBlockState(), Blocks.CLAY.defaultBlockState(), Blocks.SAND.defaultBlockState()};
@@ -85,10 +88,13 @@ public final class CaveWater {
         }
     }
 
-    private static boolean isWater(Holder<Biome> h, Map<Holder<Biome>, Boolean> memo) {
-        Boolean b = memo.get(h);
+    /** The cave biome id of a fluid cave (water or lava), or -1. */
+    private static short fluidCave(Holder<Biome> h, Map<Holder<Biome>, Short> memo) {
+        Short b = memo.get(h);
         if (b == null) {
-            b = h.is(LAKES) || h.is(GROTTO) || h.is(KARST);
+            b = h.is(LAKES) ? CaveBiomes.UNDERGROUND_LAKES : h.is(GROTTO) ? CaveBiomes.GLOWWORM_GROTTO
+                    : h.is(KARST) ? CaveBiomes.KARST_CAVES : h.is(MOLTEN) ? CaveBiomes.MOLTEN_CAVERN
+                    : h.is(TUBES) ? CaveBiomes.LAVA_TUBES : (short) -1;
             memo.put(h, b);
         }
         return b;
@@ -96,7 +102,7 @@ public final class CaveWater {
 
     private static void placeUnchecked(ChunkAccess chunk) {
         LevelChunkSection[] sections = chunk.getSections();
-        Map<Holder<Biome>, Boolean> memo = new IdentityHashMap<>();
+        Map<Holder<Biome>, Short> memo = new IdentityHashMap<>();
         CaveBiomes layer = null;
         int x0 = chunk.getPos().getMinBlockX(), z0 = chunk.getPos().getMinBlockZ();
         int minY = chunk.getMinY(), height = chunk.getHeight();
@@ -107,20 +113,23 @@ public final class CaveWater {
         for (int s = 0; s < sections.length; s++) {
             LevelChunkSection sec = sections[s];
             if (sec == null || sec.hasOnlyAir()) continue;
-            if (!sec.getBiomes().maybeHas(h -> isWater(h, memo))) continue;
+            if (!sec.getBiomes().maybeHas(h -> fluidCave(h, memo) >= 0)) continue;
             int y0 = chunk.getSectionYFromSectionIndex(s) << 4;
             int[] lv = null;
             for (int qy = 0; qy < 4; qy++)
                 for (int qz = 0; qz < 4; qz++)
                     for (int qx = 0; qx < 4; qx++) {
-                        if (!isWater(sec.getNoiseBiome(qx, qy, qz), memo)) continue;
+                        short id = fluidCave(sec.getNoiseBiome(qx, qy, qz), memo);
+                        if (id < 0) continue;
                         if (layer == null) layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
                         if (lv == null) {
                             lv = new int[64];
                             java.util.Arrays.fill(lv, Integer.MIN_VALUE);
                         }
                         int bx = x0 + qx * 4 + 2, by = y0 + qy * 4 + 2, bz = z0 + qz * 4 + 2;
-                        lv[(qy * 4 + qz) * 4 + qx] = layer.waterLevel(layer.regionCell(bx, by, bz));
+                        int level = layer.fluidLevel(layer.regionCell(bx, by, bz), id);
+                        // Lava levels are stored negative-offset so the fill knows the fluid: level * 2 + (lava ? 1 : 0).
+                        lv[(qy * 4 + qz) * 4 + qx] = level * 2 + (CaveBiomes.isLavaCave(id) ? 1 : 0);
                         any = true;
                     }
             cellLevel[s] = lv;
@@ -128,7 +137,7 @@ public final class CaveWater {
         if (!any) return;
 
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        int lowest = CaveBiomes.WATER_MIN_Y - 10;
+        int lowest = chunk.getMinY();
         boolean[] placed = new boolean[16 * 16 * height];
         for (int s = 0; s < sections.length; s++) {
             int[] lv = cellLevel[s];
@@ -140,10 +149,13 @@ public final class CaveWater {
                 if (y < lowest) continue;
                 for (int lz = 0; lz < 16; lz++) {
                     for (int lx = 0; lx < 16; lx++) {
-                        int level = lv[((ly >> 2) * 4 + (lz >> 2)) * 4 + (lx >> 2)];
-                        if (level == Integer.MIN_VALUE || y > level) continue;
+                        int code = lv[((ly >> 2) * 4 + (lz >> 2)) * 4 + (lx >> 2)];
+                        if (code == Integer.MIN_VALUE) continue;
+                        boolean lava = (code & 1) != 0;
+                        int level = code >> 1;
+                        if (y > level || (!lava && y < CaveBiomes.WATER_MIN_Y - 10)) continue;
                         if (!sec.getBlockState(lx, ly, lz).isAir()) continue;
-                        sec.setBlockState(lx, ly, lz, WATER, false);
+                        sec.setBlockState(lx, ly, lz, lava ? LAVA : WATER, false);
                         placed[((y - minY) * 16 + lz) * 16 + lx] = true;
                     }
                 }
@@ -157,9 +169,12 @@ public final class CaveWater {
                     if (!placed[((y - minY) * 16 + lz) * 16 + lx]) continue;
                     int x = x0 + lx, z = z0 + lz;
                     BlockState below = chunk.getBlockState(pos.set(x, y - 1, z));
-                    if (below.is(BlockTags.BASE_STONE_OVERWORLD) || below.is(Blocks.CALCITE)) {
+                    boolean lava = chunk.getBlockState(pos.set(x, y, z)).is(Blocks.LAVA);
+                    pos.set(x, y - 1, z);
+                    if (below.is(BlockTags.BASE_STONE_OVERWORLD) || below.is(Blocks.CALCITE) || below.is(Blocks.BASALT)
+                            || below.is(Blocks.BLACKSTONE)) {
                         int h = hash(x, y, z);
-                        chunk.setBlockState(pos, BED[Math.floorMod(h, BED.length)], 0);
+                        chunk.setBlockState(pos, lava ? LAVA_BED[h % LAVA_BED.length] : BED[h % BED.length], 0);
                     }
                     boolean flow = below.isAir();
                     if (!flow && lx > 0) flow = chunk.getBlockState(pos.set(x - 1, y, z)).isAir();

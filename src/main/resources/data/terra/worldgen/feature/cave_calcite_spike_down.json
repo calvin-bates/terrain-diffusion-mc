@@ -1,0 +1,39 @@
+{
+  "type": "minecraft:block_column",
+  "allowed_placement": {
+    "type": "minecraft:matching_block_tag",
+    "tag": "minecraft:air"
+  },
+  "direction": "down",
+  "prioritize_tip": true,
+  "layers": [
+    {
+      "height": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 7,
+        "min_inclusive": 2
+      },
+      "provider": {
+        "id": "minecraft:calcite"
+      }
+    },
+    {
+      "height": 1,
+      "provider": {
+        "type": "minecraft:weighted",
+        "entries": [
+          {
+            "data": {
+              "id": "minecraft:amethyst_cluster",
+              "properties": {
+                "facing": "down",
+                "waterlogged": "false"
+              }
+            },
+            "weight": 1
+          }
+        ]
+      }
+    }
+  ]
+}

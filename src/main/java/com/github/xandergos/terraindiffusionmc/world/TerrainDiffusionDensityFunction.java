@@ -266,6 +266,10 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
             long t2 = com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.start();
             CaveExtras extras = CaveExtras.of(volume.blockX(0), volume.blockZ(0), sizeX, sizeZ);
             com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.end("chunk.caveExtras", t2);
+            // Buried structures stay in solid rock; ancient cities get their cleared box (StructureGuards).
+            java.util.List<Beardifier.Rigid> guards = StructureGuards.near(context.getField(Beardifier.CONTEXT_KEY),
+                    volume.blockX(0), volume.blockZ(0), volume.blockX(sizeX - 1), volume.blockZ(sizeZ - 1));
+            java.util.List<Beardifier.Rigid> colGuards = guards.isEmpty() ? null : new java.util.ArrayList<>();
             int index = 0;
             for (int z = 0; z < sizeZ; z++) {
                 for (int x = 0; x < sizeX; x++) {
@@ -276,6 +280,8 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                     int eTop = extras.any ? extras.maxY(c) : Integer.MIN_VALUE;
                     int eBottom = eTop == Integer.MIN_VALUE ? Integer.MAX_VALUE : extras.minY(c);
                     int blockX = volume.blockX(x), blockZ = volume.blockZ(z);
+                    if (colGuards != null) StructureGuards.column(guards, blockX, blockZ, colGuards);
+                    boolean guarded = colGuards != null && !colGuards.isEmpty();
                     for (int y = 0; y < sizeY; y++) {
                         int blockY = minY + y;
                         float v = t - blockY;
@@ -287,6 +293,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                             float ev = extras.value(c, blockX, blockY, blockZ);
                             if (ev < v) v = ev;
                         }
+                        if (guarded && blockY < t) v = StructureGuards.apply(colGuards, blockX, blockY, blockZ, v);
                         buffer.set(index++, v);
                     }
                 }

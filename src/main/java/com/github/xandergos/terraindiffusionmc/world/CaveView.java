@@ -64,6 +64,15 @@ public final class CaveView {
         COLORS.put(CaveBiomes.UNDERGROUND_LAKES, "#4f86c6");
         COLORS.put(CaveBiomes.GLOWWORM_GROTTO, "#59d0e8");
         COLORS.put(CaveBiomes.KARST_CAVES, "#d8d3c0");
+        COLORS.put(CaveBiomes.MOLTEN_CAVERN, "#c2410c");
+        COLORS.put(CaveBiomes.MANTLE_CAVE, "#3b3330");
+        COLORS.put(CaveBiomes.CRYSTALLINE_CHASM, "#b48ae8");
+        COLORS.put(CaveBiomes.DEEP_DARK, "#0f4f5a");
+        COLORS.put(CaveBiomes.DEEP_DARK_CAVES, "#1a6b78");
+        COLORS.put(CaveBiomes.LAVA_TUBES, "#5a3a32");
+        COLORS.put(CaveBiomes.SLOT_CANYON_CAVES, "#d9a35e");
+        COLORS.put(CaveBiomes.GLACIER_CAVES, "#6ec6f0");
+        COLORS.put(CaveBiomes.GIANT_GEODE_HALL, "#8f5bd6");
     }
 
     public static void color(short id, String hex) {
@@ -215,8 +224,8 @@ public final class CaveView {
         if (v > 0) mat[out] = ROCK;
         else if (y < -54) mat[out] = LAVA;
         else if (y < 63 && !cols.dry[c]) mat[out] = FLOODED;
-        else if (cave >= 0 && CaveBiomes.isWaterCave(cave) && TerrainDiffusionConfig.waterCaves()
-                && y <= cols.waterLevel(c, y)) mat[out] = FLOODED;
+        else if (cave >= 0 && CaveBiomes.hasFluid(cave) && TerrainDiffusionConfig.waterCaves()
+                && y <= cols.fluidLevel(c, y, cave)) mat[out] = CaveBiomes.isLavaCave(cave) ? LAVA : FLOODED;
         else mat[out] = AIR;
         bio[out] = cave == SURFACE_CAVE ? SURFACE_LAYER : code(cave);
     }
@@ -301,10 +310,10 @@ public final class CaveView {
             return layer.pick(bx, by, bz, surface);
         }
 
-        /** The water level of the region holding column c's biome cell at height y (as world/CaveWater fills it). */
-        int waterLevel(int c, int y) {
+        /** The fluid level of the region holding column c's biome cell at height y (as world/CaveWater fills it). */
+        int fluidLevel(int c, int y, short id) {
             int x = x0 + c % w, z = z0 + c / w;
-            return layer.waterLevel(layer.regionCell((x & ~3) + 2, (y & ~3) + 2, (z & ~3) + 2));
+            return layer.fluidLevel(layer.regionCell((x & ~3) + 2, (y & ~3) + 2, (z & ~3) + 2), id);
         }
     }
 }

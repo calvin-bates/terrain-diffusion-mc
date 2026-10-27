@@ -32,6 +32,28 @@ public final class CaveStone {
     private static final Logger LOG = LoggerFactory.getLogger(CaveStone.class);
 
     private static final byte NONE = 0, ANDESITE = 1, DIORITE = 2, GRANITE = 3, TUFF = 4, SALT = 5, KARST = 6;
+    // Part three round A.
+    private static final byte MOLTEN = 7, TUBES = 8, CRYSTAL = 9, SLOT = 10, GLACIER = 11, GEODE = 12;
+    private static final ResourceKey<Biome> MOLTEN_CAVERN = key("molten_cavern"), LAVA_TUBES = key("lava_tubes"),
+            CRYSTALLINE_CHASM = key("crystalline_chasm"), SLOT_CANYON_CAVES = key("slot_canyon_caves"),
+            GLACIER_CAVES = key("glacier_caves"), GIANT_GEODE_HALL = key("giant_geode_hall");
+    private static BlockState b(net.minecraft.world.level.block.Block block) {
+        return block.defaultBlockState();
+    }
+    /** Molten caverns: blackstone and basalt with magma seams. */
+    private static final BlockState[] MOLTEN_BEDS = {b(Blocks.BLACKSTONE), b(Blocks.BASALT), b(Blocks.BLACKSTONE),
+            b(Blocks.SMOOTH_BASALT), b(Blocks.MAGMA_BLOCK), b(Blocks.BLACKSTONE), b(Blocks.BASALT)};
+    /** Lava tubes: cooled lava, basalt and blackstone. */
+    private static final BlockState[] TUBE_BEDS = {b(Blocks.BASALT), b(Blocks.SMOOTH_BASALT), b(Blocks.BLACKSTONE),
+            b(Blocks.BASALT), b(Blocks.TUFF)};
+    /** Slot canyons: sandstone layers, red under badlands, canyons and painted mountains. */
+    private static final BlockState[] SAND_BEDS = {b(Blocks.SANDSTONE), b(Blocks.SMOOTH_SANDSTONE), b(Blocks.SANDSTONE),
+            b(Blocks.DYED_TERRACOTTA.yellow()), b(Blocks.SANDSTONE), b(Blocks.SMOOTH_SANDSTONE)};
+    private static final BlockState[] RED_BEDS = {b(Blocks.RED_SANDSTONE), b(Blocks.SMOOTH_RED_SANDSTONE), b(Blocks.RED_SANDSTONE),
+            b(Blocks.DYED_TERRACOTTA.orange()), b(Blocks.RED_SANDSTONE), b(Blocks.TERRACOTTA)};
+    /** Glacier caves: blue ice, packed ice, ice and old snow. */
+    private static final BlockState[] ICE_BEDS = {b(Blocks.PACKED_ICE), b(Blocks.BLUE_ICE), b(Blocks.PACKED_ICE), b(Blocks.ICE),
+            b(Blocks.BLUE_ICE), b(Blocks.SNOW_BLOCK), b(Blocks.PACKED_ICE)};
     private static final ResourceKey<Biome> ANDESITE_CAVES = key("andesite_caves"), DIORITE_CAVES = key("diorite_caves"),
             GRANITE_CAVES = key("granite_caves"), TUFF_CAVES = key("tuff_caves"), SALT_CAVES = key("salt_caves"),
             KARST_CAVES = key("karst_caves");
@@ -69,7 +91,9 @@ public final class CaveStone {
         Byte k = memo.get(h);
         if (k == null) {
             k = h.is(ANDESITE_CAVES) ? ANDESITE : h.is(DIORITE_CAVES) ? DIORITE : h.is(GRANITE_CAVES) ? GRANITE
-                    : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : h.is(KARST_CAVES) ? KARST : NONE;
+                    : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : h.is(KARST_CAVES) ? KARST
+                    : h.is(MOLTEN_CAVERN) ? MOLTEN : h.is(LAVA_TUBES) ? TUBES : h.is(CRYSTALLINE_CHASM) ? CRYSTAL
+                    : h.is(SLOT_CANYON_CAVES) ? SLOT : h.is(GLACIER_CAVES) ? GLACIER : h.is(GIANT_GEODE_HALL) ? GEODE : NONE;
             memo.put(h, k);
         }
         return k;
@@ -102,6 +126,8 @@ public final class CaveStone {
         if (!any) return;
 
         int x0 = chunk.getPos().getMinBlockX(), z0 = chunk.getPos().getMinBlockZ();
+        byte[] red = null;   // per column, for slot canyons: 0 unknown, 1 yellow, 2 red
+        com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes layer = null;
         for (int s = 0; s < sections.length; s++) {
             if (cells[s] == null) continue;
             LevelChunkSection sec = sections[s];
@@ -127,15 +153,38 @@ public final class CaveStone {
                         }
                         // A neighbouring section without cave stone counts as plain rock there.
                         byte k = cs == null ? NONE : cs[((jy >> 2) * 4 + (jz >> 2)) * 4 + (jx >> 2)];
-                        if (k == NONE || (deep && k != TUFF && k != SALT)) continue;
-                        BlockState rock = ROCK[k];
-                        if (k == SALT) {
+                        if (k == NONE || (deep && (k <= GRANITE || k == KARST))) continue;
+                        BlockState rock = k < ROCK.length ? ROCK[k] : null;
+                        int bx = x0 + lx, bz = z0 + lz, by = y0 + ly;
+                        if (k == SLOT) {
+                            if (red == null) red = new byte[256];
+                            int c = lz * 16 + lx;
+                            if (red[c] == 0) {
+                                short sb = CaveSurface.get().biomeAt(bx, bz);
+                                red[c] = (byte) (sb == 26 || sb == 89 || sb == 90 || sb == 79 ? 2 : 1);
+                            }
+                            rock = bands(red[c] == 2 ? RED_BEDS : SAND_BEDS, bx, by, bz, 3, 4);
+                        } else if (k == MOLTEN) {
+                            rock = bands(MOLTEN_BEDS, bx, by, bz, 2, 5);
+                        } else if (k == TUBES) {
+                            rock = bands(TUBE_BEDS, bx, by, bz, 2, 4);
+                        } else if (k == GLACIER) {
+                            rock = bands(ICE_BEDS, bx, by, bz, 2, 5);
+                        } else if (k == CRYSTAL) {
+                            // Calcite veins through the host rock.
+                            if (Math.floorMod(Math.floorDiv(by * 2 + (bx >> 2) - (bz >> 2), 5) * 0x9E3779B1 >>> 9, 3) != 0) continue;
+                            rock = b(Blocks.CALCITE);
+                        } else if (k == GEODE) {
+                            if (layer == null) layer = com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.forSeed(
+                                    com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.getSeed());
+                            rock = geodeShell(layer, bx, by, bz, h);
+                            if (rock == null) continue;
+                        }
+                        else if (k == SALT) {
                             // Gently tilted layers 1-3 blocks thick: the band index follows y plus a slow tilt.
-                            int bx = x0 + lx, bz = z0 + lz, by = y0 + ly;
                             int band = Math.floorDiv(by * 3 + (bx >> 3) + (bz >> 4), 5);
                             rock = SALT_LAYERS[Math.floorMod(band * 0x9E3779B1 >>> 7, SALT_LAYERS.length)];
                         } else if (k == KARST) {
-                            int bx = x0 + lx, bz = z0 + lz, by = y0 + ly;
                             int band = Math.floorDiv(by * 2 + (bx >> 2) + (bz >> 3), 7);
                             rock = KARST_BEDS[Math.floorMod(band * 0x9E3779B1 >>> 7, KARST_BEDS.length)];
                         }
@@ -144,6 +193,33 @@ public final class CaveStone {
                 }
             }
         }
+    }
+
+    /** Gently tilted beds: the band index follows y (times {@code thick}) plus a slow tilt, hashed to a block. */
+    private static BlockState bands(BlockState[] beds, int x, int y, int z, int thick, int per) {
+        int band = Math.floorDiv(y * thick + (x >> 3) + (z >> 4), per);
+        return beds[Math.floorMod(band * 0x9E3779B1 >>> 7, beds.length)];
+    }
+
+    /**
+     * The giant geode hall's lining, from the hall surface outwards: amethyst (with some budding amethyst), calcite,
+     * smooth basalt, like a vanilla geode at hall scale. Null outside the lining.
+     */
+    private static BlockState geodeShell(com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes layer, int x, int y,
+                                         int z, int h) {
+        long cell = layer.regionCell((x & ~3) + 2, (y & ~3) + 2, (z & ~3) + 2);
+        float dx = (x - com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.anchorX(cell))
+                / com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RX;
+        float dy = (y - com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.hallY(cell))
+                / com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RY;
+        float dz = (z - com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.anchorZ(cell))
+                / com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RX;
+        float out = ((float) Math.sqrt(dx * dx + dy * dy + dz * dz) - 1f)
+                * com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RY;
+        if (out < -2f || out > 4.5f) return null;
+        if (out < 1.6f) return (h & 15) == 0 ? b(Blocks.BUDDING_AMETHYST) : b(Blocks.AMETHYST_BLOCK);
+        if (out < 3.2f) return b(Blocks.CALCITE);
+        return b(Blocks.SMOOTH_BASALT);
     }
 
     private static int hash(int x, int y, int z) {

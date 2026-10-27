@@ -1071,6 +1071,80 @@ cave_biome("karst_caves", 159, 0.9, downfall=0.9,
                   "terra:cave_lake_clay_pools"],
            veg=["terra:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
 
+# ---- v1.5 part three round A: rare and very rare caves (CaveBiomes; shapes in CaveShapes, rock in world/CaveStone,
+# lava in world/CaveWater, ancient cities kept to the deep dark under mountains) ----
+def basalt(h):
+    return ({"id": "minecraft:basalt", "properties": {"axis": "y"}}, h)
+
+
+def amethyst(facing, *pairs):
+    return {"type": "minecraft:weighted", "entries": [
+        {"data": {"id": b, "properties": {"facing": facing, "waterlogged": "false"}}, "weight": w} for b, w in pairs]}
+
+
+AMETHYST_KINDS = (("minecraft:amethyst_cluster", 3), ("minecraft:large_amethyst_bud", 2),
+                  ("minecraft:medium_amethyst_bud", 1), ("minecraft:small_amethyst_bud", 1))
+FEATURES.update({
+    "cave_basalt_up": column("up", basalt((2, 8))),
+    "cave_basalt_down": column("down", basalt((2, 7))),
+    "cave_tall_basalt_up": column("up", basalt((4, 14))),
+    "cave_tall_basalt_down": column("down", basalt((4, 12))),
+    "cave_lavacicle": column("down", basalt((1, 2))),
+    "cave_magma_floor": patch_cfg(weighted(("minecraft:magma_block", 2), ("minecraft:blackstone", 2), ("minecraft:basalt", 1)),
+                                  "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+    "cave_ore_blackstone": ore("minecraft:blackstone", 30),
+    "cave_ore_amethyst": ore("minecraft:amethyst_block", 16),
+    "cave_amethyst_floor": {"type": "minecraft:simple_block", "to_place": amethyst("up", *AMETHYST_KINDS)},
+    "cave_amethyst_ceiling": {"type": "minecraft:simple_block", "to_place": amethyst("down", *AMETHYST_KINDS)},
+    "cave_calcite_spike_up": column("up", ("minecraft:calcite", (3, 9)), (amethyst("up", ("minecraft:amethyst_cluster", 1)), 1)),
+    "cave_calcite_spike_down": column("down", ("minecraft:calcite", (2, 7)), (amethyst("down", ("minecraft:amethyst_cluster", 1)), 1)),
+    "cave_sand_floor": patch_cfg(weighted(("minecraft:sand", 3), ("minecraft:red_sand", 1), ("minecraft:sandstone", 1)),
+                                 "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), radius=(3, 6),
+                                 replaceable="#minecraft:base_stone_overworld"),
+})
+PLACED.update({
+    "cave_magma_floor": cave_placed("terra:cave_magma_floor", 50, SCAN_FLOOR),
+    "cave_magma_floor_sparse": cave_placed("terra:cave_magma_floor", 15, SCAN_FLOOR),
+    "cave_basalt_up": cave_placed("terra:cave_basalt_up", 30, SCAN_FLOOR),
+    "cave_basalt_down": cave_placed("terra:cave_basalt_down", 30, SCAN_CEILING),
+    "cave_tall_basalt_up": cave_placed("terra:cave_tall_basalt_up", 40, SCAN_FLOOR),
+    "cave_tall_basalt_down": cave_placed("terra:cave_tall_basalt_down", 40, SCAN_CEILING),
+    "cave_lavacicles": cave_placed("terra:cave_lavacicle", 60, SCAN_CEILING),
+    "cave_ore_blackstone": cave_placed("terra:cave_ore_blackstone", 9),
+    "cave_ore_magma_rich": cave_placed("terra:cave_ore_magma", 14),
+    "cave_ore_amethyst": cave_placed("terra:cave_ore_amethyst", 6),
+    "cave_crystal_geodes": cave_placed("minecraft:amethyst_geode", 2),
+    "cave_amethyst_floor": cave_placed("terra:cave_amethyst_floor", 120, SCAN_FLOOR),
+    "cave_amethyst_ceiling": cave_placed("terra:cave_amethyst_ceiling", 80, SCAN_CEILING),
+    "cave_amethyst_floor_dense": cave_placed("terra:cave_amethyst_floor", 220, SCAN_FLOOR),
+    "cave_amethyst_ceiling_dense": cave_placed("terra:cave_amethyst_ceiling", 160, SCAN_CEILING),
+    "cave_calcite_spikes_up": cave_placed("terra:cave_calcite_spike_up", 30, SCAN_FLOOR),
+    "cave_calcite_spikes_down": cave_placed("terra:cave_calcite_spike_down", 30, SCAN_CEILING),
+    "cave_sand_floor": cave_placed("terra:cave_sand_floor", 60, SCAN_FLOOR),
+})
+MAGMA_CUBES = [{"type": "minecraft:magma_cube", "count": uniform(1, 3), "weight": 60}]
+cave_biome("molten_cavern", 160, 2.0, downfall=0.0,
+           under=["terra:cave_magma_floor", "terra:cave_basalt_up", "terra:cave_basalt_down"],
+           ores=["terra:cave_ore_blackstone"], add_spawns={"monster": MAGMA_CUBES})
+cave_biome("mantle_cave", 161, 2.0, downfall=0.0,
+           under=["terra:cave_tall_basalt_up", "terra:cave_tall_basalt_down", "terra:cave_magma_floor_sparse"],
+           ores=["terra:cave_ore_magma_rich", "terra:cave_ore_blackstone"], add_spawns={"monster": MAGMA_CUBES})
+cave_biome("crystalline_chasm", 162, 0.8,
+           under=["terra:cave_crystal_geodes", "terra:cave_amethyst_floor", "terra:cave_amethyst_ceiling",
+                  "terra:cave_calcite_spikes_up", "terra:cave_calcite_spikes_down"],
+           ores=["terra:cave_ore_amethyst"], veg=["terra:cave_glow_lichen_sparse"])
+cave_biome("lava_tubes", 165, 1.5, downfall=0.0,
+           under=["terra:cave_magma_floor_sparse", "terra:cave_lavacicles"], add_spawns={"monster": MAGMA_CUBES})
+cave_biome("slot_canyon_caves", 166, 1.8, downfall=0.0, under=["terra:cave_sand_floor"])
+cave_biome("glacier_caves", 167, -0.7, downfall=0.5,
+           under=["terra:cave_icy_floor", "terra:cave_icicles", "terra:cave_ice_spikes"], spawns_from="snowy_plains")
+cave_biome("giant_geode_hall", 173, 0.8,
+           under=["terra:cave_amethyst_floor_dense", "terra:cave_amethyst_ceiling_dense"])
+# Deep dark away from mountains: vanilla's deep dark, without ancient cities (they only generate under mountains, in
+# vanilla's own deep_dark biome, id 163).
+biome("deep_dark_caves", id=175, base="deep_dark", temp=0.8, downfall=0.4, colors={}, veg=[], top=None, cave=True,
+      no_tags=["has_structure/ancient_city"])
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -1127,10 +1201,12 @@ def main():
             steps[k] = list(lst)
         for k, lst in d.get("add_steps", {}).items():
             steps[k] = steps[k] + [f for f in lst if f not in steps[k]]
-        if d.get("spawns"):
+        if d.get("spawns") or d.get("add_spawns"):
             attrs = json.loads(json.dumps(out.get("attributes", {})))
             cats = attrs["minecraft:gameplay/natural_mob_spawns"]["argument"]["spawns_by_category"]
-            cats.update(d["spawns"])
+            cats.update(d.get("spawns", {}))
+            for cat, extra in d.get("add_spawns", {}).items():
+                cats[cat] = cats.get(cat, []) + extra
             out["attributes"] = attrs
         if d.get("drop_attrs"):
             out["attributes"] = {k: v for k, v in out.get("attributes", {}).items() if k not in d["drop_attrs"]}
@@ -1174,7 +1250,8 @@ def main():
             keep = [v for v in load(path).get("values", []) if v not in V12]
         allv = keep + sorted(vals)
         if not allv:
-            os.remove(path)
+            if os.path.exists(path):
+                os.remove(path)
             continue
         write(path, {"replace": False, "values": allv})
 
@@ -1230,7 +1307,7 @@ grove jagged_peaks jungle lukewarm_ocean mangrove_swamp meadow ocean old_growth_
 old_growth_spruce_taiga pale_garden plains river savanna savanna_plateau snowy_beach snowy_plains snowy_slopes
 snowy_taiga sparse_jungle stony_peaks stony_shore sunflower_plains swamp taiga warm_ocean windswept_forest
 windswept_gravelly_hills windswept_hills windswept_savanna mushroom_fields dripstone_caves lush_caves
-sulfur_caves""".split()
+sulfur_caves deep_dark""".split()
 TERRA_FIXED = ["dark_forest", "forest_sparse", "taiga_sparse", "snowy_taiga_sparse"]
 
 
