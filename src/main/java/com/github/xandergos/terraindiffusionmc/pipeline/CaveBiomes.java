@@ -37,8 +37,9 @@ public final class CaveBiomes {
     public static final short UNDERGROUND_LAKES = 157, GLOWWORM_GROTTO = 158, KARST_CAVES = 159;
     // Part three: rare (160-171) and very rare (172-174) caves. Round A built: molten cavern, mantle cave, crystalline
     // chasm, deep dark (vanilla's under mountains, Terra's copy elsewhere), lava tubes, slot canyon caves, glacier caves,
-    // giant geode hall. Ids 164, 168-172 and 174 are reserved for rounds B and C.
+    // giant geode hall. Round C: deep dark forest, deep dark incursion, giant selenite beams.
     public static final short MOLTEN_CAVERN = 160, MANTLE_CAVE = 161, CRYSTALLINE_CHASM = 162, DEEP_DARK = 163;
+    public static final short DEEP_DARK_FOREST = 164, DEEP_DARK_INCURSION = 172, GIANT_SELENITE_BEAMS = 174;
     public static final short LAVA_TUBES = 165, SLOT_CANYON_CAVES = 166, GLACIER_CAVES = 167;
     public static final short GIANT_GEODE_HALL = 173, DEEP_DARK_CAVES = 175;
     // Round B: surface cuts (pipeline/CaveSites), each a cave biome for the region under its site.
@@ -80,6 +81,9 @@ public final class CaveBiomes {
         NAMES.put(SINKHOLE_JUNGLE, "terra:sinkhole_jungle");
         NAMES.put(BLUE_HOLE, "terra:blue_hole");
         NAMES.put(DEEP_SHAFT, "terra:deep_shaft");
+        NAMES.put(DEEP_DARK_FOREST, "terra:deep_dark_forest");
+        NAMES.put(DEEP_DARK_INCURSION, "terra:deep_dark_incursion");
+        NAMES.put(GIANT_SELENITE_BEAMS, "terra:giant_selenite_beams");
     }
 
     // ---- Tier shares (fractions of cave regions; tune in testing) ----
@@ -174,9 +178,23 @@ public final class CaveBiomes {
         return pick(x, y, z, surface);
     }
 
-    /** The cave biome a point's region draws, after its gates (no start depth check). */
+    /**
+     * The cave biome a point's region draws, after its gates (no start depth check). Inside a giant hall (see
+     * {@link #hallId}) it is always the hall's biome, so the whole hall gets its features and rock even where the
+     * warped region edges would cut through it.
+     */
     public short pick(int x, int y, int z, Surface surface) {
-        long cell = regionCell(x, y, z);
+        long u = unwarpedCell(x, y, z);
+        short hall = hallId(u, surface);
+        if (hall != NONE && hallDistance(hall, u, x, y, z) < HALL_BIOME_MARGIN) return hall;
+        return pickCell(regionCell(x, y, z), y, surface);
+    }
+
+    /** A hall's biome reaches this far out (in hall radii), over its walls. */
+    public static final float HALL_BIOME_MARGIN = 1.15f;
+
+    /** The cave biome a region cell draws, after its gates; {@code y} is the point's height (for the depth gates). */
+    private short pickCell(long cell, int y, Surface surface) {
         float u = draw(cell);
         float total = COMMON_SHARE + UNCOMMON_SHARE + RARE_SHARE + VERY_RARE_SHARE;
         u *= total;
@@ -187,14 +205,63 @@ public final class CaveBiomes {
         }
         if (u < COMMON_SHARE + UNCOMMON_SHARE) {
             float t = (u - COMMON_SHARE) / UNCOMMON_SHARE;
-            return fromTier(UNCOMMON, UNCOMMON_WEIGHT, 0f, t, y, cell, surface);
+            return fromTier(UNCOMMON, UNCOMMON_WEIGHT, -1f, t, y, cell, surface);
         }
         if (u < COMMON_SHARE + UNCOMMON_SHARE + RARE_SHARE) {
             float t = (u - COMMON_SHARE - UNCOMMON_SHARE) / RARE_SHARE;
-            return fromTier(RARE, RARE_WEIGHT, RARE_RESERVED, t, y, cell, surface);
+            return fromTier(RARE, RARE_WEIGHT, 0f, t, y, cell, surface);
         }
         float t = Math.min(0.99999f, (u - COMMON_SHARE - UNCOMMON_SHARE - RARE_SHARE) / VERY_RARE_SHARE);
-        return fromTier(VERY_RARE, VERY_RARE_WEIGHT, VERY_RARE_RESERVED, t, y, cell, surface);
+        return fromTier(VERY_RARE, VERY_RARE_WEIGHT, VERY_RARE_SPARE, t, y, cell, surface);
+    }
+
+    /** The unwarped region cell holding a point, packed like {@link #regionCell}. */
+    public static long unwarpedCell(int x, int y, int z) {
+        long cx = Math.floorDiv(x, REGION_XZ) & 0x1FFFFF;
+        long cy = Math.floorDiv(y, REGION_Y) & 0x1FFFFF;
+        long cz = Math.floorDiv(z, REGION_XZ) & 0x1FFFFF;
+        return (cx << 42) | (cy << 21) | cz;
+    }
+
+    /**
+     * The giant hall of a region cell (geode hall, deep dark forest, incursion, selenite chamber), or {@link #NONE}.
+     * A hall is centred on its cell's anchor and fits inside the unwarped cell, so a point can only be in the hall of
+     * the unwarped cell holding it. Cheap when the cell isn't a hall: one hash, no surface lookups.
+     */
+    public short hallId(long cell, Surface surface) {
+        float total = COMMON_SHARE + UNCOMMON_SHARE + RARE_SHARE + VERY_RARE_SHARE;
+        float u = draw(cell) * total, lo = COMMON_SHARE + UNCOMMON_SHARE;
+        if (u < lo) return NONE;
+        short id;
+        if (u < lo + RARE_SHARE) {
+            float t = (u - lo) / RARE_SHARE;
+            if (shapeFamily(slot(RARE, RARE_WEIGHT, 0f, t)) != SHAPE_HALL) return NONE;
+            id = fromTier(RARE, RARE_WEIGHT, 0f, t, 0, cell, surface);
+        } else {
+            float t = Math.min(0.99999f, (u - lo - RARE_SHARE) / VERY_RARE_SHARE);
+            if (shapeFamily(slot(VERY_RARE, VERY_RARE_WEIGHT, VERY_RARE_SPARE, t)) != SHAPE_HALL) return NONE;
+            id = fromTier(VERY_RARE, VERY_RARE_WEIGHT, VERY_RARE_SPARE, t, 0, cell, surface);
+        }
+        return shapeFamily(id) == SHAPE_HALL ? id : NONE;
+    }
+
+    /** The cave a draw lands on in a tier that keeps its shares, before gates (NONE in spare weight). */
+    private static short slot(short[] ids, float[] weights, float spare, float t) {
+        float total = spare;
+        for (float w : weights) total += w;
+        float target = t * total, acc = 0;
+        for (int i = 0; i < ids.length; i++) {
+            acc += weights[i];
+            if (target < acc) return ids[i];
+        }
+        return NONE;
+    }
+
+    /** How far a point is from a hall's centre, in hall radii (1 on the ellipsoid, before the floor cut). */
+    public static float hallDistance(short id, long cell, int x, int y, int z) {
+        float rx = hallRX(id), ry = hallRY(id);
+        float dx = (x - anchorX(cell)) / rx, dy = (y - hallY(cell, id)) / ry, dz = (z - anchorZ(cell)) / rx;
+        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     /** The region's draw in [0, 1). */
@@ -284,29 +351,32 @@ public final class CaveBiomes {
      * Terra's copy of it, without ancient cities, everywhere else deep down.
      */
     private static final short[] RARE = {MOLTEN_CAVERN, MANTLE_CAVE, CRYSTALLINE_CHASM, DEEP_DARK, DEEP_DARK_CAVES,
-            LAVA_TUBES, SLOT_CANYON_CAVES, GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT};
-    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 30f, 6f, 10f, 10f, 10f, 7f, 5f, 7f, 5f};
-    private static final short[] VERY_RARE = {GIANT_GEODE_HALL};
-    private static final float[] VERY_RARE_WEIGHT = {0.5f};
+            LAVA_TUBES, SLOT_CANYON_CAVES, GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT,
+            DEEP_DARK_FOREST};
+    // New caves go at the end of a tier, taking weight it held back, so every earlier cave keeps its draws.
+    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 30f, 6f, 10f, 10f, 10f, 7f, 5f, 7f, 5f, 6f};
+    private static final short[] VERY_RARE = {GIANT_GEODE_HALL, DEEP_DARK_INCURSION, GIANT_SELENITE_BEAMS};
+    private static final float[] VERY_RARE_WEIGHT = {0.5f, 0.4f, 0.4f};
     /**
-     * Weight held for the caves of rounds B and C (deep dark forest, canyon ravine, sinkhole jungle, blue hole, deep
-     * shaft; deep dark incursion, selenite beams), plain stone until they exist, so adding them moves nothing.
+     * Very rare weight held back as plain stone (the tier totals 2.5 as before, so the geode hall keeps its draws):
+     * each very rare cave stays about as rare as the rarest rare caves in the deep layers where they all fit.
      */
-    private static final float RARE_RESERVED = 6f, VERY_RARE_RESERVED = 2f;
+    private static final float VERY_RARE_SPARE = 1.2f;
 
     /**
-     * Picks a tier's cave for this region. With {@code reserved} 0 (the uncommon tier) the pick is among the caves
+     * Picks a tier's cave for this region. With {@code spare} negative (the uncommon tier) the pick is among the caves
      * whose gates pass, so the tier keeps its share wherever any of them fits. Otherwise (rare, very rare) each cave
      * keeps its own share of the tier, plain stone where its gate fails, so a cave that fits everywhere doesn't take
-     * the whole tier where the others don't fit; {@code reserved} is weight held for caves still to come.
+     * the whole tier where the others don't fit; {@code spare} is weight held back as plain stone.
      */
-    private short fromTier(short[] ids, float[] weights, float reserved, float t, int y, long cell, Surface surface) {
+    private short fromTier(short[] ids, float[] weights, float spare, float t, int y, long cell, Surface surface) {
+        boolean keepShares = spare >= 0f;
         if (ids.length == 0) return NONE;
         short anchorBiome = surface == null ? -1 : surface.biomeAt(anchorX(cell), anchorZ(cell));
         int nearWater = -1, ground = Integer.MIN_VALUE + 1;   // looked up only if a cave asks
         // Rare and very rare caves are whole set pieces (halls, chasms, tubes): their depth gates use the middle of the
         // region, so a gate never slices a region in two.
-        if (reserved > 0f) y = unpack(cell, 21) * REGION_Y + REGION_Y / 2;
+        if (keepShares) y = unpack(cell, 21) * REGION_Y + REGION_Y / 2;
         float sum = 0;
         float[] w = new float[ids.length];
         for (int i = 0; i < ids.length; i++) {
@@ -328,8 +398,8 @@ public final class CaveBiomes {
             w[i] = ok ? weights[i] : 0f;
             sum += w[i];
         }
-        if (reserved > 0f) {
-            float total = reserved;
+        if (keepShares) {
+            float total = spare;
             for (float x : weights) total += x;
             float target = t * total, acc = 0;
             for (int i = 0; i < ids.length; i++) {
@@ -395,6 +465,10 @@ public final class CaveBiomes {
             case SLOT_CANYON_CAVES -> in(SANDSTONE_GROUND, anchorBiome) && y >= -16;
             case GLACIER_CAVES -> in(GLACIAL, anchorBiome);
             case GIANT_GEODE_HALL -> y <= 30;
+            // Round C: the deep dark forest and incursion in the deepest layers; selenite beams deep or under hot ground.
+            case DEEP_DARK_FOREST -> y <= -8;
+            case DEEP_DARK_INCURSION -> y <= -16;
+            case GIANT_SELENITE_BEAMS -> y <= 0 || (in(HOT_GROUND, anchorBiome) && y <= 40);
             // Water caves: above the lava of the deepest caves.
             case UNDERGROUND_LAKES -> y >= WATER_MIN_Y;
             case GLOWWORM_GROTTO -> y >= WATER_MIN_Y && (in(HUMID, anchorBiome) || in(TROPICAL, anchorBiome));
@@ -455,7 +529,7 @@ public final class CaveBiomes {
             case MANTLE_CAVE, CRYSTALLINE_CHASM -> SHAPE_CHASM;
             case SLOT_CANYON_CAVES -> SHAPE_SLOT;
             case LAVA_TUBES, GLACIER_CAVES -> SHAPE_TUBE;
-            case GIANT_GEODE_HALL -> SHAPE_HALL;
+            case GIANT_GEODE_HALL, DEEP_DARK_FOREST, DEEP_DARK_INCURSION, GIANT_SELENITE_BEAMS -> SHAPE_HALL;
             default -> SHAPE_NONE;
         };
     }
@@ -477,9 +551,49 @@ public final class CaveBiomes {
         return unpack(cell, 21) * REGION_Y + 18 + (int) (draw2(cell) * 16f);
     }
 
-    /** The centre of a region's giant hall: its anchor, halfway up its unwarped cell. */
-    public static int hallY(long cell) {
-        return unpack(cell, 21) * REGION_Y + REGION_Y / 2;
+    /** The centre of a region's giant hall: its anchor, halfway up its unwarped cell (the incursion 2 blocks higher). */
+    public static int hallY(long cell, short id) {
+        return unpack(cell, 21) * REGION_Y + REGION_Y / 2 + (id == DEEP_DARK_INCURSION ? 2 : 0);
+    }
+
+    /**
+     * Hall sizes (blocks): horizontal and vertical radius, and how far below the centre the floor is cut flat (the
+     * vertical radius for a round floor). The geode hall is a full ellipsoid; the deep dark forest a wide low hall
+     * with a flat floor for its trees; the incursion a towering hall (with stone pillars, CaveHalls); the selenite
+     * chamber a flat-floored hall crossed by crystal beams (CaveHalls).
+     */
+    public static float hallRX(short id) {
+        return switch (id) {
+            case DEEP_DARK_FOREST -> 34f;
+            case DEEP_DARK_INCURSION -> 30f;
+            case GIANT_SELENITE_BEAMS -> 26f;
+            default -> 24f;
+        };
+    }
+
+    public static float hallRY(short id) {
+        return switch (id) {
+            case DEEP_DARK_FOREST -> 18f;
+            case DEEP_DARK_INCURSION -> 24f;
+            case GIANT_SELENITE_BEAMS -> 17f;
+            default -> 16f;
+        };
+    }
+
+    public static float hallFloor(short id) {
+        return switch (id) {
+            case DEEP_DARK_FOREST -> 9f;
+            case DEEP_DARK_INCURSION -> 20f;
+            case GIANT_SELENITE_BEAMS -> 10f;
+            default -> hallRY(id);
+        };
+    }
+
+    /** Hall details CaveHalls adds per block: none, stone pillars (incursion), crystal beams (selenite). */
+    public static final int DETAIL_NONE = 0, DETAIL_PILLARS = 1, DETAIL_BEAMS = 2;
+
+    public static int hallDetail(short id) {
+        return id == DEEP_DARK_INCURSION ? DETAIL_PILLARS : id == GIANT_SELENITE_BEAMS ? DETAIL_BEAMS : DETAIL_NONE;
     }
 
     /**
@@ -503,6 +617,8 @@ public final class CaveBiomes {
             case BREAKDOWN_CHAMBERS -> 0.17f;
             case MOLTEN_CAVERN -> 0.14f;
             case DEEP_DARK, DEEP_DARK_CAVES -> 0.08f;
+            case DEEP_DARK_FOREST -> 0.08f;
+            case DEEP_DARK_INCURSION -> 0.06f;
             default -> 0f;
         };
     }

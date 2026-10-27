@@ -95,15 +95,14 @@ public final class CaveShapes {
     //
     // A coarse lattice ({@link #SHAPE_CELL} blocks) of shape channels, each the average over a point and four points
     // around it, so shapes fade in over region edges instead of stopping at a wall. Channels: 0 chamber bias; 1-2
-    // chasm weight and weighted half-width; 3-4 slot; 5-7 tube weight, weighted centre height and half-width; 8-11 hall
-    // weight and weighted centre. Where a shape's weight is below 1 it is pushed back by (1 - weight) * FADE blocks.
+    // chasm weight and weighted half-width; 3-4 slot; 5-7 tube weight, weighted centre height and half-width.
+    // Where a shape's weight is below 1 it is pushed back by (1 - weight) * FADE blocks. Giant halls are not channels:
+    // each fits inside its unwarped region cell and is exact (CaveHalls), and its biome follows it (CaveBiomes.pick).
 
-    private static final int SHAPE_CELL = 32, SHAPE_CELL_Y = 16, SHAPE_REACH = 16, CH = 12;
+    private static final int SHAPE_CELL = 32, SHAPE_CELL_Y = 16, SHAPE_REACH = 16, CH = 8;
     private static final float FADE = 60f;
     /** Blocks per noise unit for the region shapes (about one over each noise's gradient). */
     private static final float CHASM_GAIN = 26f, SLOT_GAIN = 4f, TUBE_GAIN = 14f;
-    /** Giant hall radii (blocks). */
-    public static final float HALL_RX = 24f, HALL_RY = 16f;
     private static final int[] SHAPE_OFFSETS = {0, 0, SHAPE_REACH, 0, -SHAPE_REACH, 0, 0, SHAPE_REACH, 0, -SHAPE_REACH};
 
     /** The shape channels at a shape lattice point, written to out[off..off+CH). Returns whether any is non-zero. */
@@ -117,7 +116,7 @@ public final class CaveShapes {
             out[off] += b;
             any |= b != 0f;
             int fam = CaveBiomes.shapeFamily(id);
-            if (fam == CaveBiomes.SHAPE_NONE) continue;
+            if (fam == CaveBiomes.SHAPE_NONE || fam == CaveBiomes.SHAPE_HALL) continue;
             any = true;
             long cell = layer.regionCell(px, y, pz);
             float w = CaveBiomes.shapeWidth(id);
@@ -125,12 +124,6 @@ public final class CaveShapes {
                 case CaveBiomes.SHAPE_CHASM -> { out[off + 1] += 1f; out[off + 2] += w; }
                 case CaveBiomes.SHAPE_SLOT -> { out[off + 3] += 1f; out[off + 4] += w; }
                 case CaveBiomes.SHAPE_TUBE -> { out[off + 5] += 1f; out[off + 6] += layer.tubeY(cell); out[off + 7] += w; }
-                case CaveBiomes.SHAPE_HALL -> {
-                    out[off + 8] += 1f;
-                    out[off + 9] += CaveBiomes.anchorX(cell);
-                    out[off + 10] += CaveBiomes.hallY(cell);
-                    out[off + 11] += CaveBiomes.anchorZ(cell);
-                }
                 default -> { }
             }
         }
@@ -194,12 +187,39 @@ public final class CaveShapes {
         return (1f - t) * FADE;
     }
 
-    /** The giant hall's value at a cavern lattice point (+inf where none), from interpolated channels. */
-    private static float hallValue(float[] c, int x, int y, int z) {
-        float w = c[8];
-        if (w < 0.01f) return Float.POSITIVE_INFINITY;
-        float dx = (x - c[9] / w) / HALL_RX, dy = (y - c[10] / w) / HALL_RY, dz = (z - c[11] / w) / HALL_RX;
-        return ((float) Math.sqrt(dx * dx + dy * dy + dz * dz) - 1f) * HALL_RY + fade(w);
+    /** The halls' value at a point (+inf where none). */
+    private static float hallValue(java.util.List<CaveHalls.Hall> halls, int x, int y, int z) {
+        float v = Float.POSITIVE_INFINITY;
+        for (int i = 0; i < halls.size(); i++) v = Math.min(v, halls.get(i).value(x, y, z));
+        return v;
+    }
+
+    /** Hall details at a block (CaveHalls: incursion pillars, selenite beams): positive where rock stays standing. */
+    private float hallDetail(java.util.List<CaveHalls.Hall> halls, int x, int y, int z) {
+        float v = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < halls.size(); i++) {
+            CaveHalls.Hall h = halls.get(i);
+            if (h.detail() != CaveBiomes.DETAIL_NONE && h.near(x, y, z, 2)) v = Math.max(v, h.detail(seed, x, y, z));
+        }
+        return v;
+    }
+
+    private static boolean anyDetails(java.util.List<CaveHalls.Hall> halls) {
+        for (CaveHalls.Hall h : halls) if (h.detail() != CaveBiomes.DETAIL_NONE) return true;
+        return false;
+    }
+
+    /** Applies the hall details to the air of a filled volume (they only turn air into rock). */
+    private void applyDetails(int x0, int z0, int sx, int sz, int y0, int sy, float[] out, java.util.List<CaveHalls.Hall> halls) {
+        for (int z = 0; z < sz; z++)
+            for (int x = 0; x < sx; x++) {
+                int base = (x + z * sx) * sy;
+                for (int y = 0; y < sy; y++) {
+                    if (out[base + y] >= 0f) continue;
+                    float d = hallDetail(halls, x0 + x, y0 + y, z0 + z);
+                    if (d > out[base + y]) out[base + y] = Math.min(CLAMP, d);
+                }
+            }
     }
 
     /** Chasms, slots and tubes at a tunnel lattice point (+inf where none), from interpolated channels. */
@@ -249,6 +269,7 @@ public final class CaveShapes {
     public static final class Scratch {
         float[] cavern, tunnel;
         ShapeGrid shapes;
+        final java.util.List<CaveHalls.Hall> halls = new java.util.ArrayList<>();
     }
 
     /**
@@ -258,20 +279,25 @@ public final class CaveShapes {
      */
     public void fill(int x0, int z0, int sx, int sz, int y0, int sy, float[] out, Scratch scratch, CaveBiomes.Surface surface) {
         ShapeGrid g = null;
+        java.util.List<CaveHalls.Hall> halls = scratch.halls;
+        halls.clear();
         if (surface != null) {
             // Covers both lattices: the cavern lattice reaches one cell past the volume (8 blocks up, 4 sideways).
-            g = shapeGrid(CaveBiomes.forSeed(seed), surface, Math.floorDiv(x0, 4) * 4, Math.floorDiv(y0, 8) * 8,
-                    Math.floorDiv(z0, 4) * 4, x0 + sx + 4, y0 + sy + 8, z0 + sz + 4, scratch.shapes);
+            CaveBiomes layer = CaveBiomes.forSeed(seed);
+            int ax = Math.floorDiv(x0, 4) * 4, ay = Math.floorDiv(y0, 8) * 8, az = Math.floorDiv(z0, 4) * 4;
+            g = shapeGrid(layer, surface, ax, ay, az, x0 + sx + 4, y0 + sy + 8, z0 + sz + 4, scratch.shapes);
             scratch.shapes = g;
             if (!g.any) g = null;
+            CaveHalls.near(layer, surface, ax, ay, az, x0 + sx + 4, y0 + sy + 8, z0 + sz + 4, halls);
         }
         // Caverns first, written straight into out; then the tunnels' minimum on top.
-        scratch.cavern = fillFamily(true, x0, z0, sx, sz, y0, sy, out, scratch.cavern, false, g);
-        scratch.tunnel = fillFamily(false, x0, z0, sx, sz, y0, sy, out, scratch.tunnel, true, g);
+        scratch.cavern = fillFamily(true, x0, z0, sx, sz, y0, sy, out, scratch.cavern, false, g, halls);
+        scratch.tunnel = fillFamily(false, x0, z0, sx, sz, y0, sy, out, scratch.tunnel, true, g, halls);
+        if (anyDetails(halls)) applyDetails(x0, z0, sx, sz, y0, sy, out, halls);
     }
 
     private float[] fillFamily(boolean cavern, int x0, int z0, int sx, int sz, int y0, int sy, float[] out,
-                               float[] lattice, boolean min, ShapeGrid g) {
+                               float[] lattice, boolean min, ShapeGrid g, java.util.List<CaveHalls.Hall> halls) {
         int cxz = cavern ? CAVERN_XZ : TUNNEL, cy = cavern ? CAVERN_Y : TUNNEL;
         int lx0 = Math.floorDiv(x0, cxz), lx1 = Math.floorDiv(x0 + sx - 1, cxz) + 1;
         int lz0 = Math.floorDiv(z0, cxz), lz1 = Math.floorDiv(z0 + sz - 1, cxz) + 1;
@@ -283,7 +309,7 @@ public final class CaveShapes {
             for (int ix = 0; ix < nx; ix++)
                 for (int iy = 0; iy < ny; iy++) {
                     int bx = (lx0 + ix) * cxz, by = (ly0 + iy) * cy, bz = (lz0 + iz) * cxz;
-                    lattice[(iz * nx + ix) * ny + iy] = latticePoint(cavern, bx, by, bz, g);
+                    lattice[(iz * nx + ix) * ny + iy] = latticePoint(cavern, bx, by, bz, g, halls);
                 }
         float invXZ = 1f / cxz, invY = 1f / cy;
         for (int z = 0; z < sz; z++) {
@@ -320,11 +346,10 @@ public final class CaveShapes {
     }
 
     /** One lattice point of a family, with the region shapes. */
-    private float latticePoint(boolean cavern, int bx, int by, int bz, ShapeGrid g) {
+    private float latticePoint(boolean cavern, int bx, int by, int bz, ShapeGrid g, java.util.List<CaveHalls.Hall> halls) {
         if (cavern) {
-            if (g == null) return cavernValue(bx, by, bz, 0f);
-            float[] c = g.at(bx, by, bz);
-            return clamp(Math.min(cavernValue(bx, by, bz, c[0]), hallValue(c, bx, by, bz)));
+            float v = cavernValue(bx, by, bz, g == null ? 0f : g.at(bx, by, bz)[0]);
+            return halls.isEmpty() ? v : clamp(Math.min(v, hallValue(halls, bx, by, bz)));
         }
         float v = tunnelValue(bx, by, bz);
         if (g == null) return v;
@@ -334,15 +359,20 @@ public final class CaveShapes {
     /** The cave field at one block (the same value {@link #fill} gives it with the same surface). */
     public float at(int x, int y, int z, CaveBiomes.Surface surface) {
         ShapeGrid g = null;
+        java.util.List<CaveHalls.Hall> halls = new java.util.ArrayList<>();
         if (surface != null) {
-            g = shapeGrid(CaveBiomes.forSeed(seed), surface, Math.floorDiv(x, 4) * 4, Math.floorDiv(y, 8) * 8,
-                    Math.floorDiv(z, 4) * 4, x + 4, y + 8, z + 4, null);
+            CaveBiomes layer = CaveBiomes.forSeed(seed);
+            int ax = Math.floorDiv(x, 4) * 4, ay = Math.floorDiv(y, 8) * 8, az = Math.floorDiv(z, 4) * 4;
+            g = shapeGrid(layer, surface, ax, ay, az, x + 4, y + 8, z + 4, null);
             if (!g.any) g = null;
+            CaveHalls.near(layer, surface, ax, ay, az, x + 4, y + 8, z + 4, halls);
         }
-        return Math.min(pointValue(true, x, y, z, g), pointValue(false, x, y, z, g));
+        float v = Math.min(pointValue(true, x, y, z, g, halls), pointValue(false, x, y, z, g, halls));
+        if (v < 0f && anyDetails(halls)) v = Math.max(v, Math.min(CLAMP, hallDetail(halls, x, y, z)));
+        return v;
     }
 
-    private float pointValue(boolean cavern, int x, int y, int z, ShapeGrid g) {
+    private float pointValue(boolean cavern, int x, int y, int z, ShapeGrid g, java.util.List<CaveHalls.Hall> halls) {
         int cxz = cavern ? CAVERN_XZ : TUNNEL, cy = cavern ? CAVERN_Y : TUNNEL;
         int gx = Math.floorDiv(x, cxz), gy = Math.floorDiv(y, cy), gz = Math.floorDiv(z, cxz);
         float[] l = new float[8];
@@ -351,7 +381,7 @@ public final class CaveShapes {
             for (int ix = 0; ix < 2; ix++)
                 for (int iy = 0; iy < 2; iy++) {
                     int bx = (gx + ix) * cxz, by = (gy + iy) * cy, bz = (gz + iz) * cxz;
-                    l[(iz * 2 + ix) * 2 + iy] = latticePoint(cavern, bx, by, bz, g);
+                    l[(iz * 2 + ix) * 2 + iy] = latticePoint(cavern, bx, by, bz, g, halls);
                 }
         boolean rock = true;
         for (float v : l) rock &= v > 0;

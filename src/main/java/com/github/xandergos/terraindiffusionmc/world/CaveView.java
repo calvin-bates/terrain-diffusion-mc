@@ -73,6 +73,13 @@ public final class CaveView {
         COLORS.put(CaveBiomes.SLOT_CANYON_CAVES, "#d9a35e");
         COLORS.put(CaveBiomes.GLACIER_CAVES, "#6ec6f0");
         COLORS.put(CaveBiomes.GIANT_GEODE_HALL, "#8f5bd6");
+        COLORS.put(CaveBiomes.CANYON_RAVINE, "#8a6e55");
+        COLORS.put(CaveBiomes.SINKHOLE_JUNGLE, "#3f9a3a");
+        COLORS.put(CaveBiomes.BLUE_HOLE, "#1f5fbf");
+        COLORS.put(CaveBiomes.DEEP_SHAFT, "#4a4a58");
+        COLORS.put(CaveBiomes.DEEP_DARK_FOREST, "#167d6a");
+        COLORS.put(CaveBiomes.DEEP_DARK_INCURSION, "#06323a");
+        COLORS.put(CaveBiomes.GIANT_SELENITE_BEAMS, "#f0ead2");
     }
 
     public static void color(short id, String hex) {

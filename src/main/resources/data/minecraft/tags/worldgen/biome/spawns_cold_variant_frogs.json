@@ -3,6 +3,8 @@
   "values": [
     "terra:arctic",
     "terra:deep_dark_caves",
+    "terra:deep_dark_forest",
+    "terra:deep_dark_incursion",
     "terra:glacier",
     "terra:polar_desert",
     "terra:treeline",

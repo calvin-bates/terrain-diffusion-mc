@@ -9,7 +9,7 @@ import java.io.File;
  * share, cave biome shares, a seam check and timings. Pure Java: compile with FastNoiseLite, CaveShapes, CaveBiomes.
  *
  *   R=src/main/java/com/github/xandergos/terraindiffusionmc/pipeline
- *   javac -d /tmp/ch $R/FastNoiseLite.java $R/CaveShapes.java $R/CaveBiomes.java $R/CaveSites.java $R/SeaCaves.java tools/caves/CaveHarness.java
+ *   javac -d /tmp/ch $R/FastNoiseLite.java $R/CaveShapes.java $R/CaveBiomes.java $R/CaveHalls.java $R/CaveSites.java $R/SeaCaves.java tools/caves/CaveHarness.java
  *   (cd /tmp/ch && java -cp . CaveHarness [cheese spaghettiW spaghettiVar noodleW noodleGate])
  */
 

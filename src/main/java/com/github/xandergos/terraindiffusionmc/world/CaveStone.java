@@ -1,6 +1,9 @@
 package com.github.xandergos.terraindiffusionmc.world;
 
 import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveHalls;
+import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
@@ -34,6 +37,15 @@ public final class CaveStone {
     private static final byte NONE = 0, ANDESITE = 1, DIORITE = 2, GRANITE = 3, TUFF = 4, SALT = 5, KARST = 6;
     // Part three round A.
     private static final byte MOLTEN = 7, TUBES = 8, CRYSTAL = 9, SLOT = 10, GLACIER = 11, GEODE = 12;
+    // Round C.
+    private static final byte INCURSION = 13, SELENITE = 14;
+    private static final ResourceKey<Biome> DEEP_DARK_INCURSION = key("deep_dark_incursion"),
+            GIANT_SELENITE_BEAMS = key("giant_selenite_beams");
+    /** Incursion pillars: polished basalt, which sculk does not spread onto, so they stay bare. */
+    private static final BlockState PILLAR = Blocks.POLISHED_BASALT.defaultBlockState();
+    /** The selenite chamber's hot walls: granite and tuff with smooth basalt and magma seams. */
+    private static final BlockState[] HOT_BEDS = {b(Blocks.GRANITE), b(Blocks.TUFF), b(Blocks.GRANITE),
+            b(Blocks.SMOOTH_BASALT), b(Blocks.TUFF), b(Blocks.MAGMA_BLOCK), b(Blocks.GRANITE)};
     private static final ResourceKey<Biome> MOLTEN_CAVERN = key("molten_cavern"), LAVA_TUBES = key("lava_tubes"),
             CRYSTALLINE_CHASM = key("crystalline_chasm"), SLOT_CANYON_CAVES = key("slot_canyon_caves"),
             GLACIER_CAVES = key("glacier_caves"), GIANT_GEODE_HALL = key("giant_geode_hall");
@@ -93,7 +105,8 @@ public final class CaveStone {
             k = h.is(ANDESITE_CAVES) ? ANDESITE : h.is(DIORITE_CAVES) ? DIORITE : h.is(GRANITE_CAVES) ? GRANITE
                     : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : h.is(KARST_CAVES) ? KARST
                     : h.is(MOLTEN_CAVERN) ? MOLTEN : h.is(LAVA_TUBES) ? TUBES : h.is(CRYSTALLINE_CHASM) ? CRYSTAL
-                    : h.is(SLOT_CANYON_CAVES) ? SLOT : h.is(GLACIER_CAVES) ? GLACIER : h.is(GIANT_GEODE_HALL) ? GEODE : NONE;
+                    : h.is(SLOT_CANYON_CAVES) ? SLOT : h.is(GLACIER_CAVES) ? GLACIER : h.is(GIANT_GEODE_HALL) ? GEODE
+                    : h.is(DEEP_DARK_INCURSION) ? INCURSION : h.is(GIANT_SELENITE_BEAMS) ? SELENITE : NONE;
             memo.put(h, k);
         }
         return k;
@@ -127,7 +140,7 @@ public final class CaveStone {
 
         int x0 = chunk.getPos().getMinBlockX(), z0 = chunk.getPos().getMinBlockZ();
         byte[] red = null;   // per column, for slot canyons: 0 unknown, 1 yellow, 2 red
-        com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes layer = null;
+        CaveBiomes layer = null;
         for (int s = 0; s < sections.length; s++) {
             if (cells[s] == null) continue;
             LevelChunkSection sec = sections[s];
@@ -175,9 +188,12 @@ public final class CaveStone {
                             if (Math.floorMod(Math.floorDiv(by * 2 + (bx >> 2) - (bz >> 2), 5) * 0x9E3779B1 >>> 9, 3) != 0) continue;
                             rock = b(Blocks.CALCITE);
                         } else if (k == GEODE) {
-                            if (layer == null) layer = com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.forSeed(
-                                    com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.getSeed());
+                            if (layer == null) layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
                             rock = geodeShell(layer, bx, by, bz, h);
+                            if (rock == null) continue;
+                        } else if (k == INCURSION || k == SELENITE) {
+                            if (layer == null) layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
+                            rock = k == INCURSION ? incursionRock(layer, bx, by, bz) : seleniteRock(layer, bx, by, bz);
                             if (rock == null) continue;
                         }
                         else if (k == SALT) {
@@ -205,21 +221,52 @@ public final class CaveStone {
      * The giant geode hall's lining, from the hall surface outwards: amethyst (with some budding amethyst), calcite,
      * smooth basalt, like a vanilla geode at hall scale. Null outside the lining.
      */
-    private static BlockState geodeShell(com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes layer, int x, int y,
-                                         int z, int h) {
-        long cell = layer.regionCell((x & ~3) + 2, (y & ~3) + 2, (z & ~3) + 2);
-        float dx = (x - com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.anchorX(cell))
-                / com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RX;
-        float dy = (y - com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.hallY(cell))
-                / com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RY;
-        float dz = (z - com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes.anchorZ(cell))
-                / com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RX;
-        float out = ((float) Math.sqrt(dx * dx + dy * dy + dz * dz) - 1f)
-                * com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes.HALL_RY;
+    private static BlockState geodeShell(CaveBiomes layer, int x, int y, int z, int h) {
+        CaveHalls.Hall hall = hallAt(layer, x, y, z, CaveBiomes.GIANT_GEODE_HALL);
+        if (hall == null) return null;
+        float out = (CaveBiomes.hallDistance(hall.id(), hall.cell(), x, y, z) - 1f) * hall.ry();
         if (out < -2f || out > 4.5f) return null;
         if (out < 1.6f) return (h & 15) == 0 ? b(Blocks.BUDDING_AMETHYST) : b(Blocks.AMETHYST_BLOCK);
         if (out < 3.2f) return b(Blocks.CALCITE);
         return b(Blocks.SMOOTH_BASALT);
+    }
+
+    /** The hall of the unwarped region cell holding a block, if it is one of {@code id} (memoised per cell). */
+    private static CaveHalls.Hall hallAt(CaveBiomes layer, int x, int y, int z, short id) {
+        long cell = CaveBiomes.unwarpedCell(x, y, z);
+        HallMemo m = HALL_MEMO.get();
+        if (m.layer != layer || m.cell != cell) {
+            m.layer = layer;
+            m.cell = cell;
+            m.hall = CaveHalls.of(layer, CaveSurface.get(), cell);
+        }
+        return m.hall != null && m.hall.id() == id ? m.hall : null;
+    }
+
+    private static final class HallMemo {
+        CaveBiomes layer;
+        long cell;
+        CaveHalls.Hall hall;
+    }
+
+    private static final ThreadLocal<HallMemo> HALL_MEMO = ThreadLocal.withInitial(HallMemo::new);
+
+    /** Incursion rock: polished basalt where a pillar stands (CaveHalls), else null (deepslate stays, for the sculk). */
+    private static BlockState incursionRock(CaveBiomes layer, int x, int y, int z) {
+        CaveHalls.Hall hall = hallAt(layer, x, y, z, CaveBiomes.DEEP_DARK_INCURSION);
+        if (hall == null) return null;
+        return hall.detail(LocalTerrainProvider.getSeed(), x, y, z) >= -0.5f ? PILLAR : null;
+    }
+
+    /** Selenite chamber rock: calcite beams with amethyst tips (CaveHalls), hot banded rock around them. */
+    private static BlockState seleniteRock(CaveBiomes layer, int x, int y, int z) {
+        CaveHalls.Hall hall = hallAt(layer, x, y, z, CaveBiomes.GIANT_SELENITE_BEAMS);
+        if (hall != null) {
+            CaveHalls.Beam beam = CaveHalls.beamAt(CaveHalls.beams(LocalTerrainProvider.getSeed(), hall.cx(), hall.cy(),
+                    hall.cz(), hall.rx(), hall.ry()), x, y, z);
+            if (beam != null) return CaveHalls.isTip(beam, x, y, z) ? b(Blocks.AMETHYST_BLOCK) : b(Blocks.CALCITE);
+        }
+        return bands(HOT_BEDS, x, y, z, 2, 5);
     }
 
     private static int hash(int x, int y, int z) {

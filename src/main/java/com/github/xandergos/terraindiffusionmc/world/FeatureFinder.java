@@ -286,6 +286,7 @@ public final class FeatureFinder {
                 String cutKind = id == -2 ? "cenote" : id == -3 ? "river_sink"
                         : CaveBiomes.isSurfaceCut(id) ? word : null;
                 int[] found = cutKind != null ? findCut(cutKind, px, pz) : id == -4 ? findSeaCave(px, pz)
+                        : id >= 0 && CaveBiomes.shapeFamily(id) == CaveBiomes.SHAPE_HALL ? findHall(id, px, pz)
                         : findCave(id, px, pz);
                 server.execute(() -> reportCave(source, name, found, pos));
             } catch (Exception e) {
@@ -341,6 +342,50 @@ public final class FeatureFinder {
                     }
                 }
             }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /**
+     * The nearest giant hall of a kind (geode hall, deep dark forest, incursion, selenite chamber), cell by cell in
+     * rings out to about 6 km: a standing spot on the hall's floor near its centre, or the centre itself.
+     */
+    private static int[] findHall(short id, int x0, int z0) {
+        long seed = LocalTerrainProvider.getSeed();
+        CaveBiomes layer = CaveBiomes.forSeed(seed);
+        CaveShapes shapes = CaveShapes.forSeed(seed);
+        CaveSurface surface = CaveSurface.get();
+        int r = CaveBiomes.REGION_XZ;
+        int cx = Math.floorDiv(x0, r), cz = Math.floorDiv(z0, r);
+        int cyLo = Math.floorDiv(-64, CaveBiomes.REGION_Y), cyHi = Math.floorDiv(40, CaveBiomes.REGION_Y);
+        for (int ring = 0; ring <= 56; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    for (int cy = cyLo; cy <= cyHi; cy++) {
+                        long cell = CaveBiomes.unwarpedCell((cx + dx) * r, cy * CaveBiomes.REGION_Y, (cz + dz) * r);
+                        var hall = com.github.xandergos.terraindiffusionmc.pipeline.CaveHalls.of(layer, surface, cell);
+                        if (hall == null || hall.id() != id) continue;
+                        // Hall halfway under the ground at least (the cave layer starts well below it).
+                        if (hall.cy() + hall.ry() > surface.groundTop(hall.cx(), hall.cz()) - CaveBiomes.START_DEPTH) continue;
+                        double d = Math.hypot(hall.cx() - x0, hall.cz() - z0);
+                        if (d >= bestD) continue;
+                        int floorY = (int) Math.ceil(hall.cy() - Math.min(hall.floor(), hall.ry() * 0.8f)) + 1;
+                        int[] spot = new int[]{hall.cx(), hall.cy(), hall.cz()};
+                        for (int off = 0; off <= 12; off += 3) {
+                            int x = hall.cx() + off;
+                            if (shapes.at(x, floorY, hall.cz(), surface) < 0 && shapes.at(x, floorY + 1, hall.cz(), surface) < 0) {
+                                spot = new int[]{x, floorY, hall.cz()};
+                                break;
+                            }
+                        }
+                        bestD = d;
+                        best = spot;
+                    }
+                }
             if (best != null) return best;
         }
         return null;

@@ -1168,6 +1168,79 @@ cave_biome("deep_shaft", 171, 0.7, under=["terra:cave_moss_ceiling"],
            veg=["terra:cave_wall_vines", "terra:cave_glow_lichen_sparse"],
            add_spawns={"ambient": [{"type": "minecraft:bat", "count": uniform(4, 8), "weight": 40}]})
 
+# ---- v1.5 part three round C: the deep dark forest, the deep dark incursion and the giant selenite chamber. Each is a
+# giant hall (pipeline/CaveHalls: exact, inside its region cell, its biome follows it); world/CaveStone paints the
+# incursion's bare pillars (polished basalt, which sculk doesn't spread onto) and the selenite beams (calcite). ----
+NO_SOIL = {"type": "minecraft:rule_based", "rules": []}   # trees keep the sculk and rock under their trunks
+FOREST_GROUND = ["minecraft:sculk", "minecraft:deepslate", "minecraft:cobbled_deepslate", "minecraft:tuff",
+                 "minecraft:stone", "minecraft:sculk_catalyst", "minecraft:gravel"]
+# On the forest floor, not on a canopy: the floor block is ground, and 4 blocks down is still rock.
+ON_FOREST_FLOOR = {"type": "minecraft:block_predicate_filter", "predicate": {"type": "minecraft:all_of", "predicates": [
+    {"type": "minecraft:matching_blocks", "offset": [0, -1, 0], "blocks": FOREST_GROUND},
+    {"type": "minecraft:solid", "offset": [0, -4, 0]}]}}
+FEATURES.update({
+    # Warped-style giant: a tall branching warped stem with broad layered teal canopies, lit here and there by
+    # shroomlight.
+    "cave_dd_warped_tree": {"type": "minecraft:tree", "below_trunk_provider": NO_SOIL, "decorators": [],
+        "foliage_placer": {"type": "minecraft:fancy_foliage_placer", "height": 4, "offset": 4, "radius": 3},
+        "foliage_provider": weighted(("minecraft:warped_wart_block", 14), ("minecraft:shroomlight", 1)),
+        "ignore_vines": True,
+        "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 0, "min_clipped_height": 8, "upper_size": 0},
+        "trunk_placer": {"type": "minecraft:fancy_trunk_placer", "base_height": 10, "height_rand_a": 8, "height_rand_b": 0},
+        "trunk_provider": {"id": "minecraft:warped_stem", "properties": {"axis": "y"}}},
+    # Dead pale tree: a bare pale oak trunk (vanilla's pale oak shape, no leaves), hanging pale moss from its stubs and
+    # no moss carpet; a creaking heart inside some.
+    "cave_dd_dead_pale_tree": {"type": "minecraft:tree", "below_trunk_provider": NO_SOIL,
+        "decorators": [{"type": "minecraft:pale_moss", "leaves_probability": 0.0, "trunk_probability": 0.5,
+                        "ground_probability": 0.0},
+                       {"type": "minecraft:creaking_heart", "probability": 0.35}],
+        "foliage_placer": {"type": "minecraft:blob_foliage_placer", "height": 0, "offset": 0, "radius": 0},
+        "foliage_provider": {"id": "minecraft:pale_oak_log", "properties": {"axis": "y"}},
+        "ignore_vines": True, "minimum_size": {"type": "minecraft:three_layers_feature_size", "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:dark_oak_trunk_placer", "base_height": 8, "height_rand_a": 3, "height_rand_b": 2},
+        "trunk_provider": {"id": "minecraft:pale_oak_log", "properties": {"axis": "y"}}},
+    # Sculk-canopy tree: a dark oak trunk under a flat deepslate-toned canopy of sculk, deepslate and tuff, verdant
+    # froglights hanging beneath.
+    "cave_dd_sculk_tree": {"type": "minecraft:tree", "below_trunk_provider": NO_SOIL,
+        "decorators": [{"type": "minecraft:attached_to_leaves", "probability": 0.14, "exclusion_radius_xz": 1,
+                        "exclusion_radius_y": 0, "required_empty_blocks": 1, "directions": ["down"],
+                        "block_provider": {"id": "minecraft:verdant_froglight", "properties": {"axis": "y"}}}],
+        "foliage_placer": {"type": "minecraft:dark_oak_foliage_placer", "offset": 0, "radius": 0},
+        "foliage_provider": weighted(("minecraft:sculk", 6), ({"id": "minecraft:deepslate", "properties": {"axis": "y"}}, 3),
+                                     ("minecraft:tuff", 1)),
+        "ignore_vines": True, "minimum_size": {"type": "minecraft:three_layers_feature_size", "upper_size": 2},
+        "trunk_placer": {"type": "minecraft:dark_oak_trunk_placer", "base_height": 7, "height_rand_a": 3, "height_rand_b": 2},
+        "trunk_provider": {"id": "minecraft:dark_oak_log", "properties": {"axis": "y"}}},
+    # The forest floor: sculk carpets over the deepslate.
+    "cave_dd_forest_floor": patch_cfg("minecraft:sculk", "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), radius=(4, 8),
+                                      replaceable="#minecraft:sculk_replaceable_world_gen"),
+    # Shriekers that can summon wardens (vanilla's world generation only makes harmless ones outside ancient cities).
+    "cave_summoning_shrieker": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:sculk_shrieker",
+        "properties": {"can_summon": "true", "shrieking": "false", "waterlogged": "false"}}},
+})
+ON_SCULK = {"type": "minecraft:block_predicate_filter",
+            "predicate": {"type": "minecraft:matching_blocks", "offset": [0, -1, 0], "blocks": ["minecraft:sculk"]}}
+PLACED.update({
+    "cave_dd_forest_floor": cave_placed("terra:cave_dd_forest_floor", 70, SCAN_FLOOR),
+    "cave_dd_warped_trees": cave_placed("terra:cave_dd_warped_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
+    "cave_dd_sculk_trees": cave_placed("terra:cave_dd_sculk_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
+    "cave_dd_dead_pale_trees": cave_placed("terra:cave_dd_dead_pale_tree", 20, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
+    "cave_incursion_sculk": cave_placed("minecraft:sculk_patch_deep_dark", 200),
+    "cave_summoning_shriekers": cave_placed("terra:cave_summoning_shrieker", 40, SCAN_FLOOR, post=[ON_SCULK]),
+})
+# Deep dark forest and incursion: vanilla's deep dark (sculk, music, no mob spawns) without ancient cities. No
+# Terra-placed sensors or shriekers in the forest; the incursion's shriekers can summon wardens (no natural wardens).
+biome("deep_dark_forest", id=164, base="deep_dark", temp=0.8, downfall=0.4, colors={}, top=None, cave=True,
+      veg=["terra:cave_dd_warped_trees", "terra:cave_dd_sculk_trees", "terra:cave_dd_dead_pale_trees"],
+      add_steps={7: ["terra:cave_dd_forest_floor"]}, no_tags=["has_structure/ancient_city"])
+biome("deep_dark_incursion", id=172, base="deep_dark", temp=0.8, downfall=0.4, colors={}, top=None, cave=True,
+      veg=["terra:cave_summoning_shriekers"], add_steps={7: ["terra:cave_incursion_sculk"]},
+      no_tags=["has_structure/ancient_city"])
+# Giant selenite chamber: hot and dark (no glow lichen), magma patches and amethyst on the floor and on the beams.
+biome("giant_selenite_beams", id=174, base="dripstone_caves", temp=2.0, downfall=0.0, colors={}, veg=[], top=None,
+      steps={2: ["minecraft:amethyst_geode"], 7: ["terra:cave_magma_floor_sparse", "terra:cave_amethyst_floor"], 9: []},
+      add_steps={6: ["terra:cave_ore_amethyst"]}, drop_attrs=["minecraft:audio/background_music"], cave=True)
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
