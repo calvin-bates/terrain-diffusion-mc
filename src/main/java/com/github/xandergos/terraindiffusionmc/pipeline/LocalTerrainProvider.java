@@ -1151,8 +1151,10 @@ public final class LocalTerrainProvider {
                 }
             }
             if (temperate && TerrainDiffusionConfig.showpieces() && TerrainDiffusionConfig.riversEnabled()) {
-                AridLandforms.canyons(elev, biomes, canyonSegments(i1, j1, H, W, scale, true), i1, j1, H, W, scale, true);
+                // Oct 27: Yosemite no longer cuts its valley; it claims river valleys that are already deep and steep.
+                AridLandforms.yosemiteBiomes(elev, biomes, canyonSegments(i1, j1, H, W, scale, true), field, i1, j1, H, W, scale);
             }
+            if (TerrainDiffusionConfig.showpieces()) AridLandforms.yellowstoneBiomes(biomes, field, i1, j1, H, W, scale);
             if (tropic && aridOn && KarstTowers.mayApply(i1, j1, H, W, mpb)) {
                 KarstTowers.RiverNear rivers = TerrainDiffusionConfig.riversEnabled() ? this::riverNear : null;
                 KarstTowers.apply(elev, biomes, field, rivers, i1, j1, H, W, scale);

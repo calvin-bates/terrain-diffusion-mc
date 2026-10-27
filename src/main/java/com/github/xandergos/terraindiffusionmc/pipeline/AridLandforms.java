@@ -252,6 +252,121 @@ public final class AridLandforms {
         return g;
     }
 
+    // ---- Terralith's Yosemite and Yellowstone, placed only where the terrain already suits them (Oct 27) ----
+
+    /**
+     * Yosemite (Terralith's yosemite_cliffs and yosemite_lowlands) in river valleys of the Yosemite zones that are
+     * already deep (rim at least about 300 m over the river) and steep-walled (the walls average 25-35 degrees or more
+     * up to three quarters of the depth): nothing is cut or raised. Inside such a valley, its floor (low and gentle)
+     * becomes the lowlands and its walls and upper slopes the cliffs. The valley's rim, half-width and river level come
+     * from the river regions (canyonSegments), the same in every tile; the slope from the model ground (field).
+     */
+    public static void yosemiteBiomes(float[] elev, short[] biomes, List<Segment> segments, Field field, int i1, int j1,
+                                      int H, int W, int scale) {
+        if (segments.isEmpty()) return;
+        float res = WorldPipelineModelConfig.nativeResolution(), metresPerBlock = res / scale;
+        int ni0 = Math.floorDiv(i1, scale) - 2, nj0 = Math.floorDiv(j1, scale) - 2;
+        int nh = Math.floorDiv(i1 + H - 1, scale) + 3 - ni0 + 1, nw = Math.floorDiv(j1 + W - 1, scale) + 3 - nj0 + 1;
+        float[] in = new float[nh * nw], lv = new float[nh * nw], dp = new float[nh * nw];
+        boolean any = false;
+        for (Segment s : segments) {
+            float hwMax = Math.max(s.hwA(), s.hwB()) * CANYON_LOOK;
+            int r0 = Math.max(0, (int) Math.floor(Math.min(s.az(), s.bz()) - hwMax) - ni0);
+            int r1 = Math.min(nh - 1, (int) Math.ceil(Math.max(s.az(), s.bz()) + hwMax) - ni0);
+            int c0 = Math.max(0, (int) Math.floor(Math.min(s.ax(), s.bx()) - hwMax) - nj0);
+            int c1 = Math.min(nw - 1, (int) Math.ceil(Math.max(s.ax(), s.bx()) + hwMax) - nj0);
+            if (r0 > r1 || c0 > c1) continue;
+            float ex = s.bx() - s.ax(), ez = s.bz() - s.az(), l2 = ex * ex + ez * ez;
+            for (int r = r0; r <= r1; r++) {
+                float z = ni0 + r + 0.5f;
+                for (int c = c0; c <= c1; c++) {
+                    float x = nj0 + c + 0.5f;
+                    float t = l2 > 0f ? Math.max(0f, Math.min(1f, ((x - s.ax()) * ex + (z - s.az()) * ez) / l2)) : 0f;
+                    float qx = s.ax() + t * ex - x, qz = s.az() + t * ez - z;
+                    float hw = s.hwA() + (s.hwB() - s.hwA()) * t;
+                    float u = (float) Math.sqrt(qx * qx + qz * qz) / hw;
+                    if (u >= CANYON_LOOK) continue;
+                    float w = s.wA() + (s.wB() - s.wA()) * t;
+                    if (w <= 0f) continue;
+                    float level = s.levelA() + (s.levelB() - s.levelA()) * t;
+                    float depth = Math.max(0f, s.rimA() + (s.rimB() - s.rimA()) * t - level);
+                    float wall = 0.75f * depth / Math.max(1f, hw * res);   // mean wall gradient
+                    w *= smoothstep(280f, 450f, depth) * smoothstep(0.45f, 0.7f, wall);
+                    float inside = w * (1f - smoothstep(1.1f, CANYON_LOOK, u));
+                    int k = r * nw + c;
+                    if (inside > in[k]) {
+                        in[k] = inside;
+                        lv[k] = level;
+                        dp[k] = depth;
+                        any = true;
+                    }
+                }
+            }
+        }
+        if (!any) return;
+        float g = Math.max(1f, 20f / metresPerBlock);
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                float fz = (i1 + r + 0.5f) / scale - 0.5f - ni0, fx = (j1 + c + 0.5f) / scale - 0.5f - nj0;
+                fz = Math.max(0f, Math.min(nh - 1.001f, fz));
+                fx = Math.max(0f, Math.min(nw - 1.001f, fx));
+                int z0 = (int) fz, x0 = (int) fx;
+                float tz = fz - z0, tx = fx - x0;
+                if (bilerp(in, nw, z0, x0, tz, tx) <= 0.4f) continue;
+                int k = r * W + c;
+                if (BiomeClassifier.isOceanBiome(biomes[k])) continue;
+                // The valley the nearest pixel belongs to: river level and depth.
+                int kn = Math.round(fz) * nw + Math.round(fx);
+                float depth = dp[kn] > 0f ? dp[kn] : 1f;
+                float rel = (elev[k] - lv[kn]) / depth;
+                float cz = i1 + r + 0.5f, cx = j1 + c + 0.5f;
+                float sx = (field.ground(cz, cx + g) - field.ground(cz, cx - g)) / (2f * g * metresPerBlock);
+                float sz = (field.ground(cz + g, cx) - field.ground(cz - g, cx)) / (2f * g * metresPerBlock);
+                float slope = (float) Math.sqrt(sx * sx + sz * sz);
+                biomes[k] = rel < 0.22f && slope < 0.4f ? RegionalBiomes.YOSEMITE_LOWLANDS : RegionalBiomes.YOSEMITE;
+            }
+        }
+    }
+
+    private static final FastNoiseLite YELLOWSTONE_ZONE = noise(7433, 1f / 14000f, 2);
+    /** Zone level for Yellowstone (a few percent of the world in the zone). */
+    static final float YELLOWSTONE_ZONE_LEVEL = 0.6f;
+
+    /**
+     * Yellowstone (Terralith's): in rare zones, on cool, wet-enough uplands (mean temperature about -2 to 10 C, at least
+     * 300 mm a year) whose ground is already gently rolling (under about 100 m of relief within four native pixels) and
+     * well above the sea. Biome only; nothing is reshaped. Geothermal basins keep their own biome (set after this).
+     */
+    public static void yellowstoneBiomes(short[] biomes, Field field, int i1, int j1, int H, int W, int scale) {
+        float res = WorldPipelineModelConfig.nativeResolution(), metresPerBlock = res / scale;
+        float ring = 4f * scale;   // four native pixels, inside every tile's model-ground margin
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                float cz = i1 + r + 0.5f, cx = j1 + c + 0.5f;
+                float zone = smoothstep(YELLOWSTONE_ZONE_LEVEL, YELLOWSTONE_ZONE_LEVEL + 0.1f,
+                        YELLOWSTONE_ZONE.GetNoise(cx * metresPerBlock, cz * metresPerBlock));
+                if (zone <= 0f) continue;
+                int k = r * W + c;
+                short b = biomes[k];
+                if (BiomeClassifier.isOceanBiome(b) || b == RegionalBiomes.GLACIER) continue;
+                float t = field.temp(cz, cx), p = field.precip(cz, cx);
+                float climate = smoothstep(-3f, 0f, t) * (1f - smoothstep(8f, 11f, t)) * smoothstep(250f, 400f, p);
+                if (climate * zone <= 0.5f) continue;
+                float g0 = field.ground(cz, cx), lo = g0, hi = g0;
+                for (int a = 0; a < 8; a++) {
+                    double ang = a * Math.PI / 4;
+                    for (float rr : new float[]{ring * 0.5f, ring}) {
+                        float gv = field.ground(cz + (float) (rr * Math.sin(ang)), cx + (float) (rr * Math.cos(ang)));
+                        lo = Math.min(lo, gv);
+                        hi = Math.max(hi, gv);
+                    }
+                }
+                float terrain = (1f - smoothstep(70f, 130f, hi - lo)) * smoothstep(150f, 300f, g0);
+                if (zone * climate * terrain > 0.5f) biomes[k] = RegionalBiomes.YELLOWSTONE;
+            }
+        }
+    }
+
     private static final FastNoiseLite YOSEMITE_ZONE = noise(7411, 1f / 9000f, 2);
     /** Zone level for Yosemite valleys (~10% of the world in the zone). */
     static final float YOSEMITE_ZONE_LEVEL = 0.55f;

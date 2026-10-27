@@ -80,6 +80,8 @@
     "terra:underground_lakes",
     "terra:volcano",
     "terra:white_cliffs",
-    "terra:yosemite"
+    "terra:yellowstone",
+    "terra:yosemite_cliffs",
+    "terra:yosemite_lowlands"
   ]
 }

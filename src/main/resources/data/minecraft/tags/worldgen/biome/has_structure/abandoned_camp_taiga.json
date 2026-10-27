@@ -7,6 +7,8 @@
     "terra:geothermal_basin",
     "terra:siberian_taiga",
     "terra:taiga_clearing",
-    "terra:taiga_mountain"
+    "terra:taiga_mountain",
+    "terra:yellowstone",
+    "terra:yosemite_lowlands"
   ]
 }

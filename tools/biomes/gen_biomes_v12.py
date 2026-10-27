@@ -736,20 +736,191 @@ biome("geothermal_basin", id=93, base="taiga", temp=0.3, downfall=0.6,
                (None, "minecraft:white_terracotta")),
       under=rule((noise("surface", 0.0), "minecraft:calcite"), (None, "minecraft:white_terracotta")), top_wet=True,
       no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
-# Yosemite valleys: sheer white granite walls (calcite and diorite down every column, so the cliff faces show it),
-# pine forest on the flat floor and benches.
-WHITE_GRANITE = {"type": "minecraft:sequence", "sequence": [
-    {"type": "minecraft:condition", "if_true": noise("surface", 0.2), "then_run": block("minecraft:calcite")},
-    block("minecraft:diorite")]}
-biome("yosemite", id=94, base="old_growth_pine_taiga", temp=0.35, downfall=0.8,
-      colors={"grass_color": "#79a95a", "foliage_color": "#5f8f4a"},
-      veg=["minecraft:trees_old_growth_pine_taiga", "minecraft:patch_large_fern", "minecraft:patch_grass_taiga",
-           "minecraft:flower_default", "minecraft:patch_berry_common"],
-      top={"type": "minecraft:sequence", "sequence": [
-          {"type": "minecraft:condition", "if_true": STEEP, "then_run": WHITE_GRANITE},
-          {"type": "minecraft:condition", "if_true": noise("surface", 0.45), "then_run": block("minecraft:coarse_dirt")}]},
-      under={"type": "minecraft:condition", "if_true": STEEP, "then_run": WHITE_GRANITE},
-      deep=(40, WHITE_GRANITE, "after"),
+# ---- Terralith's Yosemite and Yellowstone (Oct 27: "exactly like the Terralith biome"), rebuilt from Terralith's own
+# data with vanilla features. Placed only where the terrain already suits them (pipeline/AridLandforms
+# yosemiteBiomes, yellowstoneBiomes): no valley is cut and no basin dug. ----
+TERRALITH_SPAWNS = {
+    "creature": [{"type": "minecraft:sheep", "count": 4, "weight": 12}, {"type": "minecraft:pig", "count": 4, "weight": 10},
+                 {"type": "minecraft:chicken", "count": 4, "weight": 10}, {"type": "minecraft:cow", "count": 4, "weight": 8},
+                 {"type": "minecraft:wolf", "count": 2, "weight": 8}, {"type": "minecraft:rabbit", "count": uniform(2, 3), "weight": 4},
+                 {"type": "minecraft:fox", "count": uniform(1, 2), "weight": 8}],
+    "ambient": [{"type": "minecraft:bat", "count": 8, "weight": 10}],
+    "underground_water_creature": [{"type": "minecraft:glow_squid", "count": uniform(4, 6), "weight": 10}]}
+TAIGA_GROUND = ["minecraft:patch_large_fern", "minecraft:patch_grass_taiga_2", "minecraft:brown_mushroom_taiga",
+                "minecraft:red_mushroom_taiga", "minecraft:brown_mushroom_normal", "minecraft:red_mushroom_normal",
+                "minecraft:patch_sugar_cane", "minecraft:patch_pumpkin", "minecraft:patch_berry_common"]
+
+
+def noise_count(factor, offset, ratio):
+    return {"type": "minecraft:noise_based_count", "noise_factor": factor, "noise_offset": offset,
+            "noise_to_count_ratio": ratio}
+
+
+def tl_tree(trunk, leaves_id, base, a, b, foliage, soil="minecraft:coarse_dirt", size=None):
+    return {"type": "minecraft:tree", "below_trunk_provider": {"id": soil}, "decorators": [],
+            "foliage_placer": foliage, "foliage_provider": leaves(leaves_id), "ignore_vines": True,
+            "minimum_size": size or {"type": "minecraft:two_layers_feature_size", "limit": 1, "lower_size": 0, "upper_size": 0},
+            "trunk_placer": {"type": "minecraft:straight_trunk_placer", "base_height": base, "height_rand_a": a, "height_rand_b": b},
+            "trunk_provider": log(trunk)}
+
+
+FEATURES.update({
+    # Yellowstone's trees: tall spruces with a narrow mega pine crown or a spruce crown, and birches shaped like
+    # spruces and pines, all on coarse dirt.
+    "tl_spruce_big": tl_tree("minecraft:spruce_log", "minecraft:spruce_leaves", 8, 2, 9,
+                             {"type": "minecraft:mega_pine_foliage_placer", "crown_height": uniform(12, 17), "offset": uniform(1, 3), "radius": uniform(0, 1)}),
+    "tl_spruce_big_alt": tl_tree("minecraft:spruce_log", "minecraft:spruce_leaves", 6, 2, 7,
+                                 {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 2), "radius": uniform(2, 3), "trunk_height": uniform(1, 3)}),
+    "tl_birch": tl_tree("minecraft:birch_log", "minecraft:birch_leaves", 5, 2, 3,
+                        {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 2), "radius": 2, "trunk_height": uniform(1, 2)}),
+    "tl_birch_alt": tl_tree("minecraft:birch_log", "minecraft:birch_leaves", 5, 2, 2,
+                            {"type": "minecraft:pine_foliage_placer", "offset": uniform(0, 1), "radius": uniform(1, 2), "height": uniform(1, 3)}),
+    # Yosemite's oaks: tall straight oaks with a spruce-shaped crown, and giant ones with a mega pine crown.
+    "tl_yosemite_oak": tl_tree("minecraft:oak_log", "minecraft:oak_leaves", 6, 5, 8,
+                               {"type": "minecraft:spruce_foliage_placer", "offset": uniform(0, 2), "radius": uniform(2, 3), "trunk_height": uniform(3, 4)},
+                               soil="minecraft:dirt", size={"type": "minecraft:two_layers_feature_size", "limit": 2, "lower_size": 1, "upper_size": 2}),
+    "tl_yosemite_oak_mega": tl_tree("minecraft:oak_log", "minecraft:oak_leaves", 6, 5, 8,
+                                    {"type": "minecraft:mega_pine_foliage_placer", "crown_height": uniform(10, 13), "offset": uniform(1, 3), "radius": uniform(1, 2)},
+                                    soil="minecraft:dirt", size={"type": "minecraft:two_layers_feature_size", "limit": 2, "lower_size": 1, "upper_size": 2}),
+    # Yosemite cliffs: grassy ledges on the bare stone, light diorite and calcite streaks in the walls.
+    "tl_cliff_plants": {"type": "minecraft:simple_block", "to_place": {"type": "minecraft:weighted", "entries": [
+        {"data": "minecraft:short_grass", "weight": 50},
+        {"data": {"id": "minecraft:tall_grass", "properties": {"half": "lower"}}, "weight": 10}]}},
+    "tl_cliff_grass": {"type": "minecraft:vegetation_patch", "depth": 1, "extra_bottom_block_chance": 0.0,
+                       "extra_edge_column_chance": 0.4, "ground_state": {"id": "minecraft:grass_block", "properties": {"snowy": "false"}},
+                       "replaceable": "#minecraft:base_stone_overworld", "surface": "floor", "vegetation_chance": 0.3,
+                       "vegetation_feature": {"feature": "terra:tl_cliff_plants", "placement": []}, "vertical_range": 8, "xz_radius": uniform(1, 5)},
+    "tl_diorite": {"type": "minecraft:ore", "discard_chance_on_air_exposure": 0.0, "size": 45,
+                   "targets": [{"state": {"id": "minecraft:diorite"}, "target": {"predicate_type": "minecraft:block_match", "block": "minecraft:stone"}}]},
+    "tl_calcite": {"type": "minecraft:ore", "discard_chance_on_air_exposure": 0.0, "size": 45,
+                   "targets": [{"state": {"id": "minecraft:calcite"}, "target": {"predicate_type": "minecraft:block_match", "block": "minecraft:diorite"}}]},
+    # Waterfalls: a water source on the lip of a ledge pours over the cliff (Terralith set its sources into calcite
+    # ledges; here a source goes wherever a ledge drops away, with a tick so it flows at once).
+    "tl_waterfall": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:water", "properties": {"level": "0"}},
+                     "schedule_tick": True},
+    "tl_andesite_disk": {"type": "minecraft:disk", "half_height": 2, "radius": uniform(3, 5), "state_provider": {"id": "minecraft:andesite"},
+                         "target": {"type": "minecraft:matching_blocks", "blocks": ["minecraft:gravel", "minecraft:sand", "minecraft:dirt",
+                                    "minecraft:grass_block", "minecraft:calcite", "minecraft:basalt"]}},
+    "tl_dandelion": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:dandelion"}},
+})
+SELECTORS["tl_yosemite_oaks"] = ("terra:tl_yosemite_oak_checked", [
+    ("terra:tl_yosemite_oak_mega_checked", 0.3), ("terra:tl_spruce_big_alt_checked", 0.075),
+    ("terra:tl_spruce_big_checked", 0.075), ("terra:tl_birch_alt_checked", 0.075), ("terra:tl_birch_checked", 0.075)])
+ON_CLIFF_EDGE = {"type": "minecraft:block_predicate_filter", "predicate": {"type": "minecraft:all_of", "predicates": [
+    {"type": "minecraft:matching_blocks", "blocks": ["minecraft:air"]},
+    {"type": "minecraft:solid", "offset": [0, -1, 0]},
+    {"type": "minecraft:any_of", "predicates": [
+        {"type": "minecraft:all_of", "predicates": [{"type": "minecraft:matching_blocks", "offset": [dx, -1, dz], "blocks": ["minecraft:air"]},
+                                                    {"type": "minecraft:matching_blocks", "offset": [dx, -2, dz], "blocks": ["minecraft:air"]}]}
+        for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1))]}]}}
+
+
+def tree_checked(f, sapling):
+    return {"feature": f, "placement": [survive(sapling)]}
+
+
+def heightmap_count(feature, count, *mods, heightmap="WORLD_SURFACE_WG", post=()):
+    return {"feature": feature, "placement": [{"type": "minecraft:count", "count": count}, {"type": "minecraft:in_square"},
+                                              *mods, {"type": "minecraft:heightmap", "heightmap": heightmap},
+                                              *post, {"type": "minecraft:biome"}]}
+
+
+PLACED.update({
+    "tl_spruce_big_checked": tree_checked("terra:tl_spruce_big", "minecraft:spruce_sapling"),
+    "tl_spruce_big_alt_checked": tree_checked("terra:tl_spruce_big_alt", "minecraft:spruce_sapling"),
+    "tl_birch_checked": tree_checked("terra:tl_birch", "minecraft:birch_sapling"),
+    "tl_birch_alt_checked": tree_checked("terra:tl_birch_alt", "minecraft:birch_sapling"),
+    "tl_yosemite_oak_checked": tree_checked("terra:tl_yosemite_oak", "minecraft:oak_sapling"),
+    "tl_yosemite_oak_mega_checked": tree_checked("terra:tl_yosemite_oak_mega", "minecraft:oak_sapling"),
+    # Terralith's Yellowstone trees came in height bands (spruces low, birches high); Terra's terrain has no fixed
+    # heights, so all four grow everywhere at about the density each had in its band.
+    "tl_yellowstone_spruces": heightmap_count("terra:tl_spruce_big", 2, post=[survive("minecraft:spruce_sapling")]),
+    "tl_yellowstone_spruces_alt": heightmap_count("terra:tl_spruce_big_alt", 2, post=[survive("minecraft:spruce_sapling")]),
+    "tl_yellowstone_birches": heightmap_count("terra:tl_birch", 2, post=[survive("minecraft:birch_sapling")]),
+    "tl_yellowstone_birches_alt": heightmap_count("terra:tl_birch_alt", 1, post=[survive("minecraft:birch_sapling")]),
+    "tl_yosemite_oaks": {"feature": "terra:tl_yosemite_oaks", "placement": [
+        {"type": "minecraft:count", "count": {"type": "minecraft:weighted_list", "distribution": [{"data": 7, "weight": 50}, {"data": 8, "weight": 50}]}},
+        {"type": "minecraft:in_square"}, {"type": "minecraft:heightmap", "heightmap": "WORLD_SURFACE_WG"}, {"type": "minecraft:biome"}]},
+    "tl_cliff_grass": heightmap_count("terra:tl_cliff_grass", 15, noise_count(75, -0.2, 1), noise_count(75, -1, -1)),
+    "tl_calcite": heightmap_count("terra:tl_calcite", 150, noise_count(75, 1, 1), noise_count(75, 0.5, -1)),
+    "tl_diorite": heightmap_count("terra:tl_diorite", 150, noise_count(75, 0.6, 1), noise_count(75, 0.2, -1)),
+    "tl_waterfalls": heightmap_count("terra:tl_waterfall", 6, ON_CLIFF_EDGE),
+    "tl_andesite_disks": {"feature": "terra:tl_andesite_disk", "placement": [
+        {"type": "minecraft:count", "count": 228}, {"type": "minecraft:in_square"}, noise_count(175, 1, 1),
+        {"type": "minecraft:heightmap", "heightmap": "OCEAN_FLOOR_WG"},
+        {"type": "minecraft:block_predicate_filter", "predicate": {"type": "minecraft:matching_fluids", "fluids": "minecraft:water"}},
+        {"type": "minecraft:biome"}]},
+    "tl_dandelions": patch("terra:tl_dandelion", 64, spread=7, chance=20),
+})
+# Yosemite cliffs: bare stone walls (diorite and calcite streaks from the features), grassy ledges, waterfalls.
+biome("yosemite_cliffs", id=94, base="old_growth_pine_taiga", temp=0.375, downfall=0.8,
+      colors={"water_color": "#3f76e4"},
+      veg=TAIGA_GROUND, top=rule((None, "minecraft:stone")), under=rule((None, "minecraft:stone")),
+      steps={5: ["terra:tl_cliff_grass", "terra:tl_calcite", "terra:tl_diorite", "terra:tl_waterfalls"]},
+      spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#c0d8ff", "minecraft:visual/sky_color": "#7da3ff"},
+      no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
+# Yosemite lowlands: the meadow valley floor: tall oaks (some giant), a few spruces and birches, dandelions, andesite
+# in the river beds, waterfalls where it meets the walls.
+biome("yosemite_lowlands", id=96, base="taiga", temp=0.25, downfall=0.8,
+      colors={"grass_color": "#598347", "foliage_color": "#508231", "water_color": "#3647aa"},
+      veg=["terra:tl_waterfalls", "terra:tl_yosemite_oaks", "terra:tl_dandelions"] + TAIGA_GROUND, top=None,
+      add_steps={6: ["terra:tl_andesite_disks"]},
+      spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#c0d8ff", "minecraft:visual/sky_color": "#7da3ff"},
+      no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
+# Yellowstone: calcite ground with coarse dirt and grass, patches of yellow terracotta, red sand, blackstone, smooth
+# basalt and gravel, thin veins of gravel and calcite, calcite on steep faces (Terralith's surface rule; its height
+# bands, made for fixed heights, are a noise mix here). world/Yellowstone lays the pools, stained rims and steam vents.
+YS_PATCH = "terra:yellowstone/calcite_patch"
+YS_VEIN = "terra:yellowstone/gravel"
+YS_DIRT = "terra:yellowstone/dirt"
+YS_CLIFF = "terra:yellowstone/calcite_cliff"
+NOISES = {"yellowstone/calcite_patch": {"firstOctave": -6, "amplitudes": [1.6, 0.9, 1.0, 2.5, 0.0, 1.25, 4.3]},
+          "yellowstone/gravel": {"firstOctave": -5, "amplitudes": [1.0, 0.25]},
+          "yellowstone/dirt": {"firstOctave": -2, "amplitudes": [1.0, 0.75, 1.5]},
+          "yellowstone/calcite_cliff": {"firstOctave": -7, "amplitudes": [1.0, 1.0, 0.5, 1.25]}}
+
+
+def tnoise(n, lo, hi=None):
+    return {"type": "minecraft:noise_threshold", "noise": n, "min_threshold": lo,
+            "max_threshold": 1.7976931348623157e308 if hi is None else hi}
+
+
+NOT_STEEP = {"type": "minecraft:not", "invert": STEEP}
+FLOOR0 = {"type": "minecraft:stone_depth", "offset": 0, "add_surface_depth": False, "secondary_depth_range": 0,
+          "surface_type": "floor"}
+
+
+def cond(c, then):
+    return {"type": "minecraft:condition", "if_true": c, "then_run": then}
+
+
+def vein(lo, hi, width, b):
+    return cond(tnoise(YS_PATCH, lo, hi), cond(tnoise(YS_VEIN, -width, width), cond(FLOOR0, block(b))))
+
+
+YELLOWSTONE_TOP = {"type": "minecraft:sequence", "sequence": [
+    cond(tnoise(YS_PATCH, 0.725), cond(NOT_STEEP, block("minecraft:yellow_terracotta"))),
+    cond(tnoise(YS_PATCH, 0.675), cond(NOT_STEEP, block("minecraft:red_sand"))),
+    cond(tnoise(YS_PATCH, 0.615), block("minecraft:blackstone")),
+    cond(tnoise(YS_PATCH, 0.525), block("minecraft:smooth_basalt")),
+    cond(tnoise(YS_PATCH, 0.4), block("minecraft:gravel")),
+    vein(0.3, 0.4, 0.1, "minecraft:gravel"), vein(0.2, 0.3, 0.06, "minecraft:gravel"), vein(0.1, 0.2, 0.03, "minecraft:gravel"),
+    vein(0.0, 0.1, 0.015, "minecraft:gravel"), vein(-0.05, 0.0, 0.006, "minecraft:gravel"),
+    vein(0.28, 0.4, 0.16, "minecraft:calcite"), vein(0.16, 0.28, 0.11, "minecraft:calcite"), vein(0.04, 0.16, 0.05, "minecraft:calcite"),
+    vein(-0.08, 0.04, 0.025, "minecraft:calcite"), vein(-0.2, -0.08, 0.009, "minecraft:calcite"),
+    cond(tnoise(YS_PATCH, 0.225), block("minecraft:calcite")),
+    cond(STEEP, cond(tnoise(YS_CLIFF, -0.4), block("minecraft:calcite"))),
+    # Terralith's height bands (grass low, coarse dirt in the middle, calcite high) as a mix by its dirt noise.
+    cond(FLOOR0, cond(tnoise(YS_DIRT, 0.1), block("minecraft:grass_block"))),
+    cond(tnoise(YS_DIRT, -0.3), block("minecraft:coarse_dirt")),
+    block("minecraft:calcite")]}
+biome("yellowstone", id=97, base="taiga", temp=0.25, downfall=0.8,
+      colors={"grass_color": "#c6d097", "water_color": "#77e0f7"},
+      veg=["terra:tl_yellowstone_spruces", "terra:tl_yellowstone_spruces_alt", "terra:tl_yellowstone_birches",
+           "terra:tl_yellowstone_birches_alt", "minecraft:patch_large_fern", "minecraft:flower_default"] + TAIGA_GROUND[1:],
+      top=YELLOWSTONE_TOP, under=rule((None, "minecraft:calcite")),
+      add_steps={8: ["minecraft:spring_lava"]},
+      spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#e0e9ff", "minecraft:visual/sky_color": "#77a8ff"},
       no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
 # Mirage isles: sheer pale cliffs in bands (calcite, white and pink terracotta), teal jungle and giant mushrooms on top.
 # Like mushroom fields: no monsters, mooshrooms (red and brown, see MirageMooshroomMixin; grass counts for them).
@@ -1347,6 +1518,8 @@ def main():
                                               "features": [{"chance": c, "feature": f} for f, c in options]})
     for name, p in PLACED.items():
         write(f"{TERRA}/placed_feature/{name}.json", p)
+    for name, n in NOISES.items():
+        write(f"{TERRA}/noise/{name}.json", n)
     check_references()
 
     # Biome files.

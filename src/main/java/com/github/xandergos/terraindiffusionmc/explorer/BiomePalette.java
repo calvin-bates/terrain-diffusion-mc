@@ -109,8 +109,10 @@ public final class BiomePalette {
         put(91, "Alluvial fan", 0xB8A58A);
         put(92, "Karst", 0x3F8F5A);
         put(93, "Geothermal basin", 0xE8B04A);
-        put(94, "Yosemite", 0xD9DCD2);
+        put(94, "Yosemite cliffs", 0xD9DCD2);
         put(95, "Mirage isles", 0x3FD6C0);
+        put(96, "Yosemite lowlands", 0x6FA84A);
+        put(97, "Yellowstone", 0xC9B26A);
         put(133, "Mushroom Fields", 0xA070B0);
         // Shores
         put(130, "Beach", 0xF5E08A);

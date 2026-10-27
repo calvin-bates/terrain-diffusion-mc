@@ -10,6 +10,8 @@
     "terra:taiga_clearing",
     "terra:taiga_mountain",
     "terra:temperate_rainforest",
-    "terra:yosemite"
+    "terra:yellowstone",
+    "terra:yosemite_cliffs",
+    "terra:yosemite_lowlands"
   ]
 }

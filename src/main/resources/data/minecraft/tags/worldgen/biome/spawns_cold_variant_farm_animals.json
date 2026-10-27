@@ -22,6 +22,8 @@
     "terra:treeline",
     "terra:tundra",
     "terra:volcano",
-    "terra:yosemite"
+    "terra:yellowstone",
+    "terra:yosemite_cliffs",
+    "terra:yosemite_lowlands"
   ]
 }

@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:simple_block",
+  "to_place": {
+    "id": "minecraft:water",
+    "properties": {
+      "level": "0"
+    }
+  },
+  "schedule_tick": true
+}

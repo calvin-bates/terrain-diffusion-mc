@@ -38,8 +38,13 @@ public final class RegionalBiomes {
     public static final short GLACIER = 88;
     /** Dry-land landforms (v1.4 round C): canyon walls, badlands mesas, alluvial fans (by the tile), karst towers. */
     public static final short CANYON = 89, BADLANDS_MESA = 90, ALLUVIAL_FAN = 91, KARST = 92;
-    /** Showpieces (v1.4 round D): geothermal fields, Yosemite valleys, mirage isles. */
+    /** Showpieces (v1.4 round D): geothermal fields, Yosemite valleys (cliffs), mirage isles. */
     public static final short GEOTHERMAL = 93, YOSEMITE = 94, MIRAGE_ISLES = 95;
+    /**
+     * Terralith's Yosemite lowlands (the valley floor under the Yosemite cliffs) and Terralith's Yellowstone (Oct 27),
+     * both placed only where the terrain already has their shape (AridLandforms.yosemiteBiomes, yellowstoneBiomes).
+     */
+    public static final short YOSEMITE_LOWLANDS = 96, YELLOWSTONE = 97;
 
     /** Id → biome name in the {@code terra} namespace, for the biome source and the explorer. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -51,7 +56,7 @@ public final class RegionalBiomes {
                 "tropical_dry_forest", "aspen_grove", "shingle_beach", "salt_marsh", "tidal_flats", "white_cliffs",
                 "painted_mountains", "desert_oasis", "blooming_plateau", "blooming_valley", "lush_valley", "salt_flats", "arctic", "volcano", "lava_fields",
                 "glacier", "canyon", "badlands_mesa", "alluvial_fan", "karst",
-                "geothermal_basin", "yosemite", "mirage_isles"};
+                "geothermal_basin", "yosemite_cliffs", "mirage_isles", "yosemite_lowlands", "yellowstone"};
         for (int k = 0; k < n.length; k++) NAMES.put((short) (TUNDRA + k), n[k]);
     }
 

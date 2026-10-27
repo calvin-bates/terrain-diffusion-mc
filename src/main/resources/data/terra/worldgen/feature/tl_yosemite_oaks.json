@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "terra:tl_yosemite_oak_checked",
+  "features": [
+    {
+      "chance": 0.3,
+      "feature": "terra:tl_yosemite_oak_mega_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "terra:tl_spruce_big_alt_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "terra:tl_spruce_big_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "terra:tl_birch_alt_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "terra:tl_birch_checked"
+    }
+  ]
+}

@@ -1,12 +1,5 @@
 {
   "attributes": {
-    "minecraft:audio/background_music": {
-      "default": {
-        "max_delay": 24000,
-        "min_delay": 12000,
-        "sound": "minecraft:music.overworld.old_growth_taiga"
-      }
-    },
     "minecraft:gameplay/natural_mob_spawns": {
       "argument": {
         "spawn_costs": {},
@@ -41,7 +34,7 @@
             },
             {
               "type": "minecraft:wolf",
-              "count": 4,
+              "count": 2,
               "weight": 8
             },
             {
@@ -57,8 +50,8 @@
               "type": "minecraft:fox",
               "count": {
                 "type": "minecraft:uniform",
-                "max_inclusive": 4,
-                "min_inclusive": 2
+                "max_inclusive": 2,
+                "min_inclusive": 1
               },
               "weight": 8
             }
@@ -72,12 +65,12 @@
             {
               "type": "minecraft:zombie",
               "count": 4,
-              "weight": 100
+              "weight": 95
             },
             {
               "type": "minecraft:zombie_villager",
               "count": 1,
-              "weight": 25
+              "weight": 5
             },
             {
               "type": "minecraft:skeleton",
@@ -124,7 +117,8 @@
       },
       "modifier": "overlay"
     },
-    "minecraft:visual/sky_color": "#7ca3ff"
+    "minecraft:visual/sky_color": "#77a8ff",
+    "minecraft:visual/fog_color": "#e0e9ff"
   },
   "carvers": [
     "minecraft:cave",
@@ -133,9 +127,8 @@
   ],
   "downfall": 0.8,
   "effects": {
-    "water_color": "#3f76e4",
-    "grass_color": "#79a95a",
-    "foliage_color": "#5f8f4a"
+    "water_color": "#77e0f7",
+    "grass_color": "#c6d097"
   },
   "features": [
     [],
@@ -144,8 +137,7 @@
       "minecraft:lake_lava_surface"
     ],
     [
-      "minecraft:amethyst_geode",
-      "minecraft:forest_rock"
+      "minecraft:amethyst_geode"
     ],
     [
       "minecraft:monster_room",
@@ -192,15 +184,24 @@
     [
       "minecraft:glow_lichen",
       "minecraft:patch_large_fern",
-      "minecraft:trees_old_growth_pine_taiga",
       "minecraft:flower_default",
-      "minecraft:patch_grass_taiga",
-      "minecraft:patch_berry_common"
+      "minecraft:patch_grass_taiga_2",
+      "minecraft:brown_mushroom_taiga",
+      "minecraft:red_mushroom_taiga",
+      "minecraft:brown_mushroom_normal",
+      "minecraft:red_mushroom_normal",
+      "minecraft:patch_pumpkin",
+      "minecraft:patch_sugar_cane",
+      "minecraft:patch_berry_common",
+      "terra:tl_yellowstone_birches",
+      "terra:tl_yellowstone_birches_alt",
+      "terra:tl_yellowstone_spruces",
+      "terra:tl_yellowstone_spruces_alt"
     ],
     [
       "minecraft:freeze_top_layer"
     ]
   ],
   "has_precipitation": true,
-  "temperature": 0.35
+  "temperature": 0.25
 }
