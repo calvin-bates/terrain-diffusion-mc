@@ -47,6 +47,18 @@ public final class CaveView {
         COLORS.put(CaveBiomes.GRANITE_CAVES, "#b7735c");
         COLORS.put(CaveBiomes.TUFF_CAVES, "#6f7562");
         COLORS.put(CaveBiomes.DRIPSTONE_CAVES, "#9a6b45");
+        COLORS.put(CaveBiomes.LUSH_CAVES, "#6fae3c");
+        COLORS.put(CaveBiomes.FUNGAL_CAVES, "#b04ad0");
+        COLORS.put(CaveBiomes.UNDERGROUND_JUNGLE, "#2f8f3a");
+        COLORS.put(CaveBiomes.ICY_CAVES, "#9fd8f0");
+        COLORS.put(CaveBiomes.FROSTFIRE_CAVES, "#5a8fe0");
+        COLORS.put(CaveBiomes.THERMAL_CAVES, "#e3c34a");
+        COLORS.put(CaveBiomes.INFESTED_CAVES, "#7d7a6a");
+        COLORS.put(CaveBiomes.SPIDER_NEST, "#c8c8c8");
+        COLORS.put(CaveBiomes.COPPER_CAVES, "#d9844d");
+        COLORS.put(CaveBiomes.SALT_CAVES, "#f2c9d4");
+        COLORS.put(CaveBiomes.MUD_CAVES, "#5b4a3e");
+        COLORS.put(CaveBiomes.BREAKDOWN_CHAMBERS, "#8a8f99");
     }
 
     public static void color(short id, String hex) {
@@ -124,7 +136,7 @@ public final class CaveView {
         for (int gz = 0; gz < size; gz += 16) {
             for (int gx = 0; gx < size; gx += 16) {
                 int sx = Math.min(16, size - gx), sz = Math.min(16, size - gz);
-                shapes.fill(x0 + gx, z0 + gz, sx, sz, y, 1, cave, scratch);
+                shapes.fill(x0 + gx, z0 + gz, sx, sz, y, 1, cave, scratch, cols.biomesOn ? cols.surface : null);
                 for (int dz = 0; dz < sz; dz++) {
                     for (int dx = 0; dx < sx; dx++) {
                         int c = (gz + dz) * size + gx + dx;
@@ -150,7 +162,8 @@ public final class CaveView {
         int rows = (span + stepY - 1) / stepY;
         CaveShapes shapes = CaveShapes.forSeed(LocalTerrainProvider.getSeed());
         float[] cave = new float[len * span];
-        shapes.fill(x0, z0, alongX ? len : 1, alongX ? 1 : len, minY, span, cave, new CaveShapes.Scratch());
+        shapes.fill(x0, z0, alongX ? len : 1, alongX ? 1 : len, minY, span, cave, new CaveShapes.Scratch(),
+                cols.biomesOn ? cols.surface : null);
         byte[] mat = new byte[len * rows], bio = new byte[len * rows];
         for (int r = 0; r < rows; r++) {
             int y = yTop - r * stepY;

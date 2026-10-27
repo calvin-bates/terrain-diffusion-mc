@@ -780,6 +780,257 @@ biome("granite_caves", id=142, **STONE_CAVE)
 biome("tuff_caves", id=143, **STONE_CAVE)
 # id 144 is vanilla's dripstone_caves, used as is (in VANILLA_USED below).
 
+# ---- v1.5 part two round A: the dry uncommon caves (CaveBiomes; lush and thermal caves are vanilla's) ----
+# Placement of Terra's cave features: tries per chunk column per 256 blocks of its cave layer (terra:cave_layer picks
+# Y between the bottom of the world and where cave biomes start, so caves inside mountains get features too).
+AIR = {"type": "minecraft:matching_block_tag", "tag": "minecraft:air"}
+SCAN_FLOOR = [{"type": "minecraft:environment_scan", "allowed_search_condition": AIR, "direction_of_search": "down",
+               "max_steps": 12, "target_condition": {"type": "minecraft:solid"}}, {"type": "minecraft:offset", "x": 0, "y": 1, "z": 0}]
+SCAN_CEILING = [{"type": "minecraft:environment_scan", "allowed_search_condition": AIR, "direction_of_search": "up",
+                 "max_steps": 12, "target_condition": {"type": "minecraft:solid"}}, {"type": "minecraft:offset", "x": 0, "y": -1, "z": 0}]
+
+
+def cave_placed(feature, count, scan=(), pre=(), post=()):
+    """count: tries per chunk per 256 blocks of cave layer (int, or a dict count provider)."""
+    lead = list(pre) if pre else [{"type": "minecraft:count", "count": count}]
+    return {"feature": feature, "placement": lead + [{"type": "minecraft:in_square"}, {"type": "terra:cave_layer"},
+                                                   {"type": "minecraft:biome"}] + list(scan) + list(post)}
+
+
+def weighted(*pairs):
+    return {"type": "minecraft:weighted", "entries": [{"data": b, "weight": w} for b, w in pairs]}
+
+
+def inline(feature):
+    return {"feature": feature, "placement": []}
+
+
+def patch_cfg(ground, surface, veg, veg_chance, depth=1, radius=(4, 7), replaceable="#minecraft:moss_replaceable",
+              edge=0.3, kind="minecraft:vegetation_patch", bottom=0.0):
+    return {"type": kind, "depth": depth if isinstance(depth, int) else uniform(*depth),
+            "extra_bottom_block_chance": bottom, "extra_edge_column_chance": edge,
+            "ground_state": ground if isinstance(ground, dict) else {"id": ground}, "replaceable": replaceable,
+            "surface": surface, "vegetation_chance": veg_chance, "vegetation_feature": inline(veg), "vertical_range": 5,
+            "xz_radius": uniform(*radius)}
+
+
+def column(direction, *layers):
+    """layers: (block id or provider, height or (min, max)), from the attachment point outwards."""
+    return {"type": "minecraft:block_column", "allowed_placement": AIR, "direction": direction, "prioritize_tip": True,
+            "layers": [{"height": h if isinstance(h, int) else uniform(*h),
+                        "provider": b if isinstance(b, dict) else {"id": b}} for b, h in layers]}
+
+
+def ore(state, size, deep_state=None):
+    stone = {"predicate_type": "minecraft:tag_match", "tag": "minecraft:base_stone_overworld"}
+    targets = [{"state": state, "target": stone}]
+    if deep_state:
+        targets = [{"state": deep_state, "target": {"predicate_type": "minecraft:block_match", "block": "minecraft:deepslate"}},
+                   {"state": state, "target": stone}]
+    return {"type": "minecraft:ore", "discard_chance_on_air_exposure": 0.0, "size": size, "targets": targets}
+
+
+def fungus(stem, hat):
+    return {"type": "minecraft:huge_fungus", "valid_base_block": "minecraft:moss_block", "stem_state": stem,
+            "hat_state": hat, "decor_state": "minecraft:shroomlight", "planted": False,
+            "replaceable_blocks": {"type": "minecraft:matching_blocks", "blocks": [
+                "minecraft:crimson_roots", "minecraft:warped_roots", "minecraft:brown_mushroom", "minecraft:red_mushroom",
+                "minecraft:moss_carpet", "minecraft:crimson_fungus", "minecraft:warped_fungus", "minecraft:short_grass"]}}
+
+
+def blob(state):
+    return {"type": "minecraft:block_blob", "state": state,
+            "can_place_on": {"type": "minecraft:matching_block_tag", "tag": "minecraft:forest_rock_can_place_on"}}
+
+
+CAVE_FEATURES = {
+    # Glow lichen on every cave rock Terra uses (vanilla's only covers stone up to Y 256).
+    "cave_glow_lichen": {"type": "minecraft:multiface_growth", "block": "minecraft:glow_lichen", "can_place_on_ceiling": True,
+                         "can_place_on_wall": True, "search_range": 20, "can_be_placed_on": [
+        "minecraft:stone", "minecraft:andesite", "minecraft:diorite", "minecraft:granite", "minecraft:tuff",
+        "minecraft:deepslate", "minecraft:calcite", "minecraft:dripstone_block", "minecraft:white_terracotta",
+        "minecraft:pink_terracotta", "minecraft:moss_block", "minecraft:mud", "minecraft:packed_mud",
+        "minecraft:cobblestone", "minecraft:mossy_cobblestone", "minecraft:copper_ore", "minecraft:packed_ice"]},
+    "cave_moss_carpet": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:moss_carpet"}},
+    # Fungal caves: moss and mycelium floors with roots and mushrooms, moss ceilings studded with shroomlight and wart
+    # with weeping vines, giant crimson and warped fungi (wart caps lit by shroomlight), huge red and brown mushrooms.
+    "cave_fungal_plants": {"type": "minecraft:simple_block", "to_place": weighted(
+        ("minecraft:crimson_roots", 3), ("minecraft:warped_roots", 3), ("minecraft:brown_mushroom", 3),
+        ("minecraft:red_mushroom", 2), ("minecraft:crimson_fungus", 1), ("minecraft:warped_fungus", 1),
+        ("minecraft:moss_carpet", 2))},
+    "cave_weeping_vines": column("down", ("minecraft:weeping_vines_plant", (0, 6)),
+                                 ({"id": "minecraft:weeping_vines", "properties": {"age": "25"}}, 1)),
+    "cave_twisting_vines": column("up", ("minecraft:twisting_vines_plant", (0, 5)),
+                                  ({"id": "minecraft:twisting_vines", "properties": {"age": "25"}}, 1)),
+    "cave_warped_giant": fungus("minecraft:warped_stem", "minecraft:warped_wart_block"),
+    "cave_crimson_giant": fungus("minecraft:crimson_stem", "minecraft:nether_wart_block"),
+    # Underground jungle: mossy floors thick with grass and ferns, bamboo, jungle bushes, vines and glow berries.
+    "cave_jungle_plants": {"type": "minecraft:simple_block", "to_place": weighted(
+        ("minecraft:short_grass", 6), ("minecraft:fern", 5), ("minecraft:large_fern", 2), ("minecraft:bush", 3),
+        ("minecraft:tall_grass", 1))},
+    # Icy caves: ice in the walls, snow and ice floors, icicles and ice spikes. Frostfire adds magma.
+    "cave_snow_layer": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:snow"}},
+    "cave_icicle": column("down", ("minecraft:packed_ice", (0, 1)), ("minecraft:ice", (1, 3))),
+    "cave_ice_spike": column("up", ("minecraft:packed_ice", (1, 2)), ("minecraft:ice", (0, 2))),
+    "cave_ore_packed_ice": ore("minecraft:packed_ice", 48),
+    "cave_ore_ice": ore("minecraft:ice", 30),
+    "cave_ore_blue_ice": ore("minecraft:blue_ice", 14),
+    "cave_ore_snow": ore("minecraft:snow_block", 24),
+    "cave_ore_magma": ore("minecraft:magma_block", 24),
+    # Infested caves: silverfish in the walls, rubble on the floor, more monster rooms.
+    "cave_ore_infested": ore("minecraft:infested_stone", 33, "minecraft:infested_deepslate"),
+    "cave_ore_infested_cobble": ore("minecraft:infested_cobblestone", 20),
+    "cave_cobweb": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:cobweb"}},
+    "cave_rubble": {"type": "minecraft:simple_block", "to_place": weighted(("minecraft:cobblestone", 2), ("minecraft:stone", 1))},
+    # Copper caves: rich copper veins with raw copper and green-blue stains of weathered and oxidized copper; moss.
+    "cave_ore_copper": ore("minecraft:copper_ore", 28, "minecraft:deepslate_copper_ore"),
+    "cave_ore_raw_copper": ore("minecraft:raw_copper_block", 8),
+    "cave_ore_oxidized_copper": ore("minecraft:oxidized_copper", 12),
+    "cave_ore_weathered_copper": ore("minecraft:weathered_copper", 12),
+    # Salt caves (rock painted by world/CaveStone): salt stalagmites and stalactites.
+    "cave_salt_spike": column("up", (weighted(("minecraft:calcite", 3), ("minecraft:white_terracotta", 1)), (1, 3))),
+    "cave_salt_stalactite": column("down", (weighted(("minecraft:calcite", 3), ("minecraft:white_terracotta", 1)), (1, 3))),
+    # Mud caves: mud and packed mud floors, shallow muddy pools, clay pools with dripleaves, mangrove roots overhead.
+    "cave_mud_plants": {"type": "minecraft:simple_block", "to_place": weighted(("minecraft:brown_mushroom", 2), ("minecraft:red_mushroom", 1))},
+    "cave_mangrove_roots": column("down", ("minecraft:mangrove_roots", (1, 4))),
+    "cave_hanging_roots": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:hanging_roots"}},
+    # Breakdown chambers: boulders of fallen rock on gravel and rubble floors, a broken ceiling.
+    "cave_boulder_cobble": blob("minecraft:cobblestone"),
+    "cave_boulder_stone": blob("minecraft:stone"),
+    "cave_boulder_andesite": blob("minecraft:andesite"),
+    "cave_boulder_mossy": blob("minecraft:mossy_cobblestone"),
+}
+CAVE_FEATURES.update({
+    "cave_fungal_floor": patch_cfg(weighted(("minecraft:moss_block", 4), ("minecraft:mycelium", 1)), "floor",
+                                   "terra:cave_fungal_plants", 0.45, radius=(4, 8)),
+    "cave_fungal_ceiling": patch_cfg(weighted(("minecraft:moss_block", 7), ("minecraft:shroomlight", 1),
+                                              ("minecraft:nether_wart_block", 1), ("minecraft:warped_wart_block", 1)),
+                                     "ceiling", "terra:cave_weeping_vines", 0.12),
+    "cave_jungle_floor": patch_cfg("minecraft:moss_block", "floor", "terra:cave_jungle_plants", 0.6, depth=(1, 2), radius=(4, 8)),
+    "cave_jungle_ceiling": patch_cfg("minecraft:moss_block", "ceiling", "minecraft:cave_vine_in_moss", 0.12, depth=(1, 2)),
+    "cave_icy_floor": patch_cfg(weighted(("minecraft:snow_block", 3), ("minecraft:packed_ice", 2), ("minecraft:ice", 1)),
+                                "floor", "terra:cave_snow_layer", 0.5, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+    "cave_icy_ceiling": patch_cfg(weighted(("minecraft:packed_ice", 3), ("minecraft:ice", 2), ("minecraft:blue_ice", 1)),
+                                  "ceiling", "terra:cave_icicle", 0.25, replaceable="#minecraft:base_stone_overworld"),
+    "cave_frostfire_floor": patch_cfg(weighted(("minecraft:packed_ice", 3), ("minecraft:blue_ice", 2), ("minecraft:magma_block", 1)),
+                                      "floor", "terra:cave_snow_layer", 0.0, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+    "cave_rubble_floor": patch_cfg(weighted(("minecraft:gravel", 3), ("minecraft:cobblestone", 2), ("minecraft:mossy_cobblestone", 1)),
+                                   "floor", "terra:cave_rubble", 0.15, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+    "cave_broken_ceiling": patch_cfg(weighted(("minecraft:cobblestone", 2), ("minecraft:stone", 2), ("minecraft:andesite", 1)),
+                                     "ceiling", "terra:cave_rubble", 0.0, depth=(1, 3), replaceable="#minecraft:base_stone_overworld"),
+    "cave_mud_floor": patch_cfg(weighted(("minecraft:mud", 4), ("minecraft:packed_mud", 2), ("minecraft:muddy_mangrove_roots", 2)),
+                                "floor", "terra:cave_mud_plants", 0.08, depth=(1, 2), radius=(4, 8)),
+    "cave_mud_pool": patch_cfg("minecraft:mud", "floor", "terra:cave_moss_carpet", 0.0, depth=2, edge=0.6, bottom=0.6,
+                               kind="minecraft:waterlogged_vegetation_patch", replaceable="#minecraft:lush_ground_replaceable"),
+})
+FEATURES.update(CAVE_FEATURES)
+
+COBWEB_DROP = {"type": "minecraft:offset", "x": 0, "y": uniform(-3, 0), "z": 0}
+CAVE_PLACED = {
+    "cave_glow_lichen": cave_placed("terra:cave_glow_lichen", 90),
+    "cave_glow_lichen_sparse": cave_placed("terra:cave_glow_lichen", 30),
+    "cave_fungal_floor": cave_placed("terra:cave_fungal_floor", 70, SCAN_FLOOR),
+    "cave_fungal_ceiling": cave_placed("terra:cave_fungal_ceiling", 55, SCAN_CEILING),
+    "cave_warped_giants": cave_placed("terra:cave_warped_giant", 0, SCAN_FLOOR, pre=[
+        {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 1, "above_noise": 12}]),
+    "cave_crimson_giants": cave_placed("terra:cave_crimson_giant", 0, SCAN_FLOOR, pre=[
+        {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 12, "above_noise": 1}]),
+    "cave_huge_brown_mushrooms": cave_placed("minecraft:huge_brown_mushroom", 4, SCAN_FLOOR),
+    "cave_huge_red_mushrooms": cave_placed("minecraft:huge_red_mushroom", 3, SCAN_FLOOR),
+    "cave_twisting_vines": cave_placed("terra:cave_twisting_vines", 20, SCAN_FLOOR),
+    "cave_jungle_floor": cave_placed("terra:cave_jungle_floor", 80, SCAN_FLOOR),
+    "cave_jungle_ceiling": cave_placed("terra:cave_jungle_ceiling", 55, SCAN_CEILING),
+    "cave_jungle_bamboo": cave_placed("minecraft:bamboo_no_podzol", 24, SCAN_FLOOR),
+    "cave_jungle_bushes": cave_placed("minecraft:jungle_bush", 14, SCAN_FLOOR, post=[survive("minecraft:jungle_sapling")]),
+    "cave_jungle_vines": cave_placed("minecraft:vines", 256),
+    "cave_icy_floor": cave_placed("terra:cave_icy_floor", 60, SCAN_FLOOR),
+    "cave_icy_ceiling": cave_placed("terra:cave_icy_ceiling", 50, SCAN_CEILING),
+    "cave_icicles": cave_placed("terra:cave_icicle", 60, SCAN_CEILING),
+    "cave_ice_spikes": cave_placed("terra:cave_ice_spike", 25, SCAN_FLOOR),
+    "cave_ore_packed_ice": cave_placed("terra:cave_ore_packed_ice", 10),
+    "cave_ore_ice": cave_placed("terra:cave_ore_ice", 6),
+    "cave_ore_blue_ice": cave_placed("terra:cave_ore_blue_ice", 5),
+    "cave_ore_snow": cave_placed("terra:cave_ore_snow", 4),
+    "cave_ore_magma": cave_placed("terra:cave_ore_magma", 9),
+    "cave_frostfire_floor": cave_placed("terra:cave_frostfire_floor", 50, SCAN_FLOOR),
+    "cave_ore_infested": cave_placed("terra:cave_ore_infested", 16),
+    "cave_ore_infested_cobble": cave_placed("terra:cave_ore_infested_cobble", 6),
+    "cave_rubble_floor": cave_placed("terra:cave_rubble_floor", 45, SCAN_FLOOR),
+    "cave_monster_rooms": cave_placed("minecraft:monster_room", 5),
+    "cave_cobwebs_ceiling": cave_placed("terra:cave_cobweb", 220, SCAN_CEILING, post=[COBWEB_DROP, AIR_FILTER]),
+    "cave_cobwebs_floor": cave_placed("terra:cave_cobweb", 70, SCAN_FLOOR),
+    "cave_cobwebs_sparse": cave_placed("terra:cave_cobweb", 25, SCAN_CEILING),
+    "cave_ore_copper": cave_placed("terra:cave_ore_copper", 26),
+    "cave_ore_raw_copper": cave_placed("terra:cave_ore_raw_copper", 4),
+    "cave_ore_oxidized_copper": cave_placed("terra:cave_ore_oxidized_copper", 7),
+    "cave_ore_weathered_copper": cave_placed("terra:cave_ore_weathered_copper", 7),
+    "cave_moss_floor": cave_placed("minecraft:moss_patch", 25, SCAN_FLOOR),
+    "cave_moss_ceiling": cave_placed("minecraft:moss_patch_ceiling", 15, SCAN_CEILING),
+    "cave_salt_spikes": cave_placed("terra:cave_salt_spike", 30, SCAN_FLOOR),
+    "cave_salt_stalactites": cave_placed("terra:cave_salt_stalactite", 40, SCAN_CEILING),
+    "cave_mud_floor": cave_placed("terra:cave_mud_floor", 60, SCAN_FLOOR),
+    "cave_mud_pools": cave_placed("terra:cave_mud_pool", 30, SCAN_FLOOR),
+    "cave_clay_pools": cave_placed("minecraft:clay_pool_with_dripleaves", 10, SCAN_FLOOR),
+    "cave_mangrove_roots": cave_placed("terra:cave_mangrove_roots", 45, SCAN_CEILING),
+    "cave_hanging_roots": cave_placed("terra:cave_hanging_roots", 45, SCAN_CEILING),
+    "cave_boulders_cobble": cave_placed("terra:cave_boulder_cobble", 7, SCAN_FLOOR),
+    "cave_boulders_stone": cave_placed("terra:cave_boulder_stone", 7, SCAN_FLOOR),
+    "cave_boulders_andesite": cave_placed("terra:cave_boulder_andesite", 4, SCAN_FLOOR),
+    "cave_boulders_mossy": cave_placed("terra:cave_boulder_mossy", 3, SCAN_FLOOR),
+    "cave_broken_ceiling": cave_placed("terra:cave_broken_ceiling", 40, SCAN_CEILING),
+}
+PLACED.update(CAVE_PLACED)
+
+# The cave biomes (part two round A). As the stone caves: dripstone caves' spawns and tags without its dripstone or music.
+def cave_biome(name, cid, temp, under=(), ores=(), veg=(), **kw):
+    biome(name, id=cid, base="dripstone_caves", temp=temp, downfall=kw.pop("downfall", 0.5), colors=kw.pop("colors", {}),
+          veg=list(veg), top=None, steps={2: ["minecraft:amethyst_geode"], 7: list(under)}, add_steps={6: list(ores)},
+          drop_attrs=["minecraft:audio/background_music"], cave=True, **kw)
+
+
+cave_biome("fungal_caves", 146, 0.8, downfall=0.9,
+           under=["terra:cave_fungal_floor", "terra:cave_fungal_ceiling"],
+           veg=["terra:cave_crimson_giants", "terra:cave_warped_giants", "terra:cave_huge_brown_mushrooms",
+                "terra:cave_huge_red_mushrooms", "terra:cave_twisting_vines", "terra:cave_glow_lichen"])
+cave_biome("underground_jungle", 147, 0.95, downfall=0.9,
+           under=["terra:cave_jungle_floor", "terra:cave_jungle_ceiling"],
+           veg=["terra:cave_jungle_bamboo", "terra:cave_jungle_bushes", "terra:cave_jungle_vines", "terra:cave_glow_lichen"])
+cave_biome("icy_caves", 148, -0.5, downfall=0.4,
+           under=["terra:cave_icy_floor", "terra:cave_icy_ceiling", "terra:cave_icicles", "terra:cave_ice_spikes"],
+           ores=["terra:cave_ore_packed_ice", "terra:cave_ore_ice", "terra:cave_ore_blue_ice", "terra:cave_ore_snow"],
+           spawns_from="snowy_plains")
+cave_biome("frostfire_caves", 149, -0.3, downfall=0.3,
+           under=["terra:cave_frostfire_floor", "terra:cave_icy_ceiling", "terra:cave_icicles"],
+           ores=["terra:cave_ore_packed_ice", "terra:cave_ore_blue_ice", "terra:cave_ore_magma"],
+           spawns_from="snowy_plains")
+cave_biome("infested_caves", 151, 0.7,
+           under=["terra:cave_rubble_floor", "terra:cave_monster_rooms"],
+           ores=["terra:cave_ore_infested", "terra:cave_ore_infested_cobble"],
+           veg=["terra:cave_cobwebs_sparse"])
+cave_biome("spider_nest", 152, 0.7,
+           under=["terra:cave_cobwebs_ceiling", "terra:cave_cobwebs_floor"],
+           spawns={"monster": [{"type": "minecraft:spider", "count": 4, "weight": 200},
+                               {"type": "minecraft:cave_spider", "count": 3, "weight": 160},
+                               {"type": "minecraft:skeleton", "count": 4, "weight": 40},
+                               {"type": "minecraft:zombie", "count": 4, "weight": 30},
+                               {"type": "minecraft:creeper", "count": 4, "weight": 30}]})
+cave_biome("copper_caves", 153, 0.8,
+           under=["terra:cave_moss_floor", "terra:cave_moss_ceiling"],
+           ores=["terra:cave_ore_copper", "terra:cave_ore_raw_copper", "terra:cave_ore_oxidized_copper",
+                 "terra:cave_ore_weathered_copper"],
+           veg=["terra:cave_glow_lichen_sparse"])
+cave_biome("salt_caves", 154, 1.2, downfall=0.0,
+           under=["terra:cave_salt_spikes", "terra:cave_salt_stalactites"],
+           veg=["terra:cave_glow_lichen"])
+cave_biome("mud_caves", 155, 0.8, downfall=0.9,
+           under=["terra:cave_mud_floor", "terra:cave_mud_pools", "terra:cave_clay_pools", "terra:cave_mangrove_roots",
+                  "terra:cave_hanging_roots"],
+           veg=["terra:cave_glow_lichen_sparse"])
+cave_biome("breakdown_chambers", 156, 0.7,
+           under=["terra:cave_rubble_floor", "terra:cave_broken_ceiling", "terra:cave_boulders_cobble",
+                  "terra:cave_boulders_stone", "terra:cave_boulders_andesite", "terra:cave_boulders_mossy"])
+# ids 145 (lush caves) and 150 (thermal caves = vanilla sulfur caves) are vanilla's biomes, used as is.
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -834,6 +1085,13 @@ def main():
         steps[9] = ["minecraft:glow_lichen"] + d["veg"]
         for k, lst in d.get("steps", {}).items():
             steps[k] = list(lst)
+        for k, lst in d.get("add_steps", {}).items():
+            steps[k] = steps[k] + [f for f in lst if f not in steps[k]]
+        if d.get("spawns"):
+            attrs = json.loads(json.dumps(out.get("attributes", {})))
+            cats = attrs["minecraft:gameplay/natural_mob_spawns"]["argument"]["spawns_by_category"]
+            cats.update(d["spawns"])
+            out["attributes"] = attrs
         if d.get("drop_attrs"):
             out["attributes"] = {k: v for k, v in out.get("attributes", {}).items() if k not in d["drop_attrs"]}
         if not d.get("freeze", True):
@@ -931,7 +1189,8 @@ deep_frozen_ocean deep_lukewarm_ocean deep_ocean desert flower_forest forest fro
 grove jagged_peaks jungle lukewarm_ocean mangrove_swamp meadow ocean old_growth_birch_forest old_growth_pine_taiga
 old_growth_spruce_taiga pale_garden plains river savanna savanna_plateau snowy_beach snowy_plains snowy_slopes
 snowy_taiga sparse_jungle stony_peaks stony_shore sunflower_plains swamp taiga warm_ocean windswept_forest
-windswept_gravelly_hills windswept_hills windswept_savanna mushroom_fields dripstone_caves""".split()
+windswept_gravelly_hills windswept_hills windswept_savanna mushroom_fields dripstone_caves lush_caves
+sulfur_caves""".split()
 TERRA_FIXED = ["dark_forest", "forest_sparse", "taiga_sparse", "snowy_taiga_sparse"]
 
 
@@ -979,7 +1238,8 @@ def sort_step(k, feats, fixed):
     if len(rank) != len(order):
         raise SystemExit(f"step {k}: the fixed biomes already disagree on feature order")
     new = sorted({f for d in B.values() for f in d["veg"] + d.get("lakes", [])
-                  + [g for lst in d.get("steps", {}).values() for g in lst]} - set(rank))
+                  + [g for lst in d.get("steps", {}).values() for g in lst]
+                  + [g for lst in d.get("add_steps", {}).values() for g in lst]} - set(rank))
     lichen = rank.get("minecraft:glow_lichen", -1)
 
     def key(f):
@@ -1075,7 +1335,8 @@ def check_references():
         if not exists(p["feature"], "feature"):
             missing.append(f"{name}: feature {p['feature']}")
     for name, d in B.items():
-        for f in d["veg"] + d.get("lakes", []):
+        for f in d["veg"] + d.get("lakes", []) + [g for lst in list(d.get("steps", {}).values())
+                                                  + list(d.get("add_steps", {}).values()) for g in lst]:
             if not exists(f, "placed_feature"):
                 missing.append(f"{name}: placed {f}")
         if not os.path.exists(f"{VANILLA}/worldgen/biome/{d['base']}.json"):

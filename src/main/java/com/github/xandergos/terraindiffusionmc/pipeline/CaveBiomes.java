@@ -29,6 +29,10 @@ public final class CaveBiomes {
     public static final short ANDESITE_CAVES = 140, DIORITE_CAVES = 141, GRANITE_CAVES = 142, TUFF_CAVES = 143;
     /** Vanilla's dripstone caves biome, used as is. */
     public static final short DRIPSTONE_CAVES = 144;
+    // Part two round A: the dry uncommon caves. Lush caves and thermal caves (vanilla 26.3's sulfur caves) are vanilla's.
+    public static final short LUSH_CAVES = 145, FUNGAL_CAVES = 146, UNDERGROUND_JUNGLE = 147, ICY_CAVES = 148;
+    public static final short FROSTFIRE_CAVES = 149, THERMAL_CAVES = 150, INFESTED_CAVES = 151, SPIDER_NEST = 152;
+    public static final short COPPER_CAVES = 153, SALT_CAVES = 154, MUD_CAVES = 155, BREAKDOWN_CHAMBERS = 156;
 
     /** Id → biome name ({@code terra} namespace unless it has its own), for the biome source and the finder. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -38,6 +42,18 @@ public final class CaveBiomes {
         NAMES.put(GRANITE_CAVES, "terra:granite_caves");
         NAMES.put(TUFF_CAVES, "terra:tuff_caves");
         NAMES.put(DRIPSTONE_CAVES, "minecraft:dripstone_caves");
+        NAMES.put(LUSH_CAVES, "minecraft:lush_caves");
+        NAMES.put(FUNGAL_CAVES, "terra:fungal_caves");
+        NAMES.put(UNDERGROUND_JUNGLE, "terra:underground_jungle");
+        NAMES.put(ICY_CAVES, "terra:icy_caves");
+        NAMES.put(FROSTFIRE_CAVES, "terra:frostfire_caves");
+        NAMES.put(THERMAL_CAVES, "minecraft:sulfur_caves");
+        NAMES.put(INFESTED_CAVES, "terra:infested_caves");
+        NAMES.put(SPIDER_NEST, "terra:spider_nest");
+        NAMES.put(COPPER_CAVES, "terra:copper_caves");
+        NAMES.put(SALT_CAVES, "terra:salt_caves");
+        NAMES.put(MUD_CAVES, "terra:mud_caves");
+        NAMES.put(BREAKDOWN_CHAMBERS, "terra:breakdown_chambers");
     }
 
     // ---- Tier shares (fractions of cave regions; tune in testing) ----
@@ -181,9 +197,34 @@ public final class CaveBiomes {
 
     // ---- Uncommon tier (part two) ----
 
-    /** The uncommon caves built so far, their weights, and their gates. Empty until part two round A. */
-    private static final short[] UNCOMMON = {};
-    private static final float[] UNCOMMON_WEIGHT = {};
+    /**
+     * The uncommon caves built so far and their weights among the caves that fit a region. Gated caves (lush, jungle,
+     * icy, frostfire, thermal, salt, mud) only fit under the right surface; the others fit anywhere, so the tier keeps
+     * its share everywhere and gated caves take a large part of it where they fit. The fungal cave is uncommon on
+     * purpose, not a flagship.
+     */
+    private static final short[] UNCOMMON = {LUSH_CAVES, FUNGAL_CAVES, UNDERGROUND_JUNGLE, ICY_CAVES, FROSTFIRE_CAVES,
+            THERMAL_CAVES, INFESTED_CAVES, SPIDER_NEST, COPPER_CAVES, SALT_CAVES, MUD_CAVES, BREAKDOWN_CHAMBERS};
+    private static final float[] UNCOMMON_WEIGHT = {7f, 4f, 7f, 7f, 3f, 12f, 3f, 3f, 3f, 7f, 7f, 4f};
+
+    // ---- Surface groups (Terra's surface biome ids: BiomeClassifier, BiomePatches, RegionalBiomes) ----
+    private static final boolean[] COLD = ids(3, 16, 116, 31, 32, 33, 34, 121, 131, 48, 49, 50, 51, 52, 85, 88);
+    private static final boolean[] HUMID = ids(6, 8, 9, 10, 11, 12, 13, 14, 29, 30, 36, 37, 108, 60, 61, 65, 66, 67, 69,
+            72, 74, 81, 82, 83);
+    private static final boolean[] TROPICAL = ids(23, 24, 25, 72, 73, 92, 95, 134);
+    private static final boolean[] HOT_GROUND = ids(86, 87, 93);
+    private static final boolean[] DRY = ids(5, 26, 63, 71, 79, 80, 84, 89, 90, 91);
+    private static final boolean[] WET = ids(6, 58, 64, 66, 76, 77, 134);
+
+    private static boolean[] ids(int... v) {
+        boolean[] b = new boolean[256];
+        for (int i : v) b[i] = true;
+        return b;
+    }
+
+    private static boolean in(boolean[] group, short id) {
+        return id >= 0 && id < group.length && group[id];
+    }
 
     /**
      * Picks among the uncommon caves whose gates pass for this region (so the tier keeps its share wherever any of
@@ -207,9 +248,36 @@ public final class CaveBiomes {
         return NONE;
     }
 
+    /** Vanilla's lush and sulfur cave features place only up to Y 256, like dripstone's. */
+    public static int VANILLA_FEATURE_MAX_Y = 240;
+
     /** Whether an uncommon cave suits this depth and the surface above its region. */
     private static boolean eligible(short id, int y, short anchorBiome) {
-        return true;
+        return switch (id) {
+            case LUSH_CAVES -> y <= VANILLA_FEATURE_MAX_Y && in(HUMID, anchorBiome);
+            case UNDERGROUND_JUNGLE -> in(TROPICAL, anchorBiome);
+            case ICY_CAVES -> in(COLD, anchorBiome);
+            case FROSTFIRE_CAVES -> in(COLD, anchorBiome) && y <= 40;
+            case THERMAL_CAVES -> y <= VANILLA_FEATURE_MAX_Y && in(HOT_GROUND, anchorBiome);
+            case SALT_CAVES -> in(DRY, anchorBiome);
+            case MUD_CAVES -> in(WET, anchorBiome) && y >= -16;
+            case INFESTED_CAVES -> y <= 200;
+            default -> true;   // fungal, spider nest, copper, breakdown chambers: anywhere
+        };
+    }
+
+    // ---- Cave shapes per biome ----
+
+    /**
+     * How much a cave biome opens its caverns up (subtracted from {@code CaveShapes.CHEESE_THRESHOLD}): fungal caves and
+     * breakdown chambers are big rooms. Zero for everything else.
+     */
+    public static float chamberBias(short id) {
+        return switch (id) {
+            case FUNGAL_CAVES -> 0.10f;
+            case BREAKDOWN_CHAMBERS -> 0.17f;
+            default -> 0f;
+        };
     }
 
     private static long mix(long z) {

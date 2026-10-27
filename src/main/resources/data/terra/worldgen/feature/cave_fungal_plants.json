@@ -1,0 +1,36 @@
+{
+  "type": "minecraft:simple_block",
+  "to_place": {
+    "type": "minecraft:weighted",
+    "entries": [
+      {
+        "data": "minecraft:crimson_roots",
+        "weight": 3
+      },
+      {
+        "data": "minecraft:warped_roots",
+        "weight": 3
+      },
+      {
+        "data": "minecraft:brown_mushroom",
+        "weight": 3
+      },
+      {
+        "data": "minecraft:red_mushroom",
+        "weight": 2
+      },
+      {
+        "data": "minecraft:crimson_fungus",
+        "weight": 1
+      },
+      {
+        "data": "minecraft:warped_fungus",
+        "weight": 1
+      },
+      {
+        "data": "minecraft:moss_carpet",
+        "weight": 2
+      }
+    ]
+  }
+}

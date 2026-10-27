@@ -31,12 +31,17 @@ import java.util.Map;
 public final class CaveStone {
     private static final Logger LOG = LoggerFactory.getLogger(CaveStone.class);
 
-    private static final byte NONE = 0, ANDESITE = 1, DIORITE = 2, GRANITE = 3, TUFF = 4;
+    private static final byte NONE = 0, ANDESITE = 1, DIORITE = 2, GRANITE = 3, TUFF = 4, SALT = 5;
     private static final ResourceKey<Biome> ANDESITE_CAVES = key("andesite_caves"), DIORITE_CAVES = key("diorite_caves"),
-            GRANITE_CAVES = key("granite_caves"), TUFF_CAVES = key("tuff_caves");
+            GRANITE_CAVES = key("granite_caves"), TUFF_CAVES = key("tuff_caves"), SALT_CAVES = key("salt_caves");
+    /** Salt caves (part two): rock salt layers of calcite with white and pink terracotta bands. */
+    private static final BlockState[] SALT_LAYERS = {Blocks.CALCITE.defaultBlockState(), Blocks.CALCITE.defaultBlockState(),
+            Blocks.DYED_TERRACOTTA.white().defaultBlockState(), Blocks.CALCITE.defaultBlockState(),
+            Blocks.DYED_TERRACOTTA.pink().defaultBlockState(), Blocks.DYED_TERRACOTTA.white().defaultBlockState(),
+            Blocks.CALCITE.defaultBlockState(), Blocks.DYED_TERRACOTTA.pink().defaultBlockState()};
     private static final BlockState STONE = Blocks.STONE.defaultBlockState();
     private static final BlockState[] ROCK = {null, Blocks.ANDESITE.defaultBlockState(), Blocks.DIORITE.defaultBlockState(),
-            Blocks.GRANITE.defaultBlockState(), Blocks.TUFF.defaultBlockState()};
+            Blocks.GRANITE.defaultBlockState(), Blocks.TUFF.defaultBlockState(), Blocks.CALCITE.defaultBlockState()};
 
     private CaveStone() {
     }
@@ -58,7 +63,7 @@ public final class CaveStone {
         Byte k = memo.get(h);
         if (k == null) {
             k = h.is(ANDESITE_CAVES) ? ANDESITE : h.is(DIORITE_CAVES) ? DIORITE : h.is(GRANITE_CAVES) ? GRANITE
-                    : h.is(TUFF_CAVES) ? TUFF : NONE;
+                    : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : NONE;
             memo.put(h, k);
         }
         return k;
@@ -116,8 +121,15 @@ public final class CaveStone {
                         }
                         // A neighbouring section without cave stone counts as plain rock there.
                         byte k = cs == null ? NONE : cs[((jy >> 2) * 4 + (jz >> 2)) * 4 + (jx >> 2)];
-                        if (k == NONE || (deep && k != TUFF)) continue;
-                        sec.setBlockState(lx, ly, lz, ROCK[k], false);
+                        if (k == NONE || (deep && k != TUFF && k != SALT)) continue;
+                        BlockState rock = ROCK[k];
+                        if (k == SALT) {
+                            // Gently tilted layers 1-3 blocks thick: the band index follows y plus a slow tilt.
+                            int bx = x0 + lx, bz = z0 + lz, by = y0 + ly;
+                            int band = Math.floorDiv(by * 3 + (bx >> 3) + (bz >> 4), 5);
+                            rock = SALT_LAYERS[Math.floorMod(band * 0x9E3779B1 >>> 7, SALT_LAYERS.length)];
+                        }
+                        sec.setBlockState(lx, ly, lz, rock, false);
                     }
                 }
             }

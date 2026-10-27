@@ -17,6 +17,9 @@ public class CaveHarness {
     static final long SEED = 1234567L;
     static CaveShapes S = CaveShapes.forSeed(SEED);
     static CaveBiomes B = CaveBiomes.forSeed(SEED);
+    /** Synthetic surface biomes in 256-block bands: forest, snowy plains, desert, jungle, swamp, plains. */
+    static final short[] BANDS = {8, 3, 5, 23, 6, 1};
+    static CaveBiomes.Surface SURF = (x, z) -> BANDS[Math.floorMod(Math.floorDiv(x + z / 3, 256), BANDS.length)];
 
     // Synthetic surface: rolling hills around Y 100 with a cliff and a mountain.
     static int surfaceTop(int x, int z) {
@@ -43,6 +46,18 @@ public class CaveHarness {
             case CaveBiomes.GRANITE_CAVES -> rgb(170, 110, 90);
             case CaveBiomes.TUFF_CAVES -> rgb(110, 115, 100);
             case CaveBiomes.DRIPSTONE_CAVES -> rgb(150, 110, 70);
+            case CaveBiomes.LUSH_CAVES -> rgb(111, 174, 60);
+            case CaveBiomes.FUNGAL_CAVES -> rgb(176, 74, 208);
+            case CaveBiomes.UNDERGROUND_JUNGLE -> rgb(47, 143, 58);
+            case CaveBiomes.ICY_CAVES -> rgb(159, 216, 240);
+            case CaveBiomes.FROSTFIRE_CAVES -> rgb(90, 143, 224);
+            case CaveBiomes.THERMAL_CAVES -> rgb(227, 195, 74);
+            case CaveBiomes.INFESTED_CAVES -> rgb(125, 122, 106);
+            case CaveBiomes.SPIDER_NEST -> rgb(200, 200, 200);
+            case CaveBiomes.COPPER_CAVES -> rgb(217, 132, 77);
+            case CaveBiomes.SALT_CAVES -> rgb(242, 201, 212);
+            case CaveBiomes.MUD_CAVES -> rgb(91, 74, 62);
+            case CaveBiomes.BREAKDOWN_CHAMBERS -> rgb(138, 143, 153);
             default -> rgb(90, 90, 95);
         };
     }
@@ -74,7 +89,7 @@ public class CaveHarness {
         long t0 = System.nanoTime();
         int chunks = 0;
         for (int cz = 0; cz < W; cz += 16) for (int cx = 0; cx < W; cx += 16) {
-            S.fill(cx, cz, 16, 16, minY, H, col, lat);
+            S.fill(cx, cz, 16, 16, minY, H, col, lat, SURF);
             chunks++;
             for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) {
                 boolean[] c = new boolean[H];
@@ -118,7 +133,7 @@ public class CaveHarness {
         for (int y : new int[]{60, 20, -30}) {
             BufferedImage img = new BufferedImage(W, W, BufferedImage.TYPE_INT_RGB);
             for (int x = 0; x < W; x++) for (int z = 0; z < W; z++) {
-                short id = B.at(x, y, z, refTop(x, z));
+                short id = B.at(x, y, z, refTop(x, z), SURF);
                 int c = air[x][z][y - minY] ? rgb(20, 20, 30) : biomeColor(id);
                 if (y > surfaceTop(x, z)) c = rgb(130, 180, 230);
                 img.setRGB(x, z, c);
@@ -140,7 +155,7 @@ public class CaveHarness {
             int y = minY + (SH - 1 - yy) * 2;   // 2 blocks per pixel vertically, Y -64..534
             int c;
             if (y > surfaceTop(x, z0)) c = rgb(130, 180, 230);
-            else c = air[x][z0][y - minY] ? rgb(20, 20, 30) : biomeColor(B.at(x, y, z0, refTop(x, z0)));
+            else c = air[x][z0][y - minY] ? rgb(20, 20, 30) : biomeColor(B.at(x, y, z0, refTop(x, z0), SURF));
             sec.setRGB(x, yy, c);
         }
         ImageIO.write(sec, "png", new File("section_z120.png"));
@@ -150,7 +165,7 @@ public class CaveHarness {
         java.util.Random r = new java.util.Random(5);
         for (int i = 0; i < 400000; i++) {
             int x = r.nextInt(200000) - 100000, z = r.nextInt(200000) - 100000, y = r.nextInt(60) - 20;
-            short id = B.pick(x, y, z);
+            short id = B.pick(x, y, z, SURF);
             count[id < 0 ? 0 : id]++; n++;
         }
         System.out.printf("shares at Y -20..40: plain %.1f%%", 100.0 * count[0] / n);
@@ -159,8 +174,8 @@ public class CaveHarness {
 
         // Seam checks: the same blocks from differently placed regions, and fill() vs at().
         float[] A = new float[40 * 40 * 100], Bv = new float[40 * 40 * 100];
-        S.fill(1000, 2000, 40, 40, -20, 100, A, new CaveShapes.Scratch());
-        S.fill(1013, 2007, 40, 40, -11, 100, Bv, new CaveShapes.Scratch());
+        S.fill(1000, 2000, 40, 40, -20, 100, A, new CaveShapes.Scratch(), SURF);
+        S.fill(1013, 2007, 40, 40, -11, 100, Bv, new CaveShapes.Scratch(), SURF);
         int diff = 0, checked = 0;
         for (int x = 13; x < 40; x++) for (int z = 7; z < 40; z++) for (int y = 9; y < 100; y++) {
             float va = A[(x + z * 40) * 100 + y];
@@ -171,18 +186,18 @@ public class CaveHarness {
         int diff2 = 0;
         for (int i = 0; i < 2000; i++) {
             int x = r.nextInt(40), z = r.nextInt(40), y = r.nextInt(100);
-            if (A[(x + z * 40) * 100 + y] != S.at(1000 + x, -20 + y, 2000 + z)) diff2++;
+            if (A[(x + z * 40) * 100 + y] != S.at(1000 + x, -20 + y, 2000 + z, SURF)) diff2++;
         }
         System.out.println("seam: " + diff + " of " + checked + " blocks differ between offset regions; fill vs at(): " + diff2 + " of 2000");
 
         // Mountain-height column cost: a chunk with 1600 rows.
         float[] big = new float[16 * 16 * 1600];
         long t1 = System.nanoTime();
-        for (int i = 0; i < 20; i++) S.fill(i * 16, 0, 16, 16, -64, 1600, big, lat);
+        for (int i = 0; i < 20; i++) S.fill(i * 16, 0, 16, 16, -64, 1600, big, lat, SURF);
         System.out.printf("mountain chunk (1600 rows): %.2f ms%n", (System.nanoTime() - t1) / 1e6 / 20);
         long t2 = System.nanoTime();
         int q = 0;
-        for (int x = 0; x < 64; x++) for (int z = 0; z < 64; z++) for (int y = -64; y < 1500; y += 4) { B.pick(x * 4, y, z * 4); q++; }
+        for (int x = 0; x < 64; x++) for (int z = 0; z < 64; z++) for (int y = -64; y < 1500; y += 4) { B.pick(x * 4, y, z * 4, SURF); q++; }
         System.out.printf("biome pick: %.0f ns each%n", (System.nanoTime() - t2) / (double) q);
     }
 }

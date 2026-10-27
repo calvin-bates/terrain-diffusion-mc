@@ -258,7 +258,8 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                 int need = cols * caveRows;
                 if (cache.caveBuf == null || cache.caveBuf.length < need) cache.caveBuf = new float[need];
                 cave = cache.caveBuf;
-                shapes.fill(volume.blockX(0), volume.blockZ(0), sizeX, sizeZ, minY, caveRows, cave, cache.caveScratch);
+                shapes.fill(volume.blockX(0), volume.blockZ(0), sizeX, sizeZ, minY, caveRows, cave, cache.caveScratch,
+                        TerrainDiffusionConfig.caveBiomes() ? CaveSurface.get() : null);
                 com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.end("chunk.caveField", t1);
             }
             int index = 0;

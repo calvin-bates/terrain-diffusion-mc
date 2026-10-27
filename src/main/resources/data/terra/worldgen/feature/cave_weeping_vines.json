@@ -1,0 +1,30 @@
+{
+  "type": "minecraft:block_column",
+  "allowed_placement": {
+    "type": "minecraft:matching_block_tag",
+    "tag": "minecraft:air"
+  },
+  "direction": "down",
+  "prioritize_tip": true,
+  "layers": [
+    {
+      "height": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 6,
+        "min_inclusive": 0
+      },
+      "provider": {
+        "id": "minecraft:weeping_vines_plant"
+      }
+    },
+    {
+      "height": 1,
+      "provider": {
+        "id": "minecraft:weeping_vines",
+        "properties": {
+          "age": "25"
+        }
+      }
+    }
+  ]
+}

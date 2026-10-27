@@ -77,11 +77,45 @@ public final class CaveShapes {
         return c;
     }
 
-    /** Caverns at a cavern lattice point: wider than tall, more of them in some regions than others. */
-    public float cavernValue(int x, int y, int z) {
+    /**
+     * Caverns at a cavern lattice point: wider than tall, more of them in some regions than others, and bigger where
+     * the cave biome asks for big rooms ({@code bias}, see {@link #chamberBias}).
+     */
+    public float cavernValue(int x, int y, int z, float bias) {
         float c = cheese.GetNoise(x, y * 1.6f, z);
-        float t = CHEESE_THRESHOLD - CHEESE_REGION * region.GetNoise(x, y * 0.5f, z);
+        float t = CHEESE_THRESHOLD - bias - CHEESE_REGION * region.GetNoise(x, y * 0.5f, z);
         return clamp((t - c) * CHEESE_GAIN);
+    }
+
+    // ---- Chamber bias: cave biomes with big rooms (CaveBiomes.chamberBias), smoothed over their region edges ----
+
+    /** Spacing of the chamber bias lattice (blocks), and how far around each point it looks to soften region edges. */
+    private static final int BIAS_CELL = 32, BIAS_REACH = 16;
+
+    /**
+     * The chamber bias at a bias lattice point: the average of {@link CaveBiomes#chamberBias} over the point and four
+     * points around it, so the bigger caverns fade in over about 40 blocks instead of stopping at a region's wall.
+     */
+    private float biasPoint(CaveBiomes layer, CaveBiomes.Surface surface, int x, int y, int z) {
+        if (layer == null) return 0f;
+        float b = CaveBiomes.chamberBias(layer.pick(x, y, z, surface))
+                + CaveBiomes.chamberBias(layer.pick(x + BIAS_REACH, y, z, surface))
+                + CaveBiomes.chamberBias(layer.pick(x - BIAS_REACH, y, z, surface))
+                + CaveBiomes.chamberBias(layer.pick(x, y, z + BIAS_REACH, surface))
+                + CaveBiomes.chamberBias(layer.pick(x, y, z - BIAS_REACH, surface));
+        return b * 0.2f;
+    }
+
+    /** The chamber bias anywhere: trilinear between bias lattice points (the same value fill() uses). */
+    private float biasAt(CaveBiomes layer, CaveBiomes.Surface surface, int x, int y, int z) {
+        int gx = Math.floorDiv(x, BIAS_CELL), gy = Math.floorDiv(y, BIAS_CELL), gz = Math.floorDiv(z, BIAS_CELL);
+        float[] l = new float[8];
+        for (int iz = 0; iz < 2; iz++)
+            for (int ix = 0; ix < 2; ix++)
+                for (int iy = 0; iy < 2; iy++)
+                    l[(iz * 2 + ix) * 2 + iy] = biasPoint(layer, surface, (gx + ix) * BIAS_CELL, (gy + iy) * BIAS_CELL, (gz + iz) * BIAS_CELL);
+        float inv = 1f / BIAS_CELL;
+        return trilinear(l, 0, 2, 4, 6, (x - gx * BIAS_CELL) * inv, (y - gy * BIAS_CELL) * inv, (z - gz * BIAS_CELL) * inv);
     }
 
     /** Tunnels at a tunnel lattice point: the union of spaghetti and (where gated in) noodles. */
@@ -107,21 +141,23 @@ public final class CaveShapes {
 
     /** Scratch arrays for {@link #fill}; one per thread, passed back each call. */
     public static final class Scratch {
-        float[] cavern, tunnel;
+        float[] cavern, tunnel, bias;
     }
 
     /**
      * Fills {@code out} with the cave field for blocks x0..x0+sx-1, z0..z0+sz-1, y0..y0+sy-1, indexed
-     * {@code (x + z * sx) * sy + y} (the same order as Minecraft's density volumes).
+     * {@code (x + z * sx) * sy + y} (the same order as Minecraft's density volumes). {@code surface} is what the cave
+     * biome layer reads for chamber sizes (null: no cave biomes).
      */
-    public void fill(int x0, int z0, int sx, int sz, int y0, int sy, float[] out, Scratch scratch) {
+    public void fill(int x0, int z0, int sx, int sz, int y0, int sy, float[] out, Scratch scratch, CaveBiomes.Surface surface) {
+        CaveBiomes layer = surface == null ? null : CaveBiomes.forSeed(seed);
         // Caverns first, written straight into out; then the tunnels' minimum on top.
-        scratch.cavern = fillFamily(true, x0, z0, sx, sz, y0, sy, out, scratch.cavern, false);
-        scratch.tunnel = fillFamily(false, x0, z0, sx, sz, y0, sy, out, scratch.tunnel, true);
+        scratch.cavern = fillFamily(true, x0, z0, sx, sz, y0, sy, out, scratch.cavern, false, layer, surface, scratch);
+        scratch.tunnel = fillFamily(false, x0, z0, sx, sz, y0, sy, out, scratch.tunnel, true, null, null, scratch);
     }
 
     private float[] fillFamily(boolean cavern, int x0, int z0, int sx, int sz, int y0, int sy, float[] out,
-                               float[] lattice, boolean min) {
+                               float[] lattice, boolean min, CaveBiomes layer, CaveBiomes.Surface surface, Scratch scratch) {
         int cxz = cavern ? CAVERN_XZ : TUNNEL, cy = cavern ? CAVERN_Y : TUNNEL;
         int lx0 = Math.floorDiv(x0, cxz), lx1 = Math.floorDiv(x0 + sx - 1, cxz) + 1;
         int lz0 = Math.floorDiv(z0, cxz), lz1 = Math.floorDiv(z0 + sz - 1, cxz) + 1;
@@ -129,11 +165,48 @@ public final class CaveShapes {
         int nx = lx1 - lx0 + 1, nz = lz1 - lz0 + 1, ny = ly1 - ly0 + 1;
         int n = nx * ny * nz;
         if (lattice == null || lattice.length < n) lattice = new float[n];
+        // Chamber bias for the caverns, on its own coarse lattice covering the cavern lattice.
+        int bx0 = 0, by0 = 0, bz0 = 0, bnx = 0, bny = 0;
+        float[] bias = null;
+        boolean anyBias = false;
+        if (cavern && layer != null) {
+            bx0 = Math.floorDiv(lx0 * cxz, BIAS_CELL);
+            by0 = Math.floorDiv(ly0 * cy, BIAS_CELL);
+            bz0 = Math.floorDiv(lz0 * cxz, BIAS_CELL);
+            bnx = Math.floorDiv(lx1 * cxz, BIAS_CELL) - bx0 + 2;
+            bny = Math.floorDiv(ly1 * cy, BIAS_CELL) - by0 + 2;
+            int bnz = Math.floorDiv(lz1 * cxz, BIAS_CELL) - bz0 + 2;
+            int bn = bnx * bny * bnz;
+            if (scratch.bias == null || scratch.bias.length < bn) scratch.bias = new float[bn];
+            bias = scratch.bias;
+            for (int iz = 0; iz < bnz; iz++)
+                for (int ix = 0; ix < bnx; ix++)
+                    for (int iy = 0; iy < bny; iy++) {
+                        float b = biasPoint(layer, surface, (bx0 + ix) * BIAS_CELL, (by0 + iy) * BIAS_CELL, (bz0 + iz) * BIAS_CELL);
+                        bias[(iz * bnx + ix) * bny + iy] = b;
+                        anyBias |= b != 0f;
+                    }
+        }
+        float binv = 1f / BIAS_CELL;
         for (int iz = 0; iz < nz; iz++)
             for (int ix = 0; ix < nx; ix++)
                 for (int iy = 0; iy < ny; iy++) {
                     int bx = (lx0 + ix) * cxz, by = (ly0 + iy) * cy, bz = (lz0 + iz) * cxz;
-                    lattice[(iz * nx + ix) * ny + iy] = cavern ? cavernValue(bx, by, bz) : tunnelValue(bx, by, bz);
+                    float v;
+                    if (!cavern) {
+                        v = tunnelValue(bx, by, bz);
+                    } else {
+                        float b = 0f;
+                        if (anyBias) {
+                            int gx = Math.floorDiv(bx, BIAS_CELL), gy = Math.floorDiv(by, BIAS_CELL), gz = Math.floorDiv(bz, BIAS_CELL);
+                            int jx = gx - bx0, jy = gy - by0, jz = gz - bz0;
+                            b = trilinear(bias, (jz * bnx + jx) * bny + jy, (jz * bnx + jx + 1) * bny + jy,
+                                    ((jz + 1) * bnx + jx) * bny + jy, ((jz + 1) * bnx + jx + 1) * bny + jy,
+                                    (bx - gx * BIAS_CELL) * binv, (by - gy * BIAS_CELL) * binv, (bz - gz * BIAS_CELL) * binv);
+                        }
+                        v = cavernValue(bx, by, bz, b);
+                    }
+                    lattice[(iz * nx + ix) * ny + iy] = v;
                 }
         float invXZ = 1f / cxz, invY = 1f / cy;
         for (int z = 0; z < sz; z++) {
@@ -169,12 +242,13 @@ public final class CaveShapes {
         return lattice;
     }
 
-    /** The cave field at one block (the same value {@link #fill} gives it). */
-    public float at(int x, int y, int z) {
-        return Math.min(pointValue(true, x, y, z), pointValue(false, x, y, z));
+    /** The cave field at one block (the same value {@link #fill} gives it with the same surface). */
+    public float at(int x, int y, int z, CaveBiomes.Surface surface) {
+        CaveBiomes layer = surface == null ? null : CaveBiomes.forSeed(seed);
+        return Math.min(pointValue(true, x, y, z, layer, surface), pointValue(false, x, y, z, null, null));
     }
 
-    private float pointValue(boolean cavern, int x, int y, int z) {
+    private float pointValue(boolean cavern, int x, int y, int z, CaveBiomes layer, CaveBiomes.Surface surface) {
         int cxz = cavern ? CAVERN_XZ : TUNNEL, cy = cavern ? CAVERN_Y : TUNNEL;
         int gx = Math.floorDiv(x, cxz), gy = Math.floorDiv(y, cy), gz = Math.floorDiv(z, cxz);
         float[] l = new float[8];
@@ -183,7 +257,9 @@ public final class CaveShapes {
             for (int ix = 0; ix < 2; ix++)
                 for (int iy = 0; iy < 2; iy++) {
                     int bx = (gx + ix) * cxz, by = (gy + iy) * cy, bz = (gz + iz) * cxz;
-                    l[(iz * 2 + ix) * 2 + iy] = cavern ? cavernValue(bx, by, bz) : tunnelValue(bx, by, bz);
+                    l[(iz * 2 + ix) * 2 + iy] = cavern
+                            ? cavernValue(bx, by, bz, layer == null ? 0f : biasAt(layer, surface, bx, by, bz))
+                            : tunnelValue(bx, by, bz);
                 }
         boolean rock = true;
         for (float v : l) rock &= v > 0;

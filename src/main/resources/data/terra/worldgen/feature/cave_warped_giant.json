@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:huge_fungus",
+  "valid_base_block": "minecraft:moss_block",
+  "stem_state": "minecraft:warped_stem",
+  "hat_state": "minecraft:warped_wart_block",
+  "decor_state": "minecraft:shroomlight",
+  "planted": false,
+  "replaceable_blocks": {
+    "type": "minecraft:matching_blocks",
+    "blocks": [
+      "minecraft:crimson_roots",
+      "minecraft:warped_roots",
+      "minecraft:brown_mushroom",
+      "minecraft:red_mushroom",
+      "minecraft:moss_carpet",
+      "minecraft:crimson_fungus",
+      "minecraft:warped_fungus",
+      "minecraft:short_grass"
+    ]
+  }
+}
