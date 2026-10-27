@@ -271,6 +271,9 @@ public final class FeatureFinder {
         CAVES.put("rimstone_pools", (short) -13);
         CAVES.put("cave_waterfall", (short) -14);
         CAVES.put("travertine_terraces", (short) -15);
+        // The sea cliffs.
+        CAVES.put("sea_arch", (short) -16);
+        CAVES.put("sea_overhang", (short) -17);
     }
 
     /** How far around the player cave biomes are searched, in blocks, and the spacing of the searched columns. */
@@ -303,6 +306,8 @@ public final class FeatureFinder {
                         : CaveBiomes.isSurfaceCut(id) ? word : null;
                 int[] found = cutKind != null ? findCut(cutKind, px, pz) : id == -4 ? findSeaCave(px, pz)
                         : id == -11 ? findShelter(px, pz)
+                        : id == -16 ? findSeaArch(px, pz)
+                        : id == -17 ? findNotch(px, pz)
                         : id == -12 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_FLOWSTONE, px, pz)
                         : id == -13 ? findPatch(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.P_RIMSTONE, px, pz)
                         : id == -14 ? findPatch(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.P_WATERFALL, px, pz)
@@ -619,6 +624,47 @@ public final class FeatureFinder {
                     }
                 }
             if (best != null) return best;
+        }
+        return null;
+    }
+
+    /** The nearest sea arch (SeaArches), out to about 3 km: its middle, just over the water. */
+    private static int[] findSeaArch(int x0, int z0) {
+        CaveSurface surface = CaveSurface.get();
+        com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.generation = LocalTerrainProvider.cacheGeneration();
+        int cell = com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.ARCH_CELL;
+        int gx0 = Math.floorDiv(x0, cell), gz0 = Math.floorDiv(z0, cell);
+        for (int ring = 0; ring <= 3000 / cell; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    var a = com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.arch(gx0 + dx, gz0 + dz, surface);
+                    if (a == null) continue;
+                    double d = Math.hypot(a.x() - x0, a.z() - z0);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = new int[]{a.x(), com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.SEA + 1, a.z()};
+                    }
+                }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /** The nearest coastal overhang (a wave-cut notch in a sea cliff), out to about 1.5 km: under it, over the water. */
+    private static int[] findNotch(int x0, int z0) {
+        CaveSurface surface = CaveSurface.get();
+        for (int r = 0; r <= 1536; r += 4) {
+            int n = r == 0 ? 1 : Math.max(8, (int) Math.round(2 * Math.PI * r / 4));
+            for (int k = 0; k < n; k++) {
+                double a = 2 * Math.PI * k / n;
+                int x = x0 + (int) Math.round(r * Math.cos(a)), z = z0 + (int) Math.round(r * Math.sin(a));
+                int v = com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.notch(x, z, surface);
+                if (v >= 0 && (v & 0xFF) <= 2)
+                    return new int[]{x, com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.SEA + 1, z};
+            }
         }
         return null;
     }

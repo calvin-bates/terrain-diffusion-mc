@@ -4,6 +4,7 @@ import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes;
 import com.github.xandergos.terraindiffusionmc.pipeline.CaveSites;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
+import com.github.xandergos.terraindiffusionmc.pipeline.SeaArches;
 import com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves;
 
 import java.util.List;
@@ -11,7 +12,7 @@ import java.util.List;
 /**
  * The cave shapes that may cut through the surface (caves plan v1.5 parts two and three), for one block rectangle:
  * river sinks, cenotes, canyon ravines (with natural bridges), deep shafts, sinkhole jungles, blue holes, cave mouths,
- * collapse domes and rock shelters ({@link CaveSites}) and sea caves
+ * collapse domes and rock shelters ({@link CaveSites}), sea arches and coastal overhangs ({@link SeaArches}) and sea caves
  * ({@link SeaCaves}). The terrain density takes the minimum with them
  * after the cave roof, and so do the explorer's slices.
  */
@@ -23,11 +24,14 @@ final class CaveExtras {
     final int[] seaTop;
     /** Per column: how far the sea is (SeaCaves.seaDistance). */
     final int[] seaDist;
+    /** Per column: its coastal overhang (SeaArches.notch, packed), or -1; null if none in the area. */
+    final int[] notch;
     final boolean any;
 
     private CaveExtras(int x0, int z0, int sx, int sz, List<CaveSites.Cut> shafts, SeaCaves sea, int[] seaTop,
-                       int[] seaDist, boolean anySea) {
+                       int[] seaDist, boolean anySea, int[] notch) {
         this.seaDist = seaDist;
+        this.notch = notch;
         this.x0 = x0;
         this.z0 = z0;
         this.sx = sx;
@@ -35,7 +39,7 @@ final class CaveExtras {
         this.shafts = shafts;
         this.sea = sea;
         this.seaTop = seaTop;
-        this.any = anySea || !shafts.isEmpty();
+        this.any = anySea || !shafts.isEmpty() || notch != null;
     }
 
     static CaveExtras of(int x0, int z0, int sx, int sz) {
@@ -44,6 +48,26 @@ final class CaveExtras {
         CaveSites.formations = TerrainDiffusionConfig.caveFormations();
         List<CaveSites.Cut> shafts = TerrainDiffusionConfig.caveBiomes() && TerrainDiffusionConfig.waterCaves()
                 ? CaveSites.near(x0, z0, x0 + sx - 1, z0 + sz - 1, CaveBiomes.forSeed(seed), surface) : List.of();
+        // Sea arches and coastal overhangs: with the sea caves and the formations.
+        int[] notch = null;
+        if (TerrainDiffusionConfig.seaCaves() && TerrainDiffusionConfig.caveFormations()) {
+            SeaArches.generation = LocalTerrainProvider.cacheGeneration();
+            List<CaveSites.Cut> arches = new java.util.ArrayList<>();
+            SeaArches.arches(x0, z0, x0 + sx - 1, z0 + sz - 1, surface, arches);
+            if (!arches.isEmpty()) {
+                arches.addAll(shafts);
+                shafts = arches;
+            }
+            int[] n = new int[sx * sz];
+            boolean anyNotch = false;
+            for (int dz = 0; dz < sz; dz++)
+                for (int dx = 0; dx < sx; dx++) {
+                    int v = SeaArches.notch(x0 + dx, z0 + dz, surface);
+                    n[dz * sx + dx] = v;
+                    anyNotch |= v >= 0;
+                }
+            if (anyNotch) notch = n;
+        }
         SeaCaves sea = TerrainDiffusionConfig.seaCaves() ? SeaCaves.forSeed(seed) : null;
         int[] seaTop = null, seaDist = null;
         boolean anySea = false;
@@ -61,7 +85,7 @@ final class CaveExtras {
                 }
             }
         }
-        return new CaveExtras(x0, z0, sx, sz, shafts, sea, seaTop, seaDist, anySea);
+        return new CaveExtras(x0, z0, sx, sz, shafts, sea, seaTop, seaDist, anySea, notch);
     }
 
     /** The highest Y any extra shape reaches in column c (relative index dz * sx + dx), or MIN_VALUE. */
@@ -69,6 +93,7 @@ final class CaveExtras {
         int x = x0 + c % sx, z = z0 + c / sx, m = Integer.MIN_VALUE;
         for (CaveSites.Cut s : shafts) if (s.covers(x, z)) m = Math.max(m, s.top());
         if (seaTop != null && seaTop[c] != Integer.MIN_VALUE) m = Math.max(m, seaTop[c]);
+        if (notch != null && notch[c] >= 0) m = Math.max(m, SeaArches.notchTop(notch[c]));
         return m;
     }
 
@@ -77,6 +102,7 @@ final class CaveExtras {
         int x = x0 + c % sx, z = z0 + c / sx, m = Integer.MAX_VALUE;
         for (CaveSites.Cut s : shafts) if (s.covers(x, z)) m = Math.min(m, s.minY());
         if (seaTop != null && seaTop[c] != Integer.MIN_VALUE) m = Math.min(m, SeaCaves.MIN_Y);
+        if (notch != null && notch[c] >= 0) m = Math.min(m, SeaArches.NOTCH_MIN_Y);
         return m;
     }
 
@@ -85,6 +111,7 @@ final class CaveExtras {
         float v = Float.POSITIVE_INFINITY;
         for (CaveSites.Cut s : shafts) v = Math.min(v, s.value(x, y, z));
         if (seaTop != null && seaTop[c] != Integer.MIN_VALUE) v = Math.min(v, sea.value(x, y, z, seaTop[c], seaDist[c]));
+        if (notch != null && notch[c] >= 0) v = Math.min(v, SeaArches.notchValue(notch[c], y));
         return v;
     }
 }

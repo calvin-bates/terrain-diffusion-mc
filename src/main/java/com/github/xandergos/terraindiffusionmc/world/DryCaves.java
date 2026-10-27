@@ -75,6 +75,13 @@ public final class DryCaves {
                 && TerrainDiffusionConfig.seaCaves()
                 ? com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves.forSeed(LocalTerrainProvider.getSeed()) : null;
         CaveSurface surface = seaCaves == null ? null : CaveSurface.get();
+        // So do sea arches and coastal overhangs.
+        boolean arches = seaCaves != null && TerrainDiffusionConfig.caveFormations();
+        java.util.List<com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.Cut> archList = new java.util.ArrayList<>();
+        if (arches) {
+            com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.generation = LocalTerrainProvider.cacheGeneration();
+            com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.arches(x0, z0, x0 + size - 1, z0 + size - 1, surface, archList);
+        }
         for (int dz = 0; dz < size; dz++) {
             for (int dx = 0; dx < size; dx++) {
                 int x = x0 + dx, z = z0 + dz;
@@ -93,6 +100,11 @@ public final class DryCaves {
                     if (tile.surfaceY != null && tile.surfaceY[lz][lx] != RiverCarver.NONE) top = tile.surfaceY[lz][lx];
                     dry = top >= seaLevel - 1;   // no sea water above it
                     if (dry && seaCaves != null && seaCaves.active(x, z, surface)) dry = false;
+                    if (dry && arches) {
+                        for (var a : archList)
+                            if (((com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.Arch) a).wet(x, z)) { dry = false; break; }
+                        if (dry && com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.notch(x, z, surface) >= 0) dry = false;
+                    }
                 }
                 land[dz * size + dx] = dry;
                 anyLand |= dry;
