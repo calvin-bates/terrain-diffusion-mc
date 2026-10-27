@@ -36,8 +36,14 @@ final class BiomePatches {
     static final float CHERRY_SHARE = 0.10f;
     /** Dark forest inside the densest temperate forest. */
     static final float DARK_SHARE = 0.20f;
-    /** Pale garden inside dark forest patches (rare). */
-    static final float PALE_SHARE = 0.07f;
+    /**
+     * Pale garden in dark-forest climate (rare). Oct 27 (Calvin: far too common, and should be bigger when it appears): it
+     * was 7% of a small-scale noise inside each dark forest patch, so every dark forest had a few small pale fragments
+     * cut off at the patch's edge. Now it is its own large-scale patch in the dark forest's climate, not clipped by the
+     * dark forest patches: about a quarter as many gardens, each
+     * about three times the area on average (sampled: median 0.6 -> 1.6 km2), and half the pale ground overall.
+     */
+    static final float PALE_SHARE = 0.010f;
     /**
      * Dappled forest (26.3's autumn poplar woodland) inside the cool end of sparse forest and the mild end of sparse
      * taiga. Vanilla 26.3 puts it in the cool, dry slot between plains and forest (biome temperature 0.6, downfall
@@ -63,7 +69,7 @@ final class BiomePatches {
     private static final float MEADOW_SIZE_M = 7500f;
     private static final float SMALL_SIZE_M = 4500f;
     private static final float FOREST_SIZE_M = 6500f;
-    private static final float PALE_SIZE_M = 2400f;
+    private static final float PALE_SIZE_M = 5500f;   // was 2400
 
     private final Patch meadow, sunflower, cherry, dark, pale, dappled, birch, oldBirch, flower, oldTaiga, bamboo,
             gravelly, windsweptForest, savannaPlateau;
@@ -142,9 +148,10 @@ final class BiomePatches {
                 if (sc > 0f && cherry.in(xm, zm, CHERRY_SHARE * sc)) return BiomeClassifier.CHERRY_GROVE;
                 float sd = ramp(effMoisture, 0.85f, 1.05f) * ramp(temp, 11f, 13f) * (1f - ramp(temp, 19f, 21f))
                         * (1f - ramp(slope, 0.3f, 0.5f));
-                if (sd > 0f && dark.in(xm, zm, DARK_SHARE * sd)) {
-                    return pale.in(xm, zm, PALE_SHARE) ? BiomeClassifier.PALE_GARDEN : BiomeClassifier.DARK_FOREST;
-                }
+                // The pale garden's suitability is flattened (it reaches full strength well inside the dark forest's
+                // climate) so its edges don't shrink a blob to slivers.
+                if (sd > 0f && pale.in(xm, zm, PALE_SHARE * Math.min(1f, sd * 2f))) return BiomeClassifier.PALE_GARDEN;
+                if (sd > 0f && dark.in(xm, zm, DARK_SHARE * sd)) return BiomeClassifier.DARK_FOREST;
                 float sb = (1f - ramp(temp, 15f, 18f)) * ramp(treeMoisture, 0.6f, 0.8f);
                 if (sb > 0f && birch.in(xm, zm, BIRCH_SHARE * sb)) {
                     float so = ramp(treeMoisture, 1.0f, 1.3f) * (1f - ramp(slope, 0.15f, 0.3f));
