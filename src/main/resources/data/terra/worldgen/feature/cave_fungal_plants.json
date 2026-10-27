@@ -13,23 +13,15 @@
       },
       {
         "data": "minecraft:brown_mushroom",
-        "weight": 3
-      },
-      {
-        "data": "minecraft:red_mushroom",
-        "weight": 2
-      },
-      {
-        "data": "minecraft:crimson_fungus",
         "weight": 1
       },
       {
-        "data": "minecraft:warped_fungus",
+        "data": "minecraft:red_mushroom",
         "weight": 1
       },
       {
         "data": "minecraft:moss_carpet",
-        "weight": 2
+        "weight": 3
       }
     ]
   }

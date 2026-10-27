@@ -29,11 +29,11 @@ public final class CaveSites {
     /** Share of eligible regions that get a river sink or a cenote. */
     public static float SINK_CHANCE = 0.5f, CENOTE_CHANCE = 0.45f;
     /** How far from the anchor a sink looks for a river or lake column. */
-    private static final int SINK_REACH = 44;
+    private static final int SINK_REACH = 80;
     /** Depth under the anchor's ground at which a site asks the cave layer for its region. */
     private static final int PROBE_DEPTH = 44;
     /** Widest a site gets (cenote radius plus its chamber), for finding sites near an area. */
-    public static final int MAX_REACH = 110;
+    public static final int MAX_REACH = 240;
 
     /** A shape cut through the surface: its density, where it reaches, and its site's centre. */
     public interface Cut {
@@ -134,18 +134,20 @@ public final class CaveSites {
             default: break;
         }
         if (ground < 40) return null;
+        if (id != CaveBiomes.KARST_CAVES && id != CaveBiomes.UNDERGROUND_LAKES && id != CaveBiomes.GLOWWORM_GROTTO)
+            return mouth(ax, az, surface, h, u, v, w);
         if (id != CaveBiomes.KARST_CAVES && id != CaveBiomes.UNDERGROUND_LAKES && id != CaveBiomes.GLOWWORM_GROTTO) return null;
         int level = layer.waterLevel(cell);
         if (level >= ground - 12 || level < CaveBiomes.WATER_MIN_Y) return null;
         if (id == CaveBiomes.KARST_CAVES) {
             if (u >= CENOTE_CHANCE) return null;
-            // A round sinkhole open to the sky, 10 to 22 blocks across the throat, over a wider pool.
-            int jx = (int) ((v - 0.5f) * 30), jz = (int) ((((h >>> 8) & 0xFF) / 256f - 0.5f) * 30);
+            // A round sinkhole open to the sky, 18 to 36 blocks across the throat, over a much wider pool.
+            int jx = (int) ((v - 0.5f) * 80), jz = (int) ((((h >>> 8) & 0xFF) / 256f - 0.5f) * 80);
             int x = ax + jx, z = az + jz;
             int top = surface.groundTop(x, z);
             if (top == Integer.MIN_VALUE || top - level < 16) return null;
-            float radius = 5f + v * 6f;
-            return new Shaft(x, z, radius, level - 4, top + 2, false, radius + 5f);
+            float radius = 9f + v * 9f;
+            return new Shaft(x, z, radius, level - 6, top + 2, false, radius + 10f);
         }
         if (u >= SINK_CHANCE) return null;
         // A river sink: the nearest river or lake column to the anchor (rings outwards, 4 blocks apart).
@@ -158,7 +160,7 @@ public final class CaveSites {
                 if (water == Integer.MIN_VALUE) continue;
                 int bed = surface.groundTop(x, z);
                 if (bed == Integer.MIN_VALUE || bed - level < 14) return null;
-                return new Shaft(x, z, 1.5f + v, level - 3, bed, true, 6f + 3f * v);
+                return new Shaft(x, z, 2f + 2f * v, level - 3, bed, true, 10f + 6f * v);
             }
         }
         return null;
@@ -169,13 +171,13 @@ public final class CaveSites {
     /** Lowest a cut goes: above the lava of the deepest caves. */
     private static final int CUT_FLOOR_Y = -50;
 
-    /** A canyon ravine: 90-170 blocks long, 8-18 wide at the top, 50-100 deep, wandering, narrowing downwards. */
+    /** A canyon ravine: 180-340 blocks long, 18-40 wide at the top, 90-180 deep, wandering, narrowing downwards. */
     static Cut ravine(int ax, int az, int ground, float u, float v, float w) {
         float angle = (float) (u * Math.PI);
-        float length = 90f + v * 80f, halfWidth = 4f + w * 5f;
-        int bottom = Math.max(CUT_FLOOR_Y, ground - 50 - (int) (u * 50f));
+        float length = 180f + v * 160f, halfWidth = 9f + w * 11f;
+        int bottom = Math.max(CUT_FLOOR_Y, ground - 90 - (int) (u * 90f));
         return new Ravine(ax, az, (float) Math.cos(angle), (float) Math.sin(angle), length, halfWidth, bottom, ground,
-                4f + 6f * w, 30f + 30f * v, v * 6.28f);
+                8f + 12f * w, 50f + 50f * v, v * 6.28f);
     }
 
     public record Ravine(int x, int z, float cos, float sin, float length, float halfWidth, int bottom, int ground,
@@ -210,7 +212,7 @@ public final class CaveSites {
 
         @Override
         public int top() {
-            return ground + 120;
+            return ground + 160;
         }
 
         @Override
@@ -224,12 +226,12 @@ public final class CaveSites {
         }
     }
 
-    /** A deep shaft: 16-28 blocks across at the mouth, widening like a bell, 120-240 deep (to Y -50 at most). */
+    /** A deep shaft: 28-52 blocks across at the mouth, widening like a bell, 120-240 deep (to Y -50 at most). */
     static Cut pit(int ax, int az, int ground, float u, float v, float w) {
-        float radius = 8f + 6f * v;
+        float radius = 14f + 12f * v;
         int bottom = Math.max(CUT_FLOOR_Y, ground - 120 - (int) (u * 120f));
         if (ground - bottom < 60) return null;
-        return new Pit(ax + (int) ((w - 0.5f) * 20), az + (int) ((v - 0.5f) * 20), radius, bottom, ground, u * 6.28f);
+        return new Pit(ax + (int) ((w - 0.5f) * 60), az + (int) ((v - 0.5f) * 60), radius, bottom, ground, u * 6.28f);
     }
 
     public record Pit(int x, int z, float radius, int bottom, int ground, float phase) implements Cut {
@@ -244,7 +246,7 @@ public final class CaveSites {
                     + 0.05f * (float) Math.sin(py / 5f + phase);
             float r = radius * (1f + 1.1f * t * t) * rough;
             // A bowl-shaped floor.
-            float floor = bottom + (d / Math.max(1f, r)) * (d / Math.max(1f, r)) * 6f;
+            float floor = bottom + (d / Math.max(1f, r)) * (d / Math.max(1f, r)) * 10f;
             return Math.max(d - r, floor - py);
         }
 
@@ -275,12 +277,12 @@ public final class CaveSites {
         }
     }
 
-    /** A sinkhole jungle: a dome 56-76 blocks across and 36-48 tall, its top 18 blocks down, with a skylight. */
+    /** A sinkhole jungle: a dome 100-140 blocks across and 50-70 tall, its top 20 blocks down, with a skylight. */
     static Cut dome(int ax, int az, int ground, float u, float v, float w) {
-        float rx = 28f + 10f * v, ry = 18f + 6f * w;
-        int cy = ground - 18 - (int) ry;
+        float rx = 50f + 20f * v, ry = 32f + 13f * w;
+        int cy = ground - 20 - (int) ry;
         if (cy - ry * 0.55f < CUT_FLOOR_Y) return null;
-        return new Dome(ax, az, cy, rx, ry, 7f + 5f * u, ground, (int) ((u - 0.5f) * rx * 0.6f), (int) ((w - 0.5f) * rx * 0.6f));
+        return new Dome(ax, az, cy, rx, ry, 12f + 10f * u, ground, (int) ((u - 0.5f) * rx * 0.6f), (int) ((w - 0.5f) * rx * 0.6f));
     }
 
     public record Dome(int x, int z, int cy, float rx, float ry, float skylight, int ground, int lightDx, int lightDz)
@@ -327,12 +329,12 @@ public final class CaveSites {
         }
     }
 
-    /** A blue hole: 20-44 blocks across in a warm shallow sea floor, 40-90 deep, widening below its lip. */
+    /** A blue hole: 36-72 blocks across in a warm shallow sea floor, 60-120 deep, widening below its lip. */
     static Cut blueHole(int ax, int az, int ground, float u, float v, float w) {
         if (ground >= 61) return null;
-        float radius = 10f + 12f * v;
-        int bottom = Math.max(CUT_FLOOR_Y + 5, ground - 40 - (int) (u * 50f));
-        return new BlueHole(ax + (int) ((w - 0.5f) * 30), az + (int) ((u - 0.5f) * 30), radius, bottom, ground);
+        float radius = 18f + 18f * v;
+        int bottom = Math.max(CUT_FLOOR_Y + 5, ground - 60 - (int) (u * 60f));
+        return new BlueHole(ax + (int) ((w - 0.5f) * 80), az + (int) ((u - 0.5f) * 80), radius, bottom, ground);
     }
 
     public record BlueHole(int x, int z, float radius, int bottom, int ground) implements Cut {
@@ -372,6 +374,112 @@ public final class CaveSites {
         @Override
         public String kind() {
             return "blue_hole";
+        }
+    }
+
+    // ---- Cave mouths (Oct 27) ----
+
+    /** Share of land region anchors (without another cut) that get a cave mouth. */
+    public static float MOUTH_CHANCE = 0.5f;
+
+    /**
+     * A cave mouth: a big arched tunnel from the surface sloping down into the caves, 14-26 blocks across at the
+     * entrance and widening inside, with a flat floor you can walk down. On a slope it heads into the hillside (an
+     * arch in the hill); on flat ground it is a ramp-like opening. Two straight legs with a bend between them.
+     */
+    static Cut mouth(int ax, int az, CaveBiomes.Surface surface, long h, float u, float v, float w) {
+        if (u >= MOUTH_CHANCE) return null;
+        float a = ((h >>> 24) & 0xFF) / 256f, b = ((h >>> 32) & 0xFF) / 256f;
+        int x = ax + (int) ((v - 0.5f) * 160), z = az + (int) ((w - 0.5f) * 160);
+        int ground = surface.groundTop(x, z);
+        if (ground == Integer.MIN_VALUE || ground < 66) return null;
+        if (surface.nearInlandWater(x, z)) return null;
+        // Uphill, if the ground rises: the direction among eight whose ground 24 blocks away is highest.
+        float yaw = a * 6.2831855f;
+        int best = ground + 5;
+        for (int k = 0; k < 8; k++) {
+            double ang = k * Math.PI / 4 + a * 0.5;
+            int g = surface.groundTop(x + (int) Math.round(24 * Math.cos(ang)), z + (int) Math.round(24 * Math.sin(ang)));
+            if (g != Integer.MIN_VALUE && g > best) {
+                best = g;
+                yaw = (float) ang;
+            }
+        }
+        float pitch = 0.35f + 0.25f * b;
+        float len = 70f + 70f * w;
+        float r0 = 7f + 6f * v;
+        float sx = x, sy = ground + r0 * 0.35f, sz = z;
+        float cp = (float) Math.cos(pitch);
+        float ex = sx + len * cp * (float) Math.cos(yaw), ey = sy - len * (float) Math.sin(pitch), ez = sz + len * cp * (float) Math.sin(yaw);
+        if (ey - r0 < CUT_FLOOR_Y + 10) return null;
+        float yaw2 = yaw + (a - 0.5f) * 1.4f, len2 = len * 0.5f, p2 = pitch * 0.6f;
+        float c2 = (float) Math.cos(p2);
+        float fx = ex + len2 * c2 * (float) Math.cos(yaw2), fy = ey - len2 * (float) Math.sin(p2), fz = ez + len2 * c2 * (float) Math.sin(yaw2);
+        if (fy - r0 * 1.4f < CUT_FLOOR_Y + 6) return null;
+        return new Mouth(sx, sy, sz, ex, ey, ez, fx, fy, fz, r0, r0 * 1.4f, ground, b * 6.28f);
+    }
+
+    public record Mouth(float sx, float sy, float sz, float ex, float ey, float ez, float fx, float fy, float fz,
+                        float r0, float r1, int ground, float phase) implements Cut {
+        @Override
+        public float value(int px, int py, int pz) {
+            float rm = (r0 + r1) * 0.5f;
+            return Math.min(leg(px, py, pz, sx, sy, sz, ex, ey, ez, r0, rm), leg(px, py, pz, ex, ey, ez, fx, fy, fz, rm, r1));
+        }
+
+        /** One leg: an arched tunnel, 1.4 times wider than tall, its floor flat a third of the way down. */
+        private float leg(int px, int py, int pz, float ax, float ay, float az, float bx, float by, float bz, float ra, float rb) {
+            float dx = bx - ax, dy = by - ay, dz = bz - az;
+            float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            dx /= len; dy /= len; dz /= len;
+            float ox = px - ax, oy = py - ay, oz = pz - az;
+            float t = Math.max(0f, Math.min(len, ox * dx + oy * dy + oz * dz));
+            float qx = ox - dx * t, qy = oy - dy * t, qz = oz - dz * t;
+            float hl = (float) Math.sqrt(dx * dx + dz * dz) + 1e-6f;
+            float ux = -dz / hl, uz = dx / hl;
+            float across = qx * ux + qz * uz;
+            float up = (float) Math.sqrt(Math.max(0f, qx * qx + qy * qy + qz * qz - across * across)) * Math.signum(qy);
+            float r = (ra + (rb - ra) * t / len) * (1f + 0.08f * (float) Math.sin(t / 6f + phase)
+                    + 0.05f * (float) Math.sin(Math.atan2(up, across) * 3 + phase));
+            float e = ((float) Math.sqrt((across / 1.4f) * (across / 1.4f) + up * up) - r);
+            return Math.max(e, -0.35f * r - up);   // a flat floor a third of the way down
+        }
+
+        @Override
+        public boolean covers(int px, int pz) {
+            float dx = px - sx, dz = pz - sz, rr = reach() + 1;
+            return dx * dx + dz * dz <= rr * rr;
+        }
+
+        @Override
+        public float reach() {
+            float d1 = (float) Math.hypot(ex - sx, ez - sz), d2 = (float) Math.hypot(fx - sx, fz - sz);
+            return Math.max(d1, d2) + r1 * 1.5f;
+        }
+
+        @Override
+        public int x() {
+            return (int) sx;
+        }
+
+        @Override
+        public int z() {
+            return (int) sz;
+        }
+
+        @Override
+        public int top() {
+            return ground + (int) (r0 * 2) + 4;
+        }
+
+        @Override
+        public int minY() {
+            return (int) Math.floor(Math.min(ey, fy) - r1 - 2);
+        }
+
+        @Override
+        public String kind() {
+            return "cave_mouth";
         }
     }
 

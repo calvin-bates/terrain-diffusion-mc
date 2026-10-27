@@ -261,10 +261,14 @@ public final class FeatureFinder {
         // Formations (part four): rare zones, found zone by zone.
         CAVES.put("boxwork", (short) -5);
         CAVES.put("crystal_room", (short) -6);
+        CAVES.put("cave_mouth", (short) -7);
+        CAVES.put("ancient_city", (short) -8);
     }
 
     /** How far around the player cave biomes are searched, in blocks, and the spacing of the searched columns. */
-    private static final int CAVE_RADIUS = 768, CAVE_STEP = 12;
+    private static final int CAVE_RADIUS = 1536, CAVE_STEP = 16;
+    /** A found cave spot has its cave biome this many blocks around it in every direction (well inside the biome). */
+    private static final int INSIDE = 10;
 
     private static int executeCave(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
@@ -286,11 +290,12 @@ public final class FeatureFinder {
         Thread worker = new Thread(() -> {
             try {
                 int px = (int) Math.floor(pos.x), pz = (int) Math.floor(pos.z);
-                String cutKind = id == -2 ? "cenote" : id == -3 ? "river_sink"
+                String cutKind = id == -2 ? "cenote" : id == -3 ? "river_sink" : id == -7 ? "cave_mouth"
                         : CaveBiomes.isSurfaceCut(id) ? word : null;
                 int[] found = cutKind != null ? findCut(cutKind, px, pz) : id == -4 ? findSeaCave(px, pz)
                         : id == -5 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_BOXWORK, px, pz)
                         : id == -6 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_CRYSTAL, px, pz)
+                        : id == -8 ? findCity(px, pz)
                         : id >= 0 && CaveBiomes.shapeFamily(id) == CaveBiomes.SHAPE_HALL ? findHall(id, px, pz)
                         : findCave(id, px, pz);
                 server.execute(() -> reportCave(source, name, found, pos));
@@ -329,12 +334,17 @@ public final class FeatureFinder {
                     case TerrainDiffusionDensityFunction.TileCache.CAVE_WATER -> CaveShapes.ROOF_WATER;
                     default -> shapes.landRoof(x, z);
                 };
-                for (int y = ref - CaveBiomes.START_DEPTH; y > -60; y--) {
+                // Start a little under the top of the cave layer, where the game's biome blending can still show the
+                // surface biome, and only take spots with the cave biome all around (well inside it).
+                for (int y = ref - CaveBiomes.START_DEPTH - INSIDE; y > -60; y--) {
                     if ((y & 3) == 0 && biomes.pick(x, y, z, surface) != id) {
                         y -= 3;   // skip the rest of this 4-block step quickly
                         continue;
                     }
                     if (biomes.pick(x, y, z, surface) != id) continue;
+                    if (biomes.pick(x + INSIDE, y, z, surface) != id || biomes.pick(x - INSIDE, y, z, surface) != id
+                            || biomes.pick(x, y, z + INSIDE, surface) != id || biomes.pick(x, y, z - INSIDE, surface) != id
+                            || biomes.pick(x, y - INSIDE, z, surface) != id) continue;
                     // Two air blocks over a rock floor.
                     if (caveAir(shapes, x, y, z, ref, roof) && caveAir(shapes, x, y + 1, z, ref, roof)
                             && !caveAir(shapes, x, y - 1, z, ref, roof)) {
@@ -364,7 +374,7 @@ public final class FeatureFinder {
         int r = CaveBiomes.REGION_XZ;
         int cx = Math.floorDiv(x0, r), cz = Math.floorDiv(z0, r);
         int cyLo = Math.floorDiv(-64, CaveBiomes.REGION_Y), cyHi = Math.floorDiv(40, CaveBiomes.REGION_Y);
-        for (int ring = 0; ring <= 56; ring++) {
+        for (int ring = 0; ring <= 24; ring++) {
             int[] best = null;
             double bestD = Double.MAX_VALUE;
             for (int dz = -ring; dz <= ring; dz++)
@@ -466,6 +476,33 @@ public final class FeatureFinder {
         return null;
     }
 
+    /** The nearest ancient city cavern (CaveHalls.city), out to about 6 km: a spot on its floor beside the centre. */
+    private static int[] findCity(int x0, int z0) {
+        long seed = LocalTerrainProvider.getSeed();
+        CaveBiomes layer = CaveBiomes.forSeed(seed);
+        CaveSurface surface = CaveSurface.get();
+        int span = com.github.xandergos.terraindiffusionmc.pipeline.CaveHalls.CITY_SPACING * 16;
+        int gx0 = Math.floorDiv(x0, span), gz0 = Math.floorDiv(z0, span);
+        for (int ring = 0; ring <= 16; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    var h = com.github.xandergos.terraindiffusionmc.pipeline.CaveHalls.city(layer, surface, gx0 + dx, gz0 + dz);
+                    if (h == null) continue;
+                    double d = Math.hypot(h.cx() - x0, h.cz() - z0);
+                    if (d < bestD) {
+                        bestD = d;
+                        // Beside the city's centre (its tallest building), a little above the floor.
+                        best = new int[]{h.cx() + 40, h.cy() + 6, h.cz()};
+                    }
+                }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
     /** The nearest cut of a kind (CaveSites: cenote, river sink, ravine, deep shaft, sinkhole jungle, blue hole). */
     private static int[] findCut(String kind, int x0, int z0) {
         long seed = LocalTerrainProvider.getSeed();
@@ -522,7 +559,7 @@ public final class FeatureFinder {
 
     private static void reportCave(CommandSourceStack source, String name, int[] found, Vec3 from) {
         if (found == null) {
-            source.sendFailure(Component.literal("No " + name + " found nearby. Cave biomes are pockets about 110 blocks"
+            source.sendFailure(Component.literal("No " + name + " found nearby. Cave biomes are regions about 250 blocks"
                     + " across; cenotes need karst caves, river sinks underground lakes under a river, sea caves a rocky"
                     + " coast. Try again from somewhere else."));
             return;

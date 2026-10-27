@@ -68,7 +68,7 @@ public final class CaveView {
         COLORS.put(CaveBiomes.MANTLE_CAVE, "#3b3330");
         COLORS.put(CaveBiomes.CRYSTALLINE_CHASM, "#b48ae8");
         COLORS.put(CaveBiomes.DEEP_DARK, "#0f4f5a");
-        COLORS.put(CaveBiomes.DEEP_DARK_CAVES, "#1a6b78");
+        COLORS.put(CaveBiomes.DEEP_DARK_CITY, "#0a3d47");
         COLORS.put(CaveBiomes.LAVA_TUBES, "#5a3a32");
         COLORS.put(CaveBiomes.SLOT_CANYON_CAVES, "#d9a35e");
         COLORS.put(CaveBiomes.GLACIER_CAVES, "#6ec6f0");

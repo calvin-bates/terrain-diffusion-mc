@@ -18,7 +18,7 @@
   },
   "replaceable": "#minecraft:moss_replaceable",
   "surface": "floor",
-  "vegetation_chance": 0.45,
+  "vegetation_chance": 0.12,
   "vegetation_feature": {
     "feature": "terra:cave_fungal_plants",
     "placement": []

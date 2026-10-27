@@ -23,12 +23,12 @@ public final class CaveShapes {
     /** How much the regional abundance noise moves the cheese threshold (cavern-rich and cavern-poor regions). */
     public static float CHEESE_REGION = 0.14f;
     /** Spaghetti tunnels: half-width in noise units, and how much a slow noise widens or narrows them. */
-    public static float SPAGHETTI_WIDTH = 0.11f, SPAGHETTI_WIDTH_VAR = 0.035f;
+    public static float SPAGHETTI_WIDTH = 0.12f, SPAGHETTI_WIDTH_VAR = 0.035f;
     /** Noodle tunnels: half-width in noise units; they only run where their toggle noise is above the gate. */
     public static float NOODLE_WIDTH = 0.075f, NOODLE_GATE = -0.1f;
 
     /** Density units per noise unit for each family (sets how sharply walls form, in blocks). */
-    private static final float CHEESE_GAIN = 45f, SPAGHETTI_GAIN = 70f, NOODLE_GAIN = 80f;
+    private static final float CHEESE_GAIN = 60f, SPAGHETTI_GAIN = 85f, NOODLE_GAIN = 80f;
     /** Rock added per block of missing roof (see {@link #roof}). */
     public static final float ROOF_GAIN = 1.5f;
     /** The field is clamped to +-this, keeping the roof arithmetic simple. */
@@ -41,18 +41,18 @@ public final class CaveShapes {
     private CaveShapes(long seed) {
         this.seed = seed;
         int s = (int) (seed ^ (seed >>> 32));
-        cheese = fbm(s + 0x51c3, 1f / 128f, 3);
+        cheese = fbm(s + 0x51c3, 1f / 176f, 3);   // Oct 27: bigger caverns (was 1/128)
         region = simplex(s + 0x52a1, 1f / 640f);
-        spagA = simplex(s + 0x53b7, 1f / 96f);
-        spagB = simplex(s + 0x54d9, 1f / 96f);
+        spagA = simplex(s + 0x53b7, 1f / 120f);
+        spagB = simplex(s + 0x54d9, 1f / 120f);
         spagWidth = simplex(s + 0x55e1, 1f / 220f);
         noodleA = simplex(s + 0x56f3, 1f / 56f);
         noodleB = simplex(s + 0x5713, 1f / 56f);
         noodleGate = simplex(s + 0x5821, 1f / 160f);
         entrance = fbm(s + 0x5937, 1f / 260f, 2);
-        chasmNoise = simplex(s + 0x5a49, 1f / 260f);
+        chasmNoise = simplex(s + 0x5a49, 1f / 380f);
         slotNoise = simplex(s + 0x5b5b, 1f / 40f);
-        tubeNoise = simplex(s + 0x5c6d, 1f / 140f);
+        tubeNoise = simplex(s + 0x5c6d, 1f / 200f);
     }
 
     private static FastNoiseLite simplex(int seed, float freq) {
@@ -102,7 +102,7 @@ public final class CaveShapes {
     private static final int SHAPE_CELL = 32, SHAPE_CELL_Y = 16, SHAPE_REACH = 16, CH = 8;
     private static final float FADE = 60f;
     /** Blocks per noise unit for the region shapes (about one over each noise's gradient). */
-    private static final float CHASM_GAIN = 26f, SLOT_GAIN = 4f, TUBE_GAIN = 14f;
+    private static final float CHASM_GAIN = 38f, SLOT_GAIN = 4f, TUBE_GAIN = 20f;
     private static final int[] SHAPE_OFFSETS = {0, 0, SHAPE_REACH, 0, -SHAPE_REACH, 0, 0, SHAPE_REACH, 0, -SHAPE_REACH};
 
     /** The shape channels at a shape lattice point, written to out[off..off+CH). Returns whether any is non-zero. */
@@ -238,7 +238,7 @@ public final class CaveShapes {
         if (c[5] > 0.01f) {
             float w = c[5];
             float plan = (Math.abs(tubeNoise.GetNoise(x, z)) - c[7] / w) * TUBE_GAIN;
-            float vert = (Math.abs(y - c[6] / w) - 4.5f) * 1.5f;
+            float vert = (Math.abs(y - c[6] / w) - 7f) * 1.5f;   // tubes 15 tall
             v = Math.min(v, Math.max(plan, vert) + fade(w));
         }
         return v;
@@ -405,7 +405,9 @@ public final class CaveShapes {
     /** Solid roof kept over caves, in blocks below the lowest nearby ground: dry land, the sea floor, inland water. */
     public static int ROOF_LAND = 10, ROOF_SEA = 6, ROOF_WATER = 16;
     /** Entrances: where the entrance noise is above the first value the roof starts thinning, gone at the second. */
-    public static float ENTRANCE_START = 0.50f, ENTRANCE_FULL = 0.62f;
+    // Oct 27: off (the start is above the noise's range). Thinning the roof opened caves as slits and shelves along
+    // hillsides; caves now reach the surface through cave mouths (CaveSites.Mouth) and the other cuts instead.
+    public static float ENTRANCE_START = 2f, ENTRANCE_FULL = 2.12f;
 
     /**
      * Roof depth over dry land at column (x, z): {@link #ROOF_LAND}, thinning to 0 in rare entrance patches where

@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "terra:deep_dark_caves",
+    "terra:deep_dark_city",
     "terra:deep_dark_forest",
     "terra:deep_dark_incursion"
   ]

@@ -26,7 +26,7 @@ public final class CaveFormationLayout {
             case CaveBiomes.DRIPSTONE_CAVES -> K_DRIP;
             case CaveBiomes.UNDERGROUND_LAKES, CaveBiomes.GLOWWORM_GROTTO, CaveBiomes.KARST_CAVES -> K_KARST;
             case CaveBiomes.SALT_CAVES -> K_SALT;
-            case CaveBiomes.ICY_CAVES, CaveBiomes.FROSTFIRE_CAVES, CaveBiomes.GLACIER_CAVES -> K_ICE;
+            case CaveBiomes.ICY_CAVES, CaveBiomes.GLACIER_CAVES -> K_ICE;   // frostfire caves have Terralith's own pillars
             // Their own look already (fungal, jungle, mud, lush, thermal, the rare caves and halls, the cuts).
             default -> K_NONE;
         };
@@ -47,9 +47,9 @@ public final class CaveFormationLayout {
 
     public static final int COL_XZ = 14, COL_Y = 24;
     /** Columns only fill air runs this tall (chambers, not tunnels) and no taller (halls and chasms). */
-    public static final int COL_MIN_H = 9, COL_MAX_H = 40;
+    public static final int COL_MIN_H = 9, COL_MAX_H = 60;
     /** How far a column reaches from its anchor at most (radius, flare and wobble). */
-    public static final int COL_REACH = 7;
+    public static final int COL_REACH = 9;
 
     /**
      * A column: anchored at (x, y, z) inside a chamber, base radius r. It fills the air run holding y in every column
@@ -91,7 +91,7 @@ public final class CaveFormationLayout {
                     int py = cy * COL_Y + 4 + (int) (unit(h, 24) * (COL_Y - 8));
                     byte k = kind(layer.pick((int) px, py, (int) pz, surface));
                     if (u >= COLUMN_CHANCE[k]) continue;
-                    float r = 1.4f + 1.4f * unit(h, 32);
+                    float r = 1.8f + 2.2f * unit(h, 32);
                     out.add(new Column(px, py, pz, r, unit(h, 40) < 0.2f, unit(h, 48) * 6.28f,
                             unit(h, 56) * 2f - 1f, k));
                 }

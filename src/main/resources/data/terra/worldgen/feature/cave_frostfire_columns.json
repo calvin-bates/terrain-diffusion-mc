@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:random_selector",
+  "default": {
+    "feature": "terra:cave_frostfire_pillar_huge",
+    "placement": []
+  },
+  "features": [
+    {
+      "chance": 0.965,
+      "feature": {
+        "feature": "terra:cave_frostfire_pillar",
+        "placement": []
+      }
+    }
+  ]
+}

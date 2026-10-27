@@ -54,7 +54,7 @@ public class HallProbe {
             render(out + "/hall_" + names[k] + ".png", id, cx, cy, cz);
             // The biome inside the hall must be the hall's everywhere (CaveBiomes.pick follows the hall).
             int bad = 0, n = 0;
-            for (int dx = -40; dx <= 40; dx += 4) for (int dz = -40; dz <= 40; dz += 4) for (int dy = -26; dy <= 26; dy += 4) {
+            for (int dx = -96; dx <= 96; dx += 8) for (int dz = -96; dz <= 96; dz += 8) for (int dy = -30; dy <= 30; dy += 4) {
                 int x = cx + dx, y = cy + dy, z = cz + dz;
                 if (CaveBiomes.hallDistance(id, cell, x, y, z) >= 1f) continue;
                 n++;
@@ -65,9 +65,9 @@ public class HallProbe {
         }
     }
 
-    /** Fills the 160 x 160 area around (cx, cz) chunk by chunk, offset by (ox, oz) from the 16-block grid. */
-    static float[][][] volume(int cx, int cz, int ox, int oz) {
-        int W = 160, x0 = cx - 80, z0 = cz - 80;
+    /** Fills the 280 x 280 area around (cx, cz) chunk by chunk, offset by (ox, oz) from the 16-block grid. */
+    public static float[][][] volume(int cx, int cz, int ox, int oz) {
+        int W = 280, x0 = cx - 140, z0 = cz - 140;
         float[][][] v = new float[W][W][];
         float[] col = new float[16 * 16 * H];
         CaveShapes.Scratch sc = new CaveShapes.Scratch();
@@ -91,32 +91,32 @@ public class HallProbe {
         long t0 = System.nanoTime();
         float[][][] v = volume(cx, cz, 0, 0);
         System.out.printf("  fill %.1f ms for 100 chunks%n", (System.nanoTime() - t0) / 1e6);
-        int W = 160;
+        int W = 280;
         float rx = CaveBiomes.hallRX(id), ry = CaveBiomes.hallRY(id);
         CaveHalls.Beam[] beams = id == CaveBiomes.GIANT_SELENITE_BEAMS ? CaveHalls.beams(SEED, cx, cy, cz, rx, ry) : null;
         // Plan at the floor + 3 (forest, selenite) or the centre (incursion), section along x through the centre.
         int planY = id == CaveBiomes.DEEP_DARK_INCURSION ? cy - 8 : (int) (cy - CaveBiomes.hallFloor(id)) + 3;
         // The section runs along x at the z (within 20 of the centre) that crosses the most rock inside the hall.
-        int secZ = 80, bestRock = -1;
-        for (int Z = 60; Z <= 100; Z++) {
+        int secZ = 140, bestRock = -1;
+        for (int Z = 120; Z <= 160; Z++) {
             int rock = 0;
-            for (int X = 0; X < W; X++) if (v[X][Z][cy - MIN_Y] > 0 && Math.abs(X - 80) < rx * 0.8f) rock++;
+            for (int X = 0; X < W; X++) if (v[X][Z][cy - MIN_Y] > 0 && Math.abs(X - 140) < rx * 0.8f) rock++;
             if (rock > bestRock) { bestRock = rock; secZ = Z; }
         }
         BufferedImage img = new BufferedImage(W * 2 + 4, W, BufferedImage.TYPE_INT_RGB);
         int air = 0, total = 0, feature = 0;
         for (int X = 0; X < W; X++)
             for (int Z = 0; Z < W; Z++) {
-                int x = cx - 80 + X, z = cz - 80 + Z;
+                int x = cx - 140 + X, z = cz - 140 + Z;
                 float d = v[X][Z][planY - MIN_Y];
                 img.setRGB(X, Z, color(d, id, beams, x, planY, z, cx, cy, cz, rx, ry));
             }
         for (int X = 0; X < W; X++)
             for (int yy = 0; yy < W && yy < H; yy++) {
                 int y = MIN_Y + H - 1 - yy;
-                int x = cx - 80 + X;
+                int x = cx - 140 + X;
                 float d = v[X][secZ][y - MIN_Y];
-                img.setRGB(W + 4 + X, yy, color(d, id, beams, x, y, cz - 80 + secZ, cx, cy, cz, rx, ry));
+                img.setRGB(W + 4 + X, yy, color(d, id, beams, x, y, cz - 140 + secZ, cx, cy, cz, rx, ry));
                 total++;
                 if (d <= 0) air++;
             }
@@ -138,15 +138,15 @@ public class HallProbe {
         float[][][] a = volume(cx, cz, 0, 0), b = volume(cx, cz, 7, 11);
         int diff = 0, n = 0, pointDiff = 0;
         java.util.Random r = new java.util.Random(5);
-        for (int X = 0; X < 160; X++)
-            for (int Z = 0; Z < 160; Z++)
+        for (int X = 0; X < 280; X++)
+            for (int Z = 0; Z < 280; Z++)
                 for (int y = 0; y < H; y++) {
                     n++;
                     if ((a[X][Z][y] <= 0) != (b[X][Z][y] <= 0)) diff++;
                 }
         for (int i = 0; i < 4000; i++) {
-            int X = r.nextInt(160), Z = r.nextInt(160), y = r.nextInt(H);
-            float p = S.at(cx - 80 + X, MIN_Y + y, cz - 80 + Z, SURF);
+            int X = r.nextInt(280), Z = r.nextInt(280), y = r.nextInt(H);
+            float p = S.at(cx - 140 + X, MIN_Y + y, cz - 140 + Z, SURF);
             if ((p <= 0) != (a[X][Z][y] <= 0)) pointDiff++;
         }
         System.out.printf("  seams %s: %d of %d blocks differ between alignments, %d of 4000 points differ from at()%n",

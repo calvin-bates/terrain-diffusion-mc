@@ -854,10 +854,10 @@ CAVE_FEATURES = {
     "cave_moss_carpet": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:moss_carpet"}},
     # Fungal caves: moss and mycelium floors with roots and mushrooms, moss ceilings studded with shroomlight and wart
     # with weeping vines, giant crimson and warped fungi (wart caps lit by shroomlight), huge red and brown mushrooms.
+    # Oct 27: far fewer little mushrooms (Calvin): mostly roots and moss, the odd mushroom.
     "cave_fungal_plants": {"type": "minecraft:simple_block", "to_place": weighted(
-        ("minecraft:crimson_roots", 3), ("minecraft:warped_roots", 3), ("minecraft:brown_mushroom", 3),
-        ("minecraft:red_mushroom", 2), ("minecraft:crimson_fungus", 1), ("minecraft:warped_fungus", 1),
-        ("minecraft:moss_carpet", 2))},
+        ("minecraft:crimson_roots", 3), ("minecraft:warped_roots", 3), ("minecraft:brown_mushroom", 1),
+        ("minecraft:red_mushroom", 1), ("minecraft:moss_carpet", 3))},
     "cave_weeping_vines": column("down", ("minecraft:weeping_vines_plant", (0, 6)),
                                  ({"id": "minecraft:weeping_vines", "properties": {"age": "25"}}, 1)),
     "cave_twisting_vines": column("up", ("minecraft:twisting_vines_plant", (0, 5)),
@@ -902,7 +902,7 @@ CAVE_FEATURES = {
 }
 CAVE_FEATURES.update({
     "cave_fungal_floor": patch_cfg(weighted(("minecraft:moss_block", 4), ("minecraft:mycelium", 1)), "floor",
-                                   "terra:cave_fungal_plants", 0.45, radius=(4, 8)),
+                                   "terra:cave_fungal_plants", 0.12, radius=(4, 8)),
     "cave_fungal_ceiling": patch_cfg(weighted(("minecraft:moss_block", 7), ("minecraft:shroomlight", 1),
                                               ("minecraft:nether_wart_block", 1), ("minecraft:warped_wart_block", 1)),
                                      "ceiling", "terra:cave_weeping_vines", 0.12),
@@ -931,12 +931,13 @@ CAVE_PLACED = {
     "cave_glow_lichen_sparse": cave_placed("terra:cave_glow_lichen", 30),
     "cave_fungal_floor": cave_placed("terra:cave_fungal_floor", 70, SCAN_FLOOR),
     "cave_fungal_ceiling": cave_placed("terra:cave_fungal_ceiling", 55, SCAN_CEILING),
+    # Oct 27: many more giants (Calvin: more big mushrooms).
     "cave_warped_giants": cave_placed("terra:cave_warped_giant", 0, SCAN_FLOOR, pre=[
-        {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 1, "above_noise": 12}]),
+        {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 6, "above_noise": 34}]),
     "cave_crimson_giants": cave_placed("terra:cave_crimson_giant", 0, SCAN_FLOOR, pre=[
-        {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 12, "above_noise": 1}]),
-    "cave_huge_brown_mushrooms": cave_placed("minecraft:huge_brown_mushroom", 4, SCAN_FLOOR),
-    "cave_huge_red_mushrooms": cave_placed("minecraft:huge_red_mushroom", 3, SCAN_FLOOR),
+        {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 34, "above_noise": 6}]),
+    "cave_huge_brown_mushrooms": cave_placed("minecraft:huge_brown_mushroom", 18, SCAN_FLOOR),
+    "cave_huge_red_mushrooms": cave_placed("minecraft:huge_red_mushroom", 15, SCAN_FLOOR),
     "cave_twisting_vines": cave_placed("terra:cave_twisting_vines", 20, SCAN_FLOOR),
     "cave_jungle_floor": cave_placed("terra:cave_jungle_floor", 80, SCAN_FLOOR),
     "cave_jungle_ceiling": cave_placed("terra:cave_jungle_ceiling", 55, SCAN_CEILING),
@@ -999,10 +1000,85 @@ cave_biome("icy_caves", 148, -0.5, downfall=0.4,
            under=["terra:cave_icy_floor", "terra:cave_icy_ceiling", "terra:cave_icicles", "terra:cave_ice_spikes"],
            ores=["terra:cave_ore_packed_ice", "terra:cave_ore_ice", "terra:cave_ore_blue_ice", "terra:cave_ore_snow"],
            spawns_from="snowy_plains")
-cave_biome("frostfire_caves", 149, -0.3, downfall=0.3,
-           under=["terra:cave_frostfire_floor", "terra:cave_icy_ceiling", "terra:cave_icicles"],
-           ores=["terra:cave_ore_packed_ice", "terra:cave_ore_blue_ice", "terra:cave_ore_magma"],
-           spawns_from="snowy_plains")
+# Frostfire caves (Oct 27: "exactly like the Terralith version"): Terralith's design rebuilt from vanilla features.
+# Deepslate and blue ice patches on floors and ceilings, soul fire on the floor patches (on soul soil, the only ground
+# soul fire stays lit on), blue ice icicles and the odd chain hanging a soul lantern from the ceiling, huge blue ice
+# pillars (vanilla large dripstone, turned to blue ice by world/FrostfireCaves after features), heavy sculk with its
+# sensors, no lava (also world/FrostfireCaves), skeletons and strays, black fog and cyan-to-blue motes. Soul fire and
+# soul lanterns are the one exception to "cave light only from glow lichen, shroomlight and froglights".
+SCAN_FLOOR_32 = [{"type": "minecraft:environment_scan", "allowed_search_condition": AIR, "direction_of_search": "down",
+                  "max_steps": 32, "target_condition": {"type": "minecraft:solid"}}]
+SCAN_CEILING_30 = [{"type": "minecraft:environment_scan", "allowed_search_condition": AIR, "direction_of_search": "up",
+                    "max_steps": 30, "target_condition": {"type": "minecraft:solid"}}]
+FEATURES.update({
+    # Soul fire on a soul soil block set into the floor.
+    "cave_frostfire_flame": {"type": "minecraft:sequence", "features": [
+        {"feature": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:soul_soil"}},
+         "placement": [{"type": "minecraft:offset", "x": 0, "y": -1, "z": 0}]},
+        {"feature": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:soul_fire"}}, "placement": []}]},
+    "cave_frostfire_floor": patch_cfg(weighted(("minecraft:deepslate", 2), ("minecraft:blue_ice", 2)), "floor",
+                                      "terra:cave_frostfire_flame", 0.05, depth=(1, 2), radius=(2, 5), edge=0.5,
+                                      bottom=0.5, replaceable="#minecraft:base_stone_overworld"),
+    "cave_frostfire_icicle": {"type": "minecraft:block_column", "allowed_placement": {"type": "minecraft:true"},
+        "direction": "down", "prioritize_tip": False,
+        "layers": [{"height": {"type": "minecraft:biased_to_bottom", "min_inclusive": 1, "max_inclusive": 5},
+                    "provider": {"id": "minecraft:blue_ice"}}]},
+    "cave_frostfire_lantern": {"type": "minecraft:block_column", "allowed_placement": AIR, "direction": "down",
+        "prioritize_tip": True,
+        "layers": [{"height": {"type": "minecraft:clamped_normal", "mean": 4.0, "deviation": 12.0, "min_inclusive": 4,
+                               "max_inclusive": 50},
+                    "provider": {"id": "minecraft:iron_chain", "properties": {"axis": "y", "waterlogged": "false"}}},
+                   {"height": 1, "provider": {"id": "minecraft:soul_lantern",
+                                              "properties": {"hanging": "true", "waterlogged": "false"}}}]},
+    "cave_frostfire_hang": {"type": "minecraft:random_selector", "default": inline("terra:cave_frostfire_icicle"),
+                            "features": [{"chance": 0.07, "feature": inline("terra:cave_frostfire_lantern")}]},
+    "cave_frostfire_ceiling": patch_cfg(weighted(("minecraft:deepslate", 4), ("minecraft:blue_ice", 2)), "ceiling",
+                                        "terra:cave_frostfire_hang", 0.4, depth=(1, 2), radius=(2, 5), edge=0.5,
+                                        bottom=0.5, replaceable="#minecraft:base_stone_overworld"),
+    "cave_frostfire_pillar": {"type": "minecraft:large_dripstone", "replaceable_blocks": "#minecraft:dripstone_replaceable_blocks",
+        "floor_to_ceiling_search_range": 60, "column_radius": uniform(1, 2),
+        "height_scale": {"type": "minecraft:uniform", "min_inclusive": 5.0, "max_exclusive": 13.0},
+        "max_column_radius_to_cave_height_ratio": 1.0, "min_bluntness_for_wind": 0.0, "min_radius_for_wind": 0,
+        "stalactite_bluntness": {"type": "minecraft:uniform", "min_inclusive": 0.9, "max_exclusive": 1.5},
+        "stalagmite_bluntness": {"type": "minecraft:uniform", "min_inclusive": 0.9, "max_exclusive": 1.3},
+        "wind_speed": {"type": "minecraft:uniform", "min_inclusive": 0.0, "max_exclusive": 0.4}},
+    "cave_frostfire_pillar_huge": {"type": "minecraft:large_dripstone", "replaceable_blocks": "#minecraft:dripstone_replaceable_blocks",
+        "floor_to_ceiling_search_range": 80, "column_radius": uniform(5, 13),
+        "height_scale": {"type": "minecraft:uniform", "min_inclusive": 1.35, "max_exclusive": 4.0},
+        "max_column_radius_to_cave_height_ratio": 0.4, "min_bluntness_for_wind": 0.0, "min_radius_for_wind": 0,
+        "stalactite_bluntness": {"type": "minecraft:uniform", "min_inclusive": 0.2, "max_exclusive": 1.5},
+        "stalagmite_bluntness": {"type": "minecraft:uniform", "min_inclusive": 0.2, "max_exclusive": 1.0},
+        "wind_speed": {"type": "minecraft:uniform", "min_inclusive": 0.0, "max_exclusive": 0.3}},
+    "cave_frostfire_columns": {"type": "minecraft:random_selector", "default": inline("terra:cave_frostfire_pillar_huge"),
+                               "features": [{"chance": 0.965, "feature": inline("terra:cave_frostfire_pillar")}]},
+    "cave_frostfire_sculk": {"type": "minecraft:sequence", "features": [
+        {"feature": {"type": "minecraft:sculk_patch", "amount_per_charge": 500, "charge_count": 1, "growth_rounds": 8,
+                     "spread_attempts": 64, "spread_rounds": 1}, "placement": []},
+        {"feature": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:sculk_catalyst",
+                                                                   "properties": {"bloom": "false"}}},
+         "placement": [{"type": "minecraft:random_chance", "chance": 0.425},
+                       {"type": "minecraft:block_predicate_filter", "predicate": {"type": "minecraft:has_sturdy_face",
+                        "direction": "up", "offset": [0, -1, 0]}}]}]},
+})
+# Terralith's counts were per chunk over Y -64..30 (94 blocks); these are per 256 blocks of cave layer.
+PLACED.update({
+    "cave_frostfire_floor": cave_placed("terra:cave_frostfire_floor", 46, SCAN_FLOOR_32),
+    "cave_frostfire_ceiling": cave_placed("terra:cave_frostfire_ceiling", 33, SCAN_CEILING_30),
+    "cave_frostfire_columns": cave_placed("terra:cave_frostfire_columns", 7),
+    "cave_frostfire_sculk": cave_placed("terra:cave_frostfire_sculk", 440),
+})
+biome("frostfire_caves", id=149, base="dripstone_caves", temp=0.8, downfall=0.4, colors={"water_color": "#1b46d0"},
+      veg=[], top=None, cave=True, drop_attrs=["minecraft:audio/background_music"],
+      steps={1: [], 2: ["minecraft:amethyst_geode", "minecraft:large_dripstone"],
+             7: ["terra:cave_frostfire_columns", "terra:cave_frostfire_sculk", "terra:cave_frostfire_floor",
+                 "terra:cave_frostfire_ceiling"]},
+      spawns={"monster": [{"type": "minecraft:skeleton", "count": 4, "weight": 100},
+                          {"type": "minecraft:stray", "count": 4, "weight": 50}],
+              "underground_water_creature": [{"type": "minecraft:glow_squid", "count": uniform(4, 6), "weight": 10}]},
+      attrs={"minecraft:visual/fog_color": "#000000",
+             "minecraft:visual/ambient_particles": {"argument": [{"particle": {"type": "minecraft:dust_color_transition",
+                 "from_color": [0.5, 1.0, 1.0], "to_color": [0.0, 0.0, 1.0], "scale": 1.0}, "probability": 0.001}],
+                 "modifier": "append"}})
 cave_biome("infested_caves", 151, 0.7,
            under=["terra:cave_rubble_floor", "terra:cave_monster_rooms"],
            ores=["terra:cave_ore_infested", "terra:cave_ore_infested_cobble"],
@@ -1142,6 +1218,9 @@ cave_biome("giant_geode_hall", 173, 0.8,
            under=["terra:cave_amethyst_floor_dense", "terra:cave_amethyst_ceiling_dense"])
 # Deep dark away from mountains: vanilla's deep dark, without ancient cities (they only generate under mountains, in
 # vanilla's own deep_dark biome, id 163).
+# The ancient city caverns' deep dark (Oct 27): the only biome ancient cities may start in (see TAG_REPLACE below), set
+# by the biome source inside the giant cavern around every city site under a mountain (pipeline/CaveHalls.city).
+biome("deep_dark_city", id=176, base="deep_dark", temp=0.8, downfall=0.4, colors={}, veg=[], top=None, cave=True)
 biome("deep_dark_caves", id=175, base="deep_dark", temp=0.8, downfall=0.4, colors={}, veg=[], top=None, cave=True,
       no_tags=["has_structure/ancient_city"])
 
@@ -1241,6 +1320,10 @@ biome("giant_selenite_beams", id=174, base="dripstone_caves", temp=2.0, downfall
       steps={2: ["minecraft:amethyst_geode"], 7: ["terra:cave_magma_floor_sparse", "terra:cave_amethyst_floor"], 9: []},
       add_steps={6: ["terra:cave_ore_amethyst"]}, drop_attrs=["minecraft:audio/background_music"], cave=True)
 
+# Tags this script replaces outright (vanilla's own members dropped): ancient cities only in the city caverns.
+TAG_REPLACE = {"has_structure/ancient_city": ["terra:deep_dark_city"]}
+
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
@@ -1306,6 +1389,8 @@ def main():
             out["attributes"] = attrs
         if d.get("drop_attrs"):
             out["attributes"] = {k: v for k, v in out.get("attributes", {}).items() if k not in d["drop_attrs"]}
+        if d.get("attrs"):
+            out["attributes"] = {**out.get("attributes", {}), **d["attrs"]}
         if not d.get("freeze", True):
             steps[10] = [f for f in steps[10] if f != "minecraft:freeze_top_layer"]
         out["features"] = steps
@@ -1345,6 +1430,9 @@ def main():
         if os.path.exists(path):
             keep = [v for v in load(path).get("values", []) if v not in V12]
         allv = keep + sorted(vals)
+        if rel in TAG_REPLACE:
+            write(path, {"replace": True, "values": TAG_REPLACE[rel]})
+            continue
         if not allv:
             if os.path.exists(path):
                 os.remove(path)

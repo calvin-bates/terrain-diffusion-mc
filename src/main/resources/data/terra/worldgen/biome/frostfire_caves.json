@@ -11,80 +11,16 @@
               "weight": 10
             }
           ],
-          "creature": [
-            {
-              "type": "minecraft:rabbit",
-              "count": {
-                "type": "minecraft:uniform",
-                "max_inclusive": 3,
-                "min_inclusive": 2
-              },
-              "weight": 10
-            },
-            {
-              "type": "minecraft:polar_bear",
-              "count": {
-                "type": "minecraft:uniform",
-                "max_inclusive": 2,
-                "min_inclusive": 1
-              },
-              "weight": 1
-            }
-          ],
           "monster": [
-            {
-              "type": "minecraft:spider",
-              "count": 4,
-              "weight": 100
-            },
-            {
-              "type": "minecraft:zombie",
-              "count": 4,
-              "weight": 90
-            },
-            {
-              "type": "minecraft:zombie_villager",
-              "count": 1,
-              "weight": 5
-            },
-            {
-              "type": "minecraft:zombie_horse",
-              "count": 1,
-              "weight": 5
-            },
             {
               "type": "minecraft:skeleton",
               "count": 4,
-              "weight": 20
-            },
-            {
-              "type": "minecraft:creeper",
-              "count": 4,
               "weight": 100
-            },
-            {
-              "type": "minecraft:slime",
-              "count": 4,
-              "weight": 100
-            },
-            {
-              "type": "minecraft:enderman",
-              "count": {
-                "type": "minecraft:uniform",
-                "max_inclusive": 4,
-                "min_inclusive": 1
-              },
-              "weight": 10
-            },
-            {
-              "type": "minecraft:witch",
-              "count": 1,
-              "weight": 5
             },
             {
               "type": "minecraft:stray",
               "count": 4,
-              "weight": 80
+              "weight": 50
             }
           ],
           "underground_water_creature": [
@@ -102,25 +38,46 @@
       },
       "modifier": "overlay"
     },
-    "minecraft:visual/sky_color": "#78a7ff"
+    "minecraft:visual/sky_color": "#78a7ff",
+    "minecraft:visual/fog_color": "#000000",
+    "minecraft:visual/ambient_particles": {
+      "argument": [
+        {
+          "particle": {
+            "type": "minecraft:dust_color_transition",
+            "from_color": [
+              0.5,
+              1.0,
+              1.0
+            ],
+            "to_color": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": 1.0
+          },
+          "probability": 0.001
+        }
+      ],
+      "modifier": "append"
+    }
   },
   "carvers": [
     "minecraft:cave",
     "minecraft:cave_extra_underground",
     "minecraft:canyon"
   ],
-  "downfall": 0.3,
+  "downfall": 0.4,
   "effects": {
-    "water_color": "#3f76e4"
+    "water_color": "#1b46d0"
   },
   "features": [
     [],
+    [],
     [
-      "minecraft:lake_lava_underground",
-      "minecraft:lake_lava_surface"
-    ],
-    [
-      "minecraft:amethyst_geode"
+      "minecraft:amethyst_geode",
+      "minecraft:large_dripstone"
     ],
     [
       "minecraft:monster_room",
@@ -157,15 +114,13 @@
       "minecraft:underwater_magma",
       "minecraft:disk_sand",
       "minecraft:disk_clay",
-      "minecraft:disk_gravel",
-      "terra:cave_ore_blue_ice",
-      "terra:cave_ore_magma",
-      "terra:cave_ore_packed_ice"
+      "minecraft:disk_gravel"
     ],
     [
+      "terra:cave_frostfire_ceiling",
+      "terra:cave_frostfire_columns",
       "terra:cave_frostfire_floor",
-      "terra:cave_icicles",
-      "terra:cave_icy_ceiling"
+      "terra:cave_frostfire_sculk"
     ],
     [
       "minecraft:spring_water",
@@ -179,5 +134,5 @@
     ]
   ],
   "has_precipitation": true,
-  "temperature": -0.3
+  "temperature": 0.8
 }

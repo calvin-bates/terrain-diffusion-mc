@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:block_column",
+  "allowed_placement": {
+    "type": "minecraft:true"
+  },
+  "direction": "down",
+  "prioritize_tip": false,
+  "layers": [
+    {
+      "height": {
+        "type": "minecraft:biased_to_bottom",
+        "min_inclusive": 1,
+        "max_inclusive": 5
+      },
+      "provider": {
+        "id": "minecraft:blue_ice"
+      }
+    }
+  ]
+}

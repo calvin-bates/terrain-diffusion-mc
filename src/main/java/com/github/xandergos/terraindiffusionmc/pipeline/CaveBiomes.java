@@ -42,6 +42,12 @@ public final class CaveBiomes {
     public static final short DEEP_DARK_FOREST = 164, DEEP_DARK_INCURSION = 172, GIANT_SELENITE_BEAMS = 174;
     public static final short LAVA_TUBES = 165, SLOT_CANYON_CAVES = 166, GLACIER_CAVES = 167;
     public static final short GIANT_GEODE_HALL = 173, DEEP_DARK_CAVES = 175;
+    /**
+     * The deep dark of the ancient city caverns (Oct 27): a giant cavern around every ancient city site under a
+     * mountain (CaveHalls.city), the only biome with the ancient city tag, so cities sit in a cave big enough to hold
+     * them instead of carving their boxes out of rock. Vanilla's deep_dark (163) no longer has cities.
+     */
+    public static final short DEEP_DARK_CITY = 176;
     // Round B: surface cuts (pipeline/CaveSites), each a cave biome for the region under its site.
     public static final short CANYON_RAVINE = 168, SINKHOLE_JUNGLE = 169, BLUE_HOLE = 170, DEEP_SHAFT = 171;
 
@@ -72,7 +78,7 @@ public final class CaveBiomes {
         NAMES.put(MANTLE_CAVE, "terra:mantle_cave");
         NAMES.put(CRYSTALLINE_CHASM, "terra:crystalline_chasm");
         NAMES.put(DEEP_DARK, "minecraft:deep_dark");
-        NAMES.put(DEEP_DARK_CAVES, "terra:deep_dark_caves");
+        NAMES.put(DEEP_DARK_CITY, "terra:deep_dark_city");
         NAMES.put(LAVA_TUBES, "terra:lava_tubes");
         NAMES.put(SLOT_CANYON_CAVES, "terra:slot_canyon_caves");
         NAMES.put(GLACIER_CAVES, "terra:glacier_caves");
@@ -101,9 +107,11 @@ public final class CaveBiomes {
 
     // ---- Shape and depth ----
     /** Region size in blocks: horizontal, vertical. */
-    public static final int REGION_XZ = 112, REGION_Y = 56;
+    public static final int REGION_XZ = 256, REGION_Y = 64;
+    /** The bottom of the world (Terra's dimension types): no region below it gets a rare cave or a hall. */
+    public static final int WORLD_MIN_Y = -64;
     /** How far the region edges are pushed around (blocks), and the size of those bends. */
-    private static final float WARP = 34f, WARP_FREQ = 1f / 80f;
+    private static final float WARP = 64f, WARP_FREQ = 1f / 160f;
     /** Cave biomes start this many blocks under the lowest nearby ground. */
     public static int START_DEPTH = 20;
     /** Andesite, diorite and granite caves stay above the deepslate (vanilla's gradient runs from Y 8 to Y 0). */
@@ -115,6 +123,10 @@ public final class CaveBiomes {
 
     private final FastNoiseLite warpX, warpY, warpZ;
     private final long seed;
+
+    public long seed() {
+        return seed;
+    }
 
     private CaveBiomes(long seed) {
         this.seed = seed;
@@ -184,6 +196,11 @@ public final class CaveBiomes {
      * warped region edges would cut through it.
      */
     public short pick(int x, int y, int z, Surface surface) {
+        // Ancient city caverns first: the city's deep dark wherever its cavern reaches (CaveHalls.city).
+        if (y <= CaveHalls.CITY_FLOOR_Y + CaveHalls.CITY_RY * HALL_BIOME_MARGIN && y >= WORLD_MIN_Y - 16) {
+            CaveHalls.Hall c = CaveHalls.cityNear(this, surface, x, z);
+            if (c != null && c.dist(x, y, z) < HALL_BIOME_MARGIN) return DEEP_DARK_CITY;
+        }
         long u = unwarpedCell(x, y, z);
         short hall = hallId(u, surface);
         if (hall != NONE && hallDistance(hall, u, x, y, z) < HALL_BIOME_MARGIN) return hall;
@@ -320,8 +337,12 @@ public final class CaveBiomes {
      */
     private static final short[] UNCOMMON = {LUSH_CAVES, FUNGAL_CAVES, UNDERGROUND_JUNGLE, ICY_CAVES, FROSTFIRE_CAVES,
             THERMAL_CAVES, INFESTED_CAVES, SPIDER_NEST, COPPER_CAVES, SALT_CAVES, MUD_CAVES, BREAKDOWN_CHAMBERS,
-            UNDERGROUND_LAKES, GLOWWORM_GROTTO, KARST_CAVES};
-    private static final float[] UNCOMMON_WEIGHT = {7f, 4f, 7f, 7f, 3f, 12f, 3f, 3f, 3f, 7f, 7f, 4f, 10f, 5f, 8f};
+            UNDERGROUND_LAKES, GLOWWORM_GROTTO, KARST_CAVES, DEEP_DARK};
+    /**
+     * The deep dark (Oct 27: "way more frequently") is uncommon, not rare: in the deepest layer it takes about half
+     * of the uncommon tier.
+     */
+    private static final float[] UNCOMMON_WEIGHT = {7f, 4f, 7f, 7f, 3f, 12f, 3f, 3f, 3f, 7f, 7f, 4f, 10f, 5f, 8f, 30f};
 
     // ---- Surface groups (Terra's surface biome ids: BiomeClassifier, BiomePatches, RegionalBiomes) ----
     private static final boolean[] COLD = ids(3, 16, 116, 31, 32, 33, 34, 121, 131, 48, 49, 50, 51, 52, 85, 88);
@@ -350,11 +371,11 @@ public final class CaveBiomes {
      * the geology suits it. Vanilla's deep dark only appears under mountains (where ancient cities may generate);
      * Terra's copy of it, without ancient cities, everywhere else deep down.
      */
-    private static final short[] RARE = {MOLTEN_CAVERN, MANTLE_CAVE, CRYSTALLINE_CHASM, DEEP_DARK, DEEP_DARK_CAVES,
-            LAVA_TUBES, SLOT_CANYON_CAVES, GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT,
-            DEEP_DARK_FOREST};
-    // New caves go at the end of a tier, taking weight it held back, so every earlier cave keeps its draws.
-    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 30f, 6f, 10f, 10f, 10f, 7f, 5f, 7f, 5f, 6f};
+    private static final short[] RARE = {MOLTEN_CAVERN, MANTLE_CAVE, CRYSTALLINE_CHASM, LAVA_TUBES, SLOT_CANYON_CAVES,
+            GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT, DEEP_DARK_FOREST};
+    // Surface cuts (ravine, sinkhole jungle, blue hole, deep shaft) weigh more since Oct 27: regions are five times
+    // bigger, and Calvin wants many more big holes, chasms and ravines.
+    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 10f, 10f, 10f, 20f, 10f, 14f, 14f, 8f};
     private static final short[] VERY_RARE = {GIANT_GEODE_HALL, DEEP_DARK_INCURSION, GIANT_SELENITE_BEAMS};
     private static final float[] VERY_RARE_WEIGHT = {0.5f, 0.4f, 0.4f};
     /**
@@ -376,20 +397,20 @@ public final class CaveBiomes {
         int nearWater = -1, ground = Integer.MIN_VALUE + 1;   // looked up only if a cave asks
         // Rare and very rare caves are whole set pieces (halls, chasms, tubes): their depth gates use the middle of the
         // region, so a gate never slices a region in two.
-        if (keepShares) y = unpack(cell, 21) * REGION_Y + REGION_Y / 2;
+        int mid = unpack(cell, 21) * REGION_Y + REGION_Y / 2;
+        if (keepShares) {
+            y = mid;
+            // Nothing rare in regions below the bottom of the world (the halls would be out of it).
+            if (unpack(cell, 21) < Math.floorDiv(WORLD_MIN_Y, REGION_Y)) return NONE;
+        }
         float sum = 0;
         float[] w = new float[ids.length];
         for (int i = 0; i < ids.length; i++) {
             short id = ids[i];
-            boolean ok = eligible(id, y, anchorBiome);
+            boolean ok = eligible(id, id == DEEP_DARK ? mid : y, anchorBiome);
             if (ok && needsInlandWater(id, anchorBiome)) {
                 if (nearWater < 0) nearWater = surface != null && surface.nearInlandWater(anchorX(cell), anchorZ(cell)) ? 1 : 0;
                 ok = nearWater == 1;
-            }
-            if (ok && (id == DEEP_DARK || id == DEEP_DARK_CAVES)) {
-                if (ground == Integer.MIN_VALUE + 1) ground = surface == null ? Integer.MIN_VALUE : surface.groundTop(anchorX(cell), anchorZ(cell));
-                boolean mountain = in(MOUNTAIN, anchorBiome) || (ground != Integer.MIN_VALUE && ground >= MOUNTAIN_GROUND_Y);
-                ok = id == DEEP_DARK ? mountain : !mountain;
             }
             if (ok && isSurfaceCut(id)) {
                 if (ground == Integer.MIN_VALUE + 1) ground = surface == null ? Integer.MIN_VALUE : surface.groundTop(anchorX(cell), anchorZ(cell));
@@ -436,6 +457,14 @@ public final class CaveBiomes {
         };
     }
 
+    /** Whether the surface at (x, z) counts as a mountain: a mountain biome or ground at least MOUNTAIN_GROUND_Y. */
+    public static boolean isMountain(Surface surface, int x, int z) {
+        if (surface == null) return false;
+        if (in(MOUNTAIN, surface.biomeAt(x, z))) return true;
+        int g = surface.groundTop(x, z);
+        return g != Integer.MIN_VALUE && g >= MOUNTAIN_GROUND_Y;
+    }
+
     /** Mountain surfaces (peaks, slopes, groves, windswept hills, taiga mountain) and ground this high count as mountains. */
     private static final boolean[] MOUNTAIN = ids(19, 20, 31, 32, 33, 34, 35, 56, 88);
     public static int MOUNTAIN_GROUND_Y = 260;
@@ -451,7 +480,7 @@ public final class CaveBiomes {
             case LUSH_CAVES -> y <= VANILLA_FEATURE_MAX_Y && in(HUMID, anchorBiome);
             case UNDERGROUND_JUNGLE -> in(TROPICAL, anchorBiome);
             case ICY_CAVES -> in(COLD, anchorBiome);
-            case FROSTFIRE_CAVES -> in(COLD, anchorBiome) && y <= 40;
+            case FROSTFIRE_CAVES -> in(COLD, anchorBiome) && y <= 30;   // as Terralith's: below Y 30
             case THERMAL_CAVES -> y <= VANILLA_FEATURE_MAX_Y && in(HOT_GROUND, anchorBiome);
             case SALT_CAVES -> in(DRY, anchorBiome);
             case MUD_CAVES -> in(WET, anchorBiome) && y >= -16;
@@ -460,7 +489,7 @@ public final class CaveBiomes {
             case MOLTEN_CAVERN -> y <= 20 && (in(HOT_GROUND, anchorBiome) || y <= -28);
             case MANTLE_CAVE -> y <= -24;
             case CRYSTALLINE_CHASM -> y <= 40;
-            case DEEP_DARK, DEEP_DARK_CAVES -> y <= -8;
+            case DEEP_DARK -> y <= -8;   // the region's middle (see fromTier)
             case LAVA_TUBES -> in(HOT_GROUND, anchorBiome) && y >= -40;
             case SLOT_CANYON_CAVES -> in(SANDSTONE_GROUND, anchorBiome) && y >= -16;
             case GLACIER_CAVES -> in(GLACIAL, anchorBiome);
@@ -514,7 +543,7 @@ public final class CaveBiomes {
      * blocks above the bottom of their cell; lava tubes shallow lava pools on the tube's floor.
      */
     public int fluidLevel(long cell, short id) {
-        if (id == MOLTEN_CAVERN) return unpack(cell, 21) * REGION_Y + 6 + (int) (draw2(cell) * 8f);
+        if (id == MOLTEN_CAVERN) return unpack(cell, 21) * REGION_Y + 8 + (int) (draw2(cell) * 10f);
         if (id == LAVA_TUBES) return tubeY(cell) - 3;
         return waterLevel(cell);
     }
@@ -537,18 +566,18 @@ public final class CaveBiomes {
     /** Half-width of a chasm or slot, in noise units (CaveShapes turns it into blocks). */
     public static float shapeWidth(short id) {
         return switch (id) {
-            case MANTLE_CAVE -> 0.32f;
-            case CRYSTALLINE_CHASM -> 0.16f;
+            case MANTLE_CAVE -> 0.36f;
+            case CRYSTALLINE_CHASM -> 0.20f;
             case SLOT_CANYON_CAVES -> 0.18f;
-            case GLACIER_CAVES -> 0.34f;
-            case LAVA_TUBES -> 0.30f;
+            case GLACIER_CAVES -> 0.36f;
+            case LAVA_TUBES -> 0.32f;
             default -> 0f;
         };
     }
 
     /** The centre height of a region's tubes: 18 to 34 blocks above the bottom of its unwarped cell. */
     public int tubeY(long cell) {
-        return unpack(cell, 21) * REGION_Y + 18 + (int) (draw2(cell) * 16f);
+        return unpack(cell, 21) * REGION_Y + 22 + (int) (draw2(cell) * 20f);
     }
 
     /** The centre of a region's giant hall: its anchor, halfway up its unwarped cell (the incursion 2 blocks higher). */
@@ -564,27 +593,28 @@ public final class CaveBiomes {
      */
     public static float hallRX(short id) {
         return switch (id) {
-            case DEEP_DARK_FOREST -> 34f;
-            case DEEP_DARK_INCURSION -> 30f;
-            case GIANT_SELENITE_BEAMS -> 26f;
-            default -> 24f;
+            case DEEP_DARK_FOREST -> 92f;
+            case DEEP_DARK_INCURSION -> 80f;
+            case GIANT_SELENITE_BEAMS -> 60f;
+            default -> 44f;
         };
     }
 
+    // Every hall fits inside its unwarped cell (half 128 sideways, 32 up and down from the centre).
     public static float hallRY(short id) {
         return switch (id) {
-            case DEEP_DARK_FOREST -> 18f;
-            case DEEP_DARK_INCURSION -> 24f;
-            case GIANT_SELENITE_BEAMS -> 17f;
-            default -> 16f;
+            case DEEP_DARK_FOREST -> 28f;
+            case DEEP_DARK_INCURSION -> 29f;
+            case GIANT_SELENITE_BEAMS -> 24f;
+            default -> 27f;
         };
     }
 
     public static float hallFloor(short id) {
         return switch (id) {
-            case DEEP_DARK_FOREST -> 9f;
-            case DEEP_DARK_INCURSION -> 20f;
-            case GIANT_SELENITE_BEAMS -> 10f;
+            case DEEP_DARK_FOREST -> 12f;
+            case DEEP_DARK_INCURSION -> 18f;
+            case GIANT_SELENITE_BEAMS -> 12f;
             default -> hallRY(id);
         };
     }
@@ -602,7 +632,7 @@ public final class CaveBiomes {
      */
     public int waterLevel(long cell) {
         int cy = unpack(cell, 21);
-        return cy * REGION_Y + 12 + (int) (draw2(cell) * 20f);
+        return cy * REGION_Y + 16 + (int) (draw2(cell) * 26f);
     }
 
     // ---- Cave shapes per biome ----
@@ -613,13 +643,14 @@ public final class CaveBiomes {
      */
     public static float chamberBias(short id) {
         return switch (id) {
-            case FUNGAL_CAVES -> 0.10f;
-            case BREAKDOWN_CHAMBERS -> 0.17f;
-            case MOLTEN_CAVERN -> 0.14f;
-            case DEEP_DARK, DEEP_DARK_CAVES -> 0.08f;
-            case DEEP_DARK_FOREST -> 0.08f;
-            case DEEP_DARK_INCURSION -> 0.06f;
-            default -> 0f;
+            case NONE -> 0f;
+            case FUNGAL_CAVES -> 0.18f;
+            case BREAKDOWN_CHAMBERS -> 0.22f;
+            case MOLTEN_CAVERN -> 0.20f;
+            case DEEP_DARK -> 0.16f;
+            case LUSH_CAVES, UNDERGROUND_JUNGLE, UNDERGROUND_LAKES, KARST_CAVES, GLOWWORM_GROTTO -> 0.13f;
+            // Oct 27, "way more grand": every cave biome opens its caverns up, so a cave biome feels like a place.
+            default -> 0.10f;
         };
     }
 
