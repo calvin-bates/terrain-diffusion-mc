@@ -31,9 +31,14 @@ import java.util.Map;
 public final class CaveStone {
     private static final Logger LOG = LoggerFactory.getLogger(CaveStone.class);
 
-    private static final byte NONE = 0, ANDESITE = 1, DIORITE = 2, GRANITE = 3, TUFF = 4, SALT = 5;
+    private static final byte NONE = 0, ANDESITE = 1, DIORITE = 2, GRANITE = 3, TUFF = 4, SALT = 5, KARST = 6;
     private static final ResourceKey<Biome> ANDESITE_CAVES = key("andesite_caves"), DIORITE_CAVES = key("diorite_caves"),
-            GRANITE_CAVES = key("granite_caves"), TUFF_CAVES = key("tuff_caves"), SALT_CAVES = key("salt_caves");
+            GRANITE_CAVES = key("granite_caves"), TUFF_CAVES = key("tuff_caves"), SALT_CAVES = key("salt_caves"),
+            KARST_CAVES = key("karst_caves");
+    /** Karst caves (part two): limestone, as Terra's other limestone, a mix of calcite and diorite, in thick beds. */
+    private static final BlockState[] KARST_BEDS = {Blocks.CALCITE.defaultBlockState(), Blocks.DIORITE.defaultBlockState(),
+            Blocks.CALCITE.defaultBlockState(), Blocks.STONE.defaultBlockState(), Blocks.DIORITE.defaultBlockState(),
+            Blocks.CALCITE.defaultBlockState()};
     /** Salt caves (part two): rock salt layers of calcite with white and pink terracotta bands. */
     private static final BlockState[] SALT_LAYERS = {Blocks.CALCITE.defaultBlockState(), Blocks.CALCITE.defaultBlockState(),
             Blocks.DYED_TERRACOTTA.white().defaultBlockState(), Blocks.CALCITE.defaultBlockState(),
@@ -41,7 +46,8 @@ public final class CaveStone {
             Blocks.CALCITE.defaultBlockState(), Blocks.DYED_TERRACOTTA.pink().defaultBlockState()};
     private static final BlockState STONE = Blocks.STONE.defaultBlockState();
     private static final BlockState[] ROCK = {null, Blocks.ANDESITE.defaultBlockState(), Blocks.DIORITE.defaultBlockState(),
-            Blocks.GRANITE.defaultBlockState(), Blocks.TUFF.defaultBlockState(), Blocks.CALCITE.defaultBlockState()};
+            Blocks.GRANITE.defaultBlockState(), Blocks.TUFF.defaultBlockState(), Blocks.CALCITE.defaultBlockState(),
+            Blocks.CALCITE.defaultBlockState()};
 
     private CaveStone() {
     }
@@ -63,7 +69,7 @@ public final class CaveStone {
         Byte k = memo.get(h);
         if (k == null) {
             k = h.is(ANDESITE_CAVES) ? ANDESITE : h.is(DIORITE_CAVES) ? DIORITE : h.is(GRANITE_CAVES) ? GRANITE
-                    : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : NONE;
+                    : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : h.is(KARST_CAVES) ? KARST : NONE;
             memo.put(h, k);
         }
         return k;
@@ -128,6 +134,10 @@ public final class CaveStone {
                             int bx = x0 + lx, bz = z0 + lz, by = y0 + ly;
                             int band = Math.floorDiv(by * 3 + (bx >> 3) + (bz >> 4), 5);
                             rock = SALT_LAYERS[Math.floorMod(band * 0x9E3779B1 >>> 7, SALT_LAYERS.length)];
+                        } else if (k == KARST) {
+                            int bx = x0 + lx, bz = z0 + lz, by = y0 + ly;
+                            int band = Math.floorDiv(by * 2 + (bx >> 2) + (bz >> 3), 7);
+                            rock = KARST_BEDS[Math.floorMod(band * 0x9E3779B1 >>> 7, KARST_BEDS.length)];
                         }
                         sec.setBlockState(lx, ly, lz, rock, false);
                     }

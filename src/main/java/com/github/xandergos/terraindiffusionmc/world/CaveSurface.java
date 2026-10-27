@@ -41,6 +41,12 @@ public final class CaveSurface implements CaveBiomes.Surface {
     }
 
     private short lookup(int x, int z, int gen) {
+        HeightmapData t = tileAt(x, z, gen);
+        if (t == null || t.biomeIds == null) return -1;
+        return t.biomeIds[Math.min(t.height - 1, z - tileZ)][Math.min(t.width - 1, x - tileX)];
+    }
+
+    private HeightmapData tileAt(int x, int z, int gen) {
         int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
         int tx = (x >> shift) << shift, tz = (z >> shift) << shift;
         if (tile == null || tx != tileX || tz != tileZ || gen != tileGen) {
@@ -50,7 +56,43 @@ public final class CaveSurface implements CaveBiomes.Surface {
             tileZ = tz;
             tileGen = gen;
         }
-        if (tile == null || tile.biomeIds == null) return -1;
-        return tile.biomeIds[Math.min(tile.height - 1, z - tz)][Math.min(tile.width - 1, x - tx)];
+        return tile;
+    }
+
+    @Override
+    public int groundTop(int x, int z) {
+        HeightmapData t = tileAt(x, z, LocalTerrainProvider.cacheGeneration());
+        if (t == null || t.heightmap == null) return Integer.MIN_VALUE;
+        int lz = Math.min(t.height - 1, z - tileZ), lx = Math.min(t.width - 1, x - tileX);
+        if (t.surfaceY != null && t.surfaceY[lz][lx] != Short.MIN_VALUE) return t.surfaceY[lz][lx];
+        return HeightConverter.convertToMinecraftHeight(t.heightmap[lz][lx]) - 1;
+    }
+
+    @Override
+    public int inlandWater(int x, int z) {
+        HeightmapData t = tileAt(x, z, LocalTerrainProvider.cacheGeneration());
+        if (t == null || t.waterY == null) return Integer.MIN_VALUE;
+        short w = t.waterY[Math.min(t.height - 1, z - tileZ)][Math.min(t.width - 1, x - tileX)];
+        return w == Short.MIN_VALUE ? Integer.MIN_VALUE : w;
+    }
+
+    /** {@link #nearInlandWater} per region anchor, memoized (water caves ask once per region). */
+    private final int[] nearX = new int[MEMO], nearZ = new int[MEMO], nearGen = new int[MEMO];
+    private final boolean[] nearVal = new boolean[MEMO];
+    {
+        java.util.Arrays.fill(nearGen, Integer.MIN_VALUE);
+    }
+
+    @Override
+    public boolean nearInlandWater(int x, int z) {
+        int gen = LocalTerrainProvider.cacheGeneration();
+        int slot = Math.floorMod(x * 13 + z * 7, MEMO);
+        if (nearGen[slot] == gen && nearX[slot] == x && nearZ[slot] == z) return nearVal[slot];
+        boolean v = CaveBiomes.Surface.super.nearInlandWater(x, z);
+        nearX[slot] = x;
+        nearZ[slot] = z;
+        nearGen[slot] = gen;
+        nearVal[slot] = v;
+        return v;
     }
 }

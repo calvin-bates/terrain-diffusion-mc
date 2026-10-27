@@ -254,6 +254,10 @@ public final class FeatureFinder {
         for (Map.Entry<Short, String> e : CaveBiomes.NAMES.entrySet()) {
             CAVES.put(e.getValue().replaceAll(".*:", ""), e.getKey());
         }
+        // Not biomes: where caves meet the surface (part two).
+        CAVES.put("cenote", (short) -2);
+        CAVES.put("river_sink", (short) -3);
+        CAVES.put("sea_caves", (short) -4);
     }
 
     /** How far around the player cave biomes are searched, in blocks, and the spacing of the searched columns. */
@@ -278,7 +282,9 @@ public final class FeatureFinder {
                 .withStyle(ChatFormatting.GRAY), false);
         Thread worker = new Thread(() -> {
             try {
-                int[] found = findCave(id, (int) Math.floor(pos.x), (int) Math.floor(pos.z));
+                int px = (int) Math.floor(pos.x), pz = (int) Math.floor(pos.z);
+                int[] found = id == -2 || id == -3 ? findShaft(id == -3, px, pz) : id == -4 ? findSeaCave(px, pz)
+                        : findCave(id, px, pz);
                 server.execute(() -> reportCave(source, name, found, pos));
             } catch (Exception e) {
                 LOG.error("terra-find cave " + word + " failed", e);
@@ -338,14 +344,63 @@ public final class FeatureFinder {
         return null;
     }
 
+    /** The nearest cenote or river sink (CaveSites), searched anchor by anchor out to about 3 km. */
+    private static int[] findShaft(boolean sink, int x0, int z0) {
+        long seed = LocalTerrainProvider.getSeed();
+        CaveBiomes layer = CaveBiomes.forSeed(seed);
+        CaveSurface surface = CaveSurface.get();
+        int r = CaveBiomes.REGION_XZ, half = r / 2;
+        int cx = Math.floorDiv(x0 - half, r), cz = Math.floorDiv(z0 - half, r);
+        for (int ring = 0; ring <= 28; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++) {
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    var s = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.site((cx + dx) * r + half,
+                            (cz + dz) * r + half, layer, surface);
+                    if (s == null || s.sink() != sink) continue;
+                    double d = Math.hypot(s.x() - x0, s.z() - z0);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = new int[]{s.x(), s.top() + 2, s.z()};
+                    }
+                }
+            }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /** The nearest sea cave grotto: a column at the cliff face with air at the waterline. */
+    private static int[] findSeaCave(int x0, int z0) {
+        var sea = com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves.forSeed(LocalTerrainProvider.getSeed());
+        CaveSurface surface = CaveSurface.get();
+        for (int r = 0; r <= 1536; r += 8) {
+            int n = r == 0 ? 1 : Math.max(8, (int) Math.round(2 * Math.PI * r / 8));
+            for (int k = 0; k < n; k++) {
+                double a = 2 * Math.PI * k / n;
+                int x = x0 + (int) Math.round(r * Math.cos(a)), z = z0 + (int) Math.round(r * Math.sin(a));
+                int d = sea.seaDistance(x, z, surface);
+                if (d != 8) continue;
+                int g = surface.groundTop(x, z);
+                for (int y = 64; y <= 68; y++) {
+                    if (sea.value(x, y, z, g, d) <= 0 && sea.value(x, y + 1, z, g, d) <= 0) return new int[]{x, y, z};
+                }
+            }
+        }
+        return null;
+    }
+
     private static boolean caveAir(CaveShapes shapes, int x, int y, int z, int ref, float roof) {
         return y <= ref && shapes.at(x, y, z, CaveSurface.get()) + CaveShapes.roof(ref - y, roof) <= 0;
     }
 
     private static void reportCave(CommandSourceStack source, String name, int[] found, Vec3 from) {
         if (found == null) {
-            source.sendFailure(Component.literal("No " + name + " with an open cave within " + CAVE_RADIUS
-                    + " blocks. Cave biomes are pockets about 110 blocks across; try again from somewhere else."));
+            source.sendFailure(Component.literal("No " + name + " found nearby. Cave biomes are pockets about 110 blocks"
+                    + " across; cenotes need karst caves, river sinks underground lakes under a river, sea caves a rocky"
+                    + " coast. Try again from somewhere else."));
             return;
         }
         int x = found[0], y = found[1], z = found[2];

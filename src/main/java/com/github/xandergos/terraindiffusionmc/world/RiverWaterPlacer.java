@@ -76,6 +76,8 @@ public final class RiverWaterPlacer {
         BlockState gravel = Blocks.GRAVEL.defaultBlockState();
         BlockState stone = Blocks.STONE.defaultBlockState();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        // River sinks (caves plan v1.5 part two): shafts from the bed into a water cave. Their columns keep the hole open.
+        java.util.List<com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.Shaft> sinks = CaveWater.sinksNear(x0, z0);
 
         for (int dz = 0; dz < 16; dz++) {
             for (int dx = 0; dx < 16; dx++) {
@@ -86,6 +88,17 @@ public final class RiverWaterPlacer {
 
                 boolean frozen = freezeOn && (freezeM > 0f ? top >= freezeY : frozenAround(data.biomeIds, lz, lx));
                 short bed = data.surfaceY != null ? data.surfaceY[lz][lx] : RiverCarver.NONE;
+                if (!sinks.isEmpty() && CaveWater.inSink(sinks, x, z)) {
+                    // Water down to the bed, then let it pour into the shaft once the chunk loads.
+                    int lowY = bed != RiverCarver.NONE ? bed : top - 2;
+                    for (int y = top; y >= lowY && y > MIN_Y; y--) {
+                        pos.set(x, y, z);
+                        chunk.setBlockState(pos, (frozen && y == top) ? ice : water, 0);
+                    }
+                    pos.set(x, lowY, z);
+                    chunk.markPosForPostProcessing(pos);
+                    continue;
+                }
                 boolean isLake = data.waterIsLake != null && data.waterIsLake[lz][lx];
                 // Find the ground under the water line. Whether the bed block itself is solid depends on
                 // how the terrain pass rounds, so just look for the first solid block from the top down.

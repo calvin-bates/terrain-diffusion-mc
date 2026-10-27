@@ -1031,6 +1031,46 @@ cave_biome("breakdown_chambers", 156, 0.7,
                   "terra:cave_boulders_stone", "terra:cave_boulders_andesite", "terra:cave_boulders_mossy"])
 # ids 145 (lush caves) and 150 (thermal caves = vanilla sulfur caves) are vanilla's biomes, used as is.
 
+# ---- v1.5 part two round B: water caves (world/CaveWater fills them to their region's water level, lays gravel, clay
+# and sand lake beds; pipeline/CaveSites links some to rivers and opens cenotes over karst caves) ----
+AXOLOTLS = [{"type": "minecraft:axolotl", "count": uniform(4, 6), "weight": 10}]
+FEATURES.update({
+    # Glowworms: thick glow lichen on cave ceilings only.
+    "cave_glowworms": {"type": "minecraft:multiface_growth", "block": "minecraft:glow_lichen", "can_place_on_ceiling": True,
+                       "can_place_on_wall": False, "search_range": 12, "chance_of_spreading": 0.9,
+                       "can_be_placed_on": CAVE_FEATURES["cave_glow_lichen"]["can_be_placed_on"]},
+    # Flowstone: calcite columns rising from karst cave floors and hanging from their ceilings.
+    "cave_flowstone_up": column("up", ("minecraft:calcite", (1, 4))),
+    "cave_flowstone_down": column("down", ("minecraft:calcite", (1, 3)), ({"id": "minecraft:pointed_dripstone",
+        "properties": {"thickness": "tip", "vertical_direction": "down", "waterlogged": "false"}}, (0, 1))),
+})
+POINTED_SPREAD = {"type": "minecraft:offset", "x": {"type": "minecraft:clamped_normal", "deviation": 3.0, "max_inclusive": 10,
+                  "mean": 0.0, "min_inclusive": -10}, "y": {"type": "minecraft:clamped_normal", "deviation": 0.6,
+                  "max_inclusive": 2, "mean": 0.0, "min_inclusive": -2}, "z": {"type": "minecraft:clamped_normal",
+                  "deviation": 3.0, "max_inclusive": 10, "mean": 0.0, "min_inclusive": -10}}
+PLACED.update({
+    "cave_glowworms": cave_placed("terra:cave_glowworms", 320, SCAN_CEILING),
+    "cave_lake_moss_ceiling": cave_placed("minecraft:moss_patch_ceiling", 6, SCAN_CEILING),
+    "cave_lake_clay_pools": cave_placed("minecraft:clay_pool_with_dripleaves", 6, SCAN_FLOOR),
+    "cave_karst_dripstone_clusters": cave_placed("minecraft:dripstone_cluster", uniform(30, 60)),
+    "cave_karst_large_dripstone": cave_placed("minecraft:large_dripstone", uniform(8, 30)),
+    "cave_karst_pointed_dripstone": cave_placed("minecraft:pointed_dripstone", uniform(120, 180),
+                                                post=[{"type": "minecraft:count", "count": uniform(1, 5)}, POINTED_SPREAD]),
+    "cave_flowstone_up": cave_placed("terra:cave_flowstone_up", 30, SCAN_FLOOR),
+    "cave_flowstone_down": cave_placed("terra:cave_flowstone_down", 40, SCAN_CEILING),
+})
+cave_biome("underground_lakes", 157, 0.6, downfall=0.9,
+           under=["terra:cave_lake_moss_ceiling", "terra:cave_lake_clay_pools"],
+           veg=["terra:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
+cave_biome("glowworm_grotto", 158, 0.6, downfall=1.0,
+           under=["terra:cave_lake_clay_pools"],
+           veg=["terra:cave_glowworms"], spawns={"axolotls": AXOLOTLS})
+cave_biome("karst_caves", 159, 0.9, downfall=0.9,
+           under=["terra:cave_karst_dripstone_clusters", "terra:cave_karst_large_dripstone",
+                  "terra:cave_karst_pointed_dripstone", "terra:cave_flowstone_up", "terra:cave_flowstone_down",
+                  "terra:cave_lake_clay_pools"],
+           veg=["terra:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:

@@ -179,6 +179,10 @@ public final class TerrainDiffusionConfig {
     public static boolean caves() { return readBoolean("caves.enabled", true); }
     /** The 3D cave biome layer (andesite, diorite, granite, tuff and dripstone caves so far) and their stone. */
     public static boolean caveBiomes() { return readBoolean("caves.biomes", true); }
+    /** Water caves filled to their water level, river sinks and cenotes (caves plan v1.5 part two). */
+    public static boolean waterCaves() { return readBoolean("caves.water", true); }
+    /** Sea caves in coastal cliffs, and caves opening onto the sea floor in places. */
+    public static boolean seaCaves() { return readBoolean("caves.sea", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */

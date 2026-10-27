@@ -1,0 +1,36 @@
+{
+  "type": "minecraft:block_column",
+  "allowed_placement": {
+    "type": "minecraft:matching_block_tag",
+    "tag": "minecraft:air"
+  },
+  "direction": "down",
+  "prioritize_tip": true,
+  "layers": [
+    {
+      "height": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 3,
+        "min_inclusive": 1
+      },
+      "provider": {
+        "id": "minecraft:calcite"
+      }
+    },
+    {
+      "height": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 1,
+        "min_inclusive": 0
+      },
+      "provider": {
+        "id": "minecraft:pointed_dripstone",
+        "properties": {
+          "thickness": "tip",
+          "vertical_direction": "down",
+          "waterlogged": "false"
+        }
+      }
+    }
+  ]
+}

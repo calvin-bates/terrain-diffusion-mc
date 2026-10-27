@@ -70,6 +70,11 @@ public final class DryCaves {
         HeightmapData tile = null;
         int tileX = Integer.MIN_VALUE, tileZ = Integer.MIN_VALUE;
         boolean anyLand = false;
+        // Sea caves (caves plan v1.5 part two) count as sea, so their passages fill with sea water.
+        com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves seaCaves = TerrainDiffusionConfig.caves()
+                && TerrainDiffusionConfig.seaCaves()
+                ? com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves.forSeed(LocalTerrainProvider.getSeed()) : null;
+        CaveSurface surface = seaCaves == null ? null : CaveSurface.get();
         for (int dz = 0; dz < size; dz++) {
             for (int dx = 0; dx < size; dx++) {
                 int x = x0 + dx, z = z0 + dz;
@@ -87,6 +92,7 @@ public final class DryCaves {
                     int top = HeightConverter.convertToMinecraftHeight(tile.heightmap[lz][lx]) - 1;   // top solid block
                     if (tile.surfaceY != null && tile.surfaceY[lz][lx] != RiverCarver.NONE) top = tile.surfaceY[lz][lx];
                     dry = top >= seaLevel - 1;   // no sea water above it
+                    if (dry && seaCaves != null && seaCaves.active(x, z, surface)) dry = false;
                 }
                 land[dz * size + dx] = dry;
                 anyLand |= dry;

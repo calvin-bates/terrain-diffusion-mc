@@ -30,6 +30,8 @@ public final class CaveView {
     public static final byte PLAIN = 0, SURFACE_LAYER = 1;
     /** Overview-only material: above the ground at this Y. */
     public static final byte ABOVE = 7;
+    /** Not a cave biome: the surface layer. */
+    private static final short SURFACE_CAVE = Short.MIN_VALUE;
 
     private static final List<Short> IDS = new ArrayList<>(CaveBiomes.NAMES.keySet());
 
@@ -59,6 +61,9 @@ public final class CaveView {
         COLORS.put(CaveBiomes.SALT_CAVES, "#f2c9d4");
         COLORS.put(CaveBiomes.MUD_CAVES, "#5b4a3e");
         COLORS.put(CaveBiomes.BREAKDOWN_CHAMBERS, "#8a8f99");
+        COLORS.put(CaveBiomes.UNDERGROUND_LAKES, "#4f86c6");
+        COLORS.put(CaveBiomes.GLOWWORM_GROTTO, "#59d0e8");
+        COLORS.put(CaveBiomes.KARST_CAVES, "#d8d3c0");
     }
 
     public static void color(short id, String hex) {
@@ -186,11 +191,15 @@ public final class CaveView {
         if (TerrainDiffusionConfig.caves() && ref != Integer.MIN_VALUE && y <= ref) {
             v = Math.min(v, caveValue + CaveShapes.roof(ref - y, cols.roof[c]));
         }
+        if (cols.extras != null && cols.extras.any) v = Math.min(v, cols.extras.value(c, cols.x0 + c % cols.w, y, cols.z0 + c / cols.w));
+        short cave = cols.cave(c, y);
         if (v > 0) mat[out] = ROCK;
         else if (y < -54) mat[out] = LAVA;
         else if (y < 63 && !cols.dry[c]) mat[out] = FLOODED;
+        else if (cave >= 0 && CaveBiomes.isWaterCave(cave) && TerrainDiffusionConfig.waterCaves()
+                && y <= cols.waterLevel(c, y)) mat[out] = FLOODED;
         else mat[out] = AIR;
-        bio[out] = cols.biome(c, y);
+        bio[out] = cave == SURFACE_CAVE ? SURFACE_LAYER : code(cave);
     }
 
     /** Per-column terrain data for a block rectangle, from the game's tile cache on this thread. */
@@ -204,6 +213,7 @@ public final class CaveView {
         final CaveBiomes layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
         final CaveSurface surface = CaveSurface.get();
         final boolean biomesOn = TerrainDiffusionConfig.caveBiomes();
+        final CaveExtras extras;
 
         Columns(int x0, int z0, int w, int h) {
             this.x0 = x0;
@@ -230,13 +240,19 @@ public final class CaveView {
                     water[c] = waterAt(x, z);
                 }
             }
+            extras = TerrainDiffusionConfig.caves() ? CaveExtras.of(x0, z0, w, h) : null;
             // The dry-cave rule (DryCaves): a column's caves are dry when every column within 4 blocks is land.
             final int R = 4, mw = w + 2 * R, mh = h + 2 * R;
+            com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves seaCaves = TerrainDiffusionConfig.caves()
+                    && TerrainDiffusionConfig.seaCaves()
+                    ? com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves.forSeed(LocalTerrainProvider.getSeed()) : null;
             boolean[] land = new boolean[mw * mh];
             for (int dz = 0; dz < mh; dz++) {
                 for (int dx = 0; dx < mw; dx++) {
                     int x = x0 - R + dx, z = z0 - R + dz;
-                    land[dz * mw + dx] = waterAt(x, z) != Short.MIN_VALUE || cache.surfaceHeight(x, z, 0) - 1 >= 62;
+                    boolean l = waterAt(x, z) != Short.MIN_VALUE || cache.surfaceHeight(x, z, 0) - 1 >= 62;
+                    if (l && seaCaves != null && waterAt(x, z) == Short.MIN_VALUE && seaCaves.active(x, z, surface)) l = false;
+                    land[dz * mw + dx] = l;
                 }
             }
             for (int dz = 0; dz < h; dz++) {
@@ -256,14 +272,20 @@ public final class CaveView {
             return t.waterY[Math.min(t.height - 1, z - cache.blockStartZ)][Math.min(t.width - 1, x - cache.blockStartX)];
         }
 
-        /** The biome code at column c, height y, as the biome source answers for its 4x4x4 cell. */
-        byte biome(int c, int y) {
-            if (!biomesOn) return SURFACE_LAYER;
+        /** The cave biome at column c, height y, as the biome source answers for its 4x4x4 cell, or SURFACE_CAVE. */
+        short cave(int c, int y) {
+            if (!biomesOn) return SURFACE_CAVE;
             int x = x0 + c % w, z = z0 + c / w;
             int bx = (x & ~3) + 2, by = (y & ~3) + 2, bz = (z & ~3) + 2;
             int r = cache.caveRefTopMemo(bx, bz);
-            if (r == Integer.MIN_VALUE || r - by < CaveBiomes.START_DEPTH) return SURFACE_LAYER;
-            return code(layer.pick(bx, by, bz, surface));
+            if (r == Integer.MIN_VALUE || r - by < CaveBiomes.START_DEPTH) return SURFACE_CAVE;
+            return layer.pick(bx, by, bz, surface);
+        }
+
+        /** The water level of the region holding column c's biome cell at height y (as world/CaveWater fills it). */
+        int waterLevel(int c, int y) {
+            int x = x0 + c % w, z = z0 + c / w;
+            return layer.waterLevel(layer.regionCell((x & ~3) + 2, (y & ~3) + 2, (z & ~3) + 2));
         }
     }
 }

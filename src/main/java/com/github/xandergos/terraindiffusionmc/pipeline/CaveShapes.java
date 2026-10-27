@@ -296,6 +296,17 @@ public final class CaveShapes {
         return ROOF_LAND * (1f - t * t * (3f - 2f * t));
     }
 
+    /** Openings in the sea floor: rarer patches than the land entrances (the sea floor is mostly sealed). */
+    public static float SEA_OPENING_START = 0.56f, SEA_OPENING_FULL = 0.66f;
+
+    /** Roof depth under the sea floor at column (x, z): {@link #ROOF_SEA}, thinning to 0 in rare opening patches. */
+    public float seaRoof(int x, int z) {
+        float e = entrance.GetNoise(x + 7919, z - 6151);
+        if (e <= SEA_OPENING_START) return ROOF_SEA;
+        float t = Math.min(1f, (e - SEA_OPENING_START) / (SEA_OPENING_FULL - SEA_OPENING_START));
+        return ROOF_SEA * (1f - t * t * (3f - 2f * t));
+    }
+
     /**
      * Rock added at {@code depth} blocks under the reference ground for a roof of {@code roofDepth} blocks; above the
      * reference ground (negative depth, the upper part of slopes and cliffs) always enough to stay solid, so caves

@@ -9,7 +9,7 @@ import java.io.File;
  * share, cave biome shares, a seam check and timings. Pure Java: compile with FastNoiseLite, CaveShapes, CaveBiomes.
  *
  *   R=src/main/java/com/github/xandergos/terraindiffusionmc/pipeline
- *   javac -d /tmp/ch $R/FastNoiseLite.java $R/CaveShapes.java $R/CaveBiomes.java tools/caves/CaveHarness.java
+ *   javac -d /tmp/ch $R/FastNoiseLite.java $R/CaveShapes.java $R/CaveBiomes.java $R/CaveSites.java $R/SeaCaves.java tools/caves/CaveHarness.java
  *   (cd /tmp/ch && java -cp . CaveHarness [cheese spaghettiW spaghettiVar noodleW noodleGate])
  */
 
@@ -19,10 +19,23 @@ public class CaveHarness {
     static CaveBiomes B = CaveBiomes.forSeed(SEED);
     /** Synthetic surface biomes in 256-block bands: forest, snowy plains, desert, jungle, swamp, plains. */
     static final short[] BANDS = {8, 3, 5, 23, 6, 1};
-    static CaveBiomes.Surface SURF = (x, z) -> BANDS[Math.floorMod(Math.floorDiv(x + z / 3, 256), BANDS.length)];
+    /** The synthetic surface, with a river along z = 300 and the sea beyond z = 470 under a cliff. */
+    static CaveBiomes.Surface SURF = new CaveBiomes.Surface() {
+        public short biomeAt(int x, int z) {
+            if (z > 470) return 44;
+            return BANDS[Math.floorMod(Math.floorDiv(x + z / 3, 256), BANDS.length)];
+        }
+        public int groundTop(int x, int z) { return surfaceTop(x, z); }
+        public int inlandWater(int x, int z) { return Math.abs(z - 300) < 4 && z <= 470 ? surfaceTop(x, z) + 3 : Integer.MIN_VALUE; }
+    };
+    static SeaCaves SEA = SeaCaves.forSeed(SEED);
+    static java.util.List<CaveSites.Shaft> SHAFTS;
 
     // Synthetic surface: rolling hills around Y 100 with a cliff and a mountain.
     static int surfaceTop(int x, int z) {
+        if (z > 470) return 40;                            // the sea floor
+        if (z > 430) return 100;                           // a sea cliff
+        if (Math.abs(z - 300) < 4) return 92;              // a river channel
         double h = 100 + 18 * Math.sin(x / 90.0) * Math.cos(z / 110.0);
         if (x > 300) h += 60;                      // a 60-block cliff at x = 300
         double d = Math.hypot(x - 420, z - 120);
@@ -67,9 +80,13 @@ public class CaveHarness {
         int top = surfaceTop(x, z), ref = refTop(x, z);
         float v = top + 1 - y;
         if (y <= ref) {
-            float cv = cave + CaveShapes.roof(ref - y, S.landRoof(x, z));
+            float roof = top < 62 ? S.seaRoof(x, z) : Math.abs(z - 300) < 8 ? CaveShapes.ROOF_WATER : S.landRoof(x, z);
+            float cv = cave + CaveShapes.roof(ref - y, roof);
             v = Math.min(v, cv);
         }
+        for (CaveSites.Shaft sh : SHAFTS) v = Math.min(v, sh.value(x, y, z));
+        int sd = SEA.seaDistance(x, z, SURF);
+        if (sd > 0) v = Math.min(v, SEA.value(x, y, z, top, sd));
         return v;
     }
 
@@ -82,6 +99,11 @@ public class CaveHarness {
             CaveShapes.NOODLE_GATE = Float.parseFloat(a[4]);
         }
         int W = 512, minY = -64, H = 700 - minY;
+        SHAFTS = CaveSites.near(0, 0, W - 1, W - 1, B, SURF);
+        System.out.println("shafts: " + SHAFTS);
+        int seaCols = 0;
+        for (int x = 0; x < W; x++) for (int z = 0; z < W; z++) if (SEA.active(x, z, SURF)) seaCols++;
+        System.out.println("sea cave columns: " + seaCols);
         // Volume over the whole area, chunk by chunk (16x16 columns), like the sampler.
         float[] col = new float[16 * 16 * H];
         CaveShapes.Scratch lat = new CaveShapes.Scratch();

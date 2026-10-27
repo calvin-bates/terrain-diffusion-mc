@@ -243,7 +243,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                     int r = cache.caveRefTop(blockX, blockZ);
                     ref[c] = r;
                     roof[c] = switch (cache.caveKind) {
-                        case TileCache.CAVE_SEA -> CaveShapes.ROOF_SEA;
+                        case TileCache.CAVE_SEA -> TerrainDiffusionConfig.seaCaves() ? shapes.seaRoof(blockX, blockZ) : CaveShapes.ROOF_SEA;
                         case TileCache.CAVE_WATER -> CaveShapes.ROOF_WATER;
                         default -> shapes.landRoof(blockX, blockZ);
                     };
@@ -262,6 +262,10 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                         TerrainDiffusionConfig.caveBiomes() ? CaveSurface.get() : null);
                 com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.end("chunk.caveField", t1);
             }
+            // Shapes that may cut through the surface: river sinks, cenotes, sea caves (CaveExtras).
+            long t2 = com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.start();
+            CaveExtras extras = CaveExtras.of(volume.blockX(0), volume.blockZ(0), sizeX, sizeZ);
+            com.github.xandergos.terraindiffusionmc.pipeline.TerraPerf.end("chunk.caveExtras", t2);
             int index = 0;
             for (int z = 0; z < sizeZ; z++) {
                 for (int x = 0; x < sizeX; x++) {
@@ -269,12 +273,19 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                     float rf = roof[c];
                     int top = (cave == null || r == Integer.MIN_VALUE) ? minY - 1 : Math.min(CaveShapes.caveTop(r), caveTop);
                     int base = c * caveRows;
+                    int eTop = extras.any ? extras.maxY(c) : Integer.MIN_VALUE;
+                    int eBottom = eTop == Integer.MIN_VALUE ? Integer.MAX_VALUE : extras.minY(c);
+                    int blockX = volume.blockX(x), blockZ = volume.blockZ(z);
                     for (int y = 0; y < sizeY; y++) {
                         int blockY = minY + y;
                         float v = t - blockY;
                         if (blockY <= top) {
                             float cv = cave[base + y] + CaveShapes.roof(r - blockY, rf);
                             if (cv < v) v = cv;
+                        }
+                        if (blockY >= eBottom && blockY <= eTop) {
+                            float ev = extras.value(c, blockX, blockY, blockZ);
+                            if (ev < v) v = ev;
                         }
                         buffer.set(index++, v);
                     }

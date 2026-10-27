@@ -33,6 +33,8 @@ public final class CaveBiomes {
     public static final short LUSH_CAVES = 145, FUNGAL_CAVES = 146, UNDERGROUND_JUNGLE = 147, ICY_CAVES = 148;
     public static final short FROSTFIRE_CAVES = 149, THERMAL_CAVES = 150, INFESTED_CAVES = 151, SPIDER_NEST = 152;
     public static final short COPPER_CAVES = 153, SALT_CAVES = 154, MUD_CAVES = 155, BREAKDOWN_CHAMBERS = 156;
+    // Part two round B: water caves (world/CaveWater fills them up to their region's water level).
+    public static final short UNDERGROUND_LAKES = 157, GLOWWORM_GROTTO = 158, KARST_CAVES = 159;
 
     /** Id → biome name ({@code terra} namespace unless it has its own), for the biome source and the finder. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -54,6 +56,9 @@ public final class CaveBiomes {
         NAMES.put(SALT_CAVES, "terra:salt_caves");
         NAMES.put(MUD_CAVES, "terra:mud_caves");
         NAMES.put(BREAKDOWN_CHAMBERS, "terra:breakdown_chambers");
+        NAMES.put(UNDERGROUND_LAKES, "terra:underground_lakes");
+        NAMES.put(GLOWWORM_GROTTO, "terra:glowworm_grotto");
+        NAMES.put(KARST_CAVES, "terra:karst_caves");
     }
 
     // ---- Tier shares (fractions of cave regions; tune in testing) ----
@@ -119,6 +124,24 @@ public final class CaveBiomes {
      */
     public interface Surface {
         short biomeAt(int x, int z);
+
+        /** Top solid block of the column (rivers carved), or {@link Integer#MIN_VALUE} if unknown. */
+        default int groundTop(int x, int z) {
+            return Integer.MIN_VALUE;
+        }
+
+        /** Y of the column's river or lake water, or {@link Integer#MIN_VALUE} if it has none. */
+        default int inlandWater(int x, int z) {
+            return Integer.MIN_VALUE;
+        }
+
+        /** Whether a river or lake runs within about 48 blocks of (x, z) (a 5 x 5 grid of samples 24 blocks apart). */
+        default boolean nearInlandWater(int x, int z) {
+            for (int dz = -48; dz <= 48; dz += 24)
+                for (int dx = -48; dx <= 48; dx += 24)
+                    if (inlandWater(x + dx, z + dz) != Integer.MIN_VALUE) return true;
+            return false;
+        }
     }
 
     /**
@@ -204,8 +227,9 @@ public final class CaveBiomes {
      * purpose, not a flagship.
      */
     private static final short[] UNCOMMON = {LUSH_CAVES, FUNGAL_CAVES, UNDERGROUND_JUNGLE, ICY_CAVES, FROSTFIRE_CAVES,
-            THERMAL_CAVES, INFESTED_CAVES, SPIDER_NEST, COPPER_CAVES, SALT_CAVES, MUD_CAVES, BREAKDOWN_CHAMBERS};
-    private static final float[] UNCOMMON_WEIGHT = {7f, 4f, 7f, 7f, 3f, 12f, 3f, 3f, 3f, 7f, 7f, 4f};
+            THERMAL_CAVES, INFESTED_CAVES, SPIDER_NEST, COPPER_CAVES, SALT_CAVES, MUD_CAVES, BREAKDOWN_CHAMBERS,
+            UNDERGROUND_LAKES, GLOWWORM_GROTTO, KARST_CAVES};
+    private static final float[] UNCOMMON_WEIGHT = {7f, 4f, 7f, 7f, 3f, 12f, 3f, 3f, 3f, 7f, 7f, 4f, 10f, 5f, 8f};
 
     // ---- Surface groups (Terra's surface biome ids: BiomeClassifier, BiomePatches, RegionalBiomes) ----
     private static final boolean[] COLD = ids(3, 16, 116, 31, 32, 33, 34, 121, 131, 48, 49, 50, 51, 52, 85, 88);
@@ -233,10 +257,17 @@ public final class CaveBiomes {
     private short uncommon(float t, int y, long cell, Surface surface) {
         if (UNCOMMON.length == 0) return NONE;
         short anchorBiome = surface == null ? -1 : surface.biomeAt(anchorX(cell), anchorZ(cell));
+        int nearWater = -1;   // looked up only if a water cave asks
         float sum = 0;
         float[] w = new float[UNCOMMON.length];
         for (int i = 0; i < UNCOMMON.length; i++) {
-            w[i] = eligible(UNCOMMON[i], y, anchorBiome) ? UNCOMMON_WEIGHT[i] : 0f;
+            short id = UNCOMMON[i];
+            boolean ok = eligible(id, y, anchorBiome);
+            if (ok && needsInlandWater(id, anchorBiome)) {
+                if (nearWater < 0) nearWater = surface != null && surface.nearInlandWater(anchorX(cell), anchorZ(cell)) ? 1 : 0;
+                ok = nearWater == 1;
+            }
+            w[i] = ok ? UNCOMMON_WEIGHT[i] : 0f;
             sum += w[i];
         }
         if (sum <= 0) return NONE;
@@ -262,8 +293,43 @@ public final class CaveBiomes {
             case SALT_CAVES -> in(DRY, anchorBiome);
             case MUD_CAVES -> in(WET, anchorBiome) && y >= -16;
             case INFESTED_CAVES -> y <= 200;
+            // Water caves: above the lava of the deepest caves.
+            case UNDERGROUND_LAKES -> y >= WATER_MIN_Y;
+            case GLOWWORM_GROTTO -> y >= WATER_MIN_Y && (in(HUMID, anchorBiome) || in(TROPICAL, anchorBiome));
+            case KARST_CAVES -> y >= WATER_MIN_Y && (anchorBiome == KARST_SURFACE || in(TROPICAL, anchorBiome)
+                    || in(HUMID, anchorBiome));
             default -> true;   // fungal, spider nest, copper, breakdown chambers: anywhere
         };
+    }
+
+    /** Terra's karst towers surface biome. */
+    private static final short KARST_SURFACE = 92;
+
+    /** Water caves need a river or lake nearby, except karst caves under karst towers. */
+    private static boolean needsInlandWater(short id, short anchorBiome) {
+        return switch (id) {
+            case UNDERGROUND_LAKES, GLOWWORM_GROTTO -> true;
+            case KARST_CAVES -> anchorBiome != KARST_SURFACE;
+            default -> false;
+        };
+    }
+
+    // ---- Water caves ----
+
+    /** No water caves below this (the disabled aquifer puts lava in every cave below Y -54). */
+    public static int WATER_MIN_Y = -40;
+
+    public static boolean isWaterCave(short id) {
+        return id == UNDERGROUND_LAKES || id == GLOWWORM_GROTTO || id == KARST_CAVES;
+    }
+
+    /**
+     * The water level of a region (top water block): 12 to 32 blocks above the bottom of its unwarped cell, so water
+     * caves are part flooded, part dry above. Every block of cave air in the region at or below it is water.
+     */
+    public int waterLevel(long cell) {
+        int cy = unpack(cell, 21);
+        return cy * REGION_Y + 12 + (int) (draw2(cell) * 20f);
     }
 
     // ---- Cave shapes per biome ----

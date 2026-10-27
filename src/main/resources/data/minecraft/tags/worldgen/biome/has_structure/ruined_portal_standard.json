@@ -10,9 +10,11 @@
     "terra:diorite_caves",
     "terra:frostfire_caves",
     "terra:fungal_caves",
+    "terra:glowworm_grotto",
     "terra:granite_caves",
     "terra:icy_caves",
     "terra:infested_caves",
+    "terra:karst_caves",
     "terra:mediterranean_scrub",
     "terra:mud_caves",
     "terra:polar_desert",
@@ -24,6 +26,7 @@
     "terra:tuff_caves",
     "terra:tundra",
     "terra:underground_jungle",
+    "terra:underground_lakes",
     "terra:white_cliffs"
   ]
 }
