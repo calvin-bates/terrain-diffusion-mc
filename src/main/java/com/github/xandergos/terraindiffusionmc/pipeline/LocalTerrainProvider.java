@@ -1070,21 +1070,25 @@ public final class LocalTerrainProvider {
     }
 
     /**
-     * Queues the eight tiles around a tile a chunk just waited for, at prefetch priority, so that while the player is
-     * inside one tile the inference thread (otherwise idle) builds the ones they are likely to walk into next. Demand
-     * always goes first; a prefetch still queued when the player has moved on is dropped ({@link #PREFETCH_STALE_NS}).
+     * Queues the tiles around a tile a chunk just waited for, at prefetch priority and nearest first, so that while the
+     * player is inside one tile the inference thread (otherwise idle) builds the ones they are likely to walk into next.
+     * Two rings: a chunk's caves look at cave sites up to about 370 blocks away (cave mouths, ravines), whose ground
+     * is read from tiles two away. Demand always goes first; a prefetch still queued when the player has moved on is
+     * dropped ({@link #PREFETCH_STALE_NS}).
      */
     private void prefetchAround(int i1, int j1, int i2, int j2) {
         if (!TerrainDiffusionConfig.prefetchTiles()) return;
         int h = i2 - i1, w = j2 - j1;
-        for (int di = -1; di <= 1; di++) {
-            for (int dj = -1; dj <= 1; dj++) {
-                if (di == 0 && dj == 0) continue;
-                int ni = i1 + di * h, nj = j1 + dj * w;
-                CacheKey nk = new CacheKey(ni, nj, ni + h, nj + w);
-                if (CACHE.containsKey(nk) || PENDING.containsKey(nk)) continue;
-                TileTask t = newTileTask(nk, ni, nj, ni + h, nj + w, true);
-                if (PENDING.putIfAbsent(nk, t) == null) INFERENCE_EXECUTOR.execute(t);
+        for (int ring = 1; ring <= 2; ring++) {
+            for (int di = -ring; di <= ring; di++) {
+                for (int dj = -ring; dj <= ring; dj++) {
+                    if (Math.max(Math.abs(di), Math.abs(dj)) != ring) continue;
+                    int ni = i1 + di * h, nj = j1 + dj * w;
+                    CacheKey nk = new CacheKey(ni, nj, ni + h, nj + w);
+                    if (CACHE.containsKey(nk) || PENDING.containsKey(nk)) continue;
+                    TileTask t = newTileTask(nk, ni, nj, ni + h, nj + w, true);
+                    if (PENDING.putIfAbsent(nk, t) == null) INFERENCE_EXECUTOR.execute(t);
+                }
             }
         }
     }
@@ -1272,6 +1276,9 @@ public final class LocalTerrainProvider {
             }
             @Override public float precip(float bi, float bj) {
                 return nativeClimate(climNative, nH, nW, 2, bi / scale - 0.5f - ni0, bj / scale - 0.5f - nj0);
+            }
+            @Override public float tSeason(float bi, float bj) {
+                return nativeClimate(climNative, nH, nW, 1, bi / scale - 0.5f - ni0, bj / scale - 0.5f - nj0);
             }
         };
         try {

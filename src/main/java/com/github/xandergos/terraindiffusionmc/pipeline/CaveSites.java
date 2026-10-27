@@ -115,7 +115,7 @@ public final class CaveSites {
         int az0 = Math.floorDiv(z0 - reach - half, r), az1 = Math.floorDiv(z1 + reach - half, r) + 1;
         for (int az = az0; az <= az1; az++) {
             for (int ax = ax0; ax <= ax1; ax++) {
-                Cut s = site(ax * r + half, az * r + half, layer, surface);
+                Cut s = siteMemo(ax * r + half, az * r + half, layer, surface);
                 if (s == null) continue;
                 float reachS = s.reach();
                 if (s.x() + reachS < x0 || s.x() - reachS > x1 || s.z() + reachS < z0 || s.z() - reachS > z1) continue;
@@ -124,6 +124,64 @@ public final class CaveSites {
         }
         if (formations) shelters(x0, z0, x1, z1, surface, out);
         return out;
+    }
+
+    // ---- Memo: a chunk looks at about 16 anchors up to 370 blocks away, and three passes per chunk ask (terrain, cave
+    // water, surface formations). Each site reads many ground heights (a river sink searches rings out to 80 blocks), so
+    // without this most of a chunk's terrain time went here. Only for surfaces whose answers never change (the world's).
+
+    private static final java.util.concurrent.ConcurrentHashMap<Long, Object> SITES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<Long, Object> SHELTERS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Object NO_CUT = new Object();
+    private static final int MEMO_MAX = 16384;
+    private static volatile long memoStamp = Long.MIN_VALUE;
+
+    /** Clears the memos when the world, seed or formations setting changed since they were filled. */
+    private static void checkStamp(long seed) {
+        long stamp = seed * 31L + LocalTerrainProvider.cacheGeneration() * 2L + (formations ? 1 : 0);
+        if (stamp != memoStamp) {
+            synchronized (SITES) {
+                if (stamp != memoStamp) {
+                    SITES.clear();
+                    SHELTERS.clear();
+                    memoStamp = stamp;
+                }
+            }
+        }
+    }
+
+    private static long cellKey(int a, int b) {
+        return ((long) a << 32) ^ (b & 0xFFFFFFFFL);
+    }
+
+    /** {@link #site}, memoized for the world's surface. */
+    public static Cut siteMemo(int ax, int az, CaveBiomes layer, CaveBiomes.Surface surface) {
+        if (!surface.memoizable()) return site(ax, az, layer, surface);
+        checkStamp(layer.seed());
+        long key = cellKey(ax, az);
+        Object o = SITES.get(key);
+        if (o == null) {
+            Cut c = site(ax, az, layer, surface);
+            if (SITES.size() > MEMO_MAX) SITES.clear();
+            SITES.put(key, c == null ? NO_CUT : c);
+            return c;
+        }
+        return o == NO_CUT ? null : (Cut) o;
+    }
+
+    /** {@link #shelter}, memoized for the world's surface. */
+    private static Shelter shelterMemo(int gx, int gz, CaveBiomes.Surface surface) {
+        if (!surface.memoizable()) return shelter(gx, gz, surface);
+        checkStamp(LocalTerrainProvider.getSeed());
+        long key = cellKey(gx, gz);
+        Object o = SHELTERS.get(key);
+        if (o == null) {
+            Shelter s = shelter(gx, gz, surface);
+            if (SHELTERS.size() > MEMO_MAX) SHELTERS.clear();
+            SHELTERS.put(key, s == null ? NO_CUT : s);
+            return s;
+        }
+        return o == NO_CUT ? null : (Shelter) o;
     }
 
     /** The cut at a region anchor, or null. */
@@ -605,7 +663,7 @@ public final class CaveSites {
         int gz0 = Math.floorDiv(z0 - SHELTER_REACH, SHELTER_CELL), gz1 = Math.floorDiv(z1 + SHELTER_REACH, SHELTER_CELL);
         for (int gz = gz0; gz <= gz1; gz++)
             for (int gx = gx0; gx <= gx1; gx++) {
-                Shelter s = shelter(gx, gz, surface);
+                Shelter s = shelterMemo(gx, gz, surface);
                 if (s == null) continue;
                 float r = s.reach();
                 if (s.cx + r < x0 || s.cx - r > x1 || s.cz + r < z0 || s.cz - r > z1) continue;

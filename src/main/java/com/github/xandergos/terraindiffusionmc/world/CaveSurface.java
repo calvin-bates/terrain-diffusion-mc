@@ -28,6 +28,11 @@ public final class CaveSurface implements CaveBiomes.Surface {
     }
 
     @Override
+    public boolean memoizable() {
+        return true;
+    }
+
+    @Override
     public short biomeAt(int x, int z) {
         int gen = LocalTerrainProvider.cacheGeneration();
         int slot = (Math.floorMod(x * 31 + z * 17, MEMO));

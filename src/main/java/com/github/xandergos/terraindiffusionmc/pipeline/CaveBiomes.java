@@ -172,6 +172,14 @@ public final class CaveBiomes {
             return Integer.MIN_VALUE;
         }
 
+        /**
+         * Whether answers for the current {@code LocalTerrainProvider.cacheGeneration()} never change, so results built
+         * from this surface may be shared between chunks and threads (the world's tiles). False for harnesses.
+         */
+        default boolean memoizable() {
+            return false;
+        }
+
         /** Whether a river or lake runs within about 48 blocks of (x, z) (a 5 x 5 grid of samples 24 blocks apart). */
         default boolean nearInlandWater(int x, int z) {
             for (int dz = -48; dz <= 48; dz += 24)

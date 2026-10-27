@@ -35,6 +35,9 @@ public final class KarstTowers {
     }
 
     /** Whether any column of the tile may lie in a karst zone (the zone noise moves little over 16 blocks). */
+    /** Temperature seasonality (std x 100) under which warm ground counts as tropical; cloud forests use 300-450. */
+    static final float TROPICAL_SEASONALITY = 450f;
+
     public static boolean mayApply(int i1, int j1, int H, int W, float metresPerBlock) {
         int step = Math.max(1, Math.min(16, (int) (80f / metresPerBlock)));
         for (int r = -step; r <= H + step; r += step) {
@@ -64,6 +67,11 @@ public final class KarstTowers {
                 if (ZONE.GetNoise(wx, wz) < ZONE_LEVEL) continue;
                 float t = field.temp(cz, cx), p = field.precip(cz, cx);
                 if (t < 20f || p < 1100f) continue;
+                // Tropical only (Calvin, Oct 27: towers in a plain temperate forest looked out of place): the climate of
+                // jungles and cloud forests, either hot all year or warm with almost no seasons. Warm but seasonal
+                // ground is classified forest, swamp or savanna and gets none.
+                float ts = field.tSeason(cz, cx);
+                if (t < 26f && !(ts < TROPICAL_SEASONALITY)) continue;
                 float g0 = field.ground(cz, cx);
                 if (g0 < -20f || g0 > 450f) continue;
                 if (rivers != null && rivers.test(cz / scale, cx / scale, radius * 1.2f / scale + 2f)) continue;

@@ -181,7 +181,9 @@ public final class RiverWaterPlacer {
 
         // Seal gaps beside the water: a cave mouth or hollow touching a river or lake would otherwise
         // leave a bare wall of water. Fill those blocks up to the water line with stone.
-        int tileH = data.waterY.length, tileW = data.waterY[0].length;
+        // Neighbours across the tile's edge are read from the next tile (the river levels of two tiles can differ by a
+        // block or two along their seam; a step there was left standing as a wall of water).
+        Tiles tiles = new Tiles(data, startX, startZ, tileSize);
         int[] ddz = {-1, 1, 0, 0}, ddx = {0, 0, -1, 1};
         for (int dz = 0; dz < 16; dz++) {
             for (int dx = 0; dx < 16; dx++) {
@@ -189,11 +191,10 @@ public final class RiverWaterPlacer {
                 int lx = x - startX, lz = z - startZ;
                 if (data.waterY[lz][lx] != RiverCarver.NONE) continue;
                 for (int k = 0; k < 4; k++) {
-                    int nz = lz + ddz[k], nx = lx + ddx[k];
-                    if (nz < 0 || nx < 0 || nz >= tileH || nx >= tileW) continue;
-                    short nTop = data.waterY[nz][nx];
+                    int nxw = x + ddx[k], nzw = z + ddz[k];
+                    short nTop = tiles.water(nxw, nzw);
                     if (nTop == RiverCarver.NONE) continue;
-                    short nBed = data.surfaceY != null ? data.surfaceY[nz][nx] : RiverCarver.NONE;
+                    short nBed = tiles.bed(nxw, nzw);
                     int low = nBed != RiverCarver.NONE ? nBed : nTop - 3;
                     for (int y = nTop; y >= low && y > MIN_Y; y--) {
                         pos.set(x, y, z);
@@ -217,15 +218,51 @@ public final class RiverWaterPlacer {
                 // (Lakes too: where a lake drains into a lower stream, its edge water spills down instead of standing as a wall.)
                 boolean stepsDown = false;
                 for (int k = 0; k < 4 && !stepsDown; k++) {
-                    int nz = lz + ddz[k], nx = lx + ddx[k];
-                    if (nz < 0 || nx < 0 || nz >= tileH || nx >= tileW) continue;
-                    short nTop = data.waterY[nz][nx];
+                    short nTop = tiles.water(x + ddx[k], z + ddz[k]);
                     if (nTop != RiverCarver.NONE && nTop < top) stepsDown = true;
                 }
                 if (!stepsDown) continue;
                 pos.set(x, top, z);
                 if (chunk.getBlockState(pos).is(Blocks.WATER)) markForUpdate(chunk, pos.immutable());
             }
+        }
+    }
+
+    /** Water and bed heights by world column: this chunk's tile, or a neighbouring one if it is cached (never built). */
+    private static final class Tiles {
+        final HeightmapData home;
+        final int startX, startZ, size;
+        HeightmapData other;
+        int otherX = Integer.MIN_VALUE, otherZ = Integer.MIN_VALUE;
+
+        Tiles(HeightmapData home, int startX, int startZ, int size) {
+            this.home = home;
+            this.startX = startX;
+            this.startZ = startZ;
+            this.size = size;
+        }
+
+        private HeightmapData tile(int x, int z) {
+            int tx = Math.floorDiv(x, size) * size, tz = Math.floorDiv(z, size) * size;
+            if (tx == startX && tz == startZ) return home;
+            if (tx != otherX || tz != otherZ) {
+                other = LocalTerrainProvider.peekHeightmap(tz, tx, tz + size, tx + size);
+                otherX = tx;
+                otherZ = tz;
+            }
+            return other;
+        }
+
+        short water(int x, int z) {
+            HeightmapData t = tile(x, z);
+            if (t == null || t.waterY == null) return RiverCarver.NONE;
+            return t.waterY[Math.floorMod(z, size)][Math.floorMod(x, size)];
+        }
+
+        short bed(int x, int z) {
+            HeightmapData t = tile(x, z);
+            if (t == null || t.surfaceY == null) return RiverCarver.NONE;
+            return t.surfaceY[Math.floorMod(z, size)][Math.floorMod(x, size)];
         }
     }
 

@@ -39,6 +39,7 @@ public final class CaveWater {
     private static final BlockState[] LAVA_BED = {Blocks.MAGMA_BLOCK.defaultBlockState(), Blocks.BASALT.defaultBlockState(),
             Blocks.BLACKSTONE.defaultBlockState()};
     private static final BlockState WATER = Blocks.WATER.defaultBlockState();
+    private static final BlockState AIR = Blocks.AIR.defaultBlockState();
     private static final BlockState[] BED = {Blocks.GRAVEL.defaultBlockState(), Blocks.GRAVEL.defaultBlockState(),
             Blocks.CLAY.defaultBlockState(), Blocks.CLAY.defaultBlockState(), Blocks.SAND.defaultBlockState()};
 
@@ -164,6 +165,8 @@ public final class CaveWater {
             }
         }
 
+        drain(chunk, placed, minY, height);
+
         // Lake beds, and flow where the water meets open air in this chunk.
         for (int y = Math.max(minY, lowest); y < minY + height; y++) {
             for (int lz = 0; lz < 16; lz++) {
@@ -185,6 +188,67 @@ public final class CaveWater {
                     if (!flow && lz < 15) flow = chunk.getBlockState(pos.set(x, y, z + 1)).isAir();
                     if (flow) chunk.markPosForPostProcessing(pos.set(x, y, z));
                 }
+            }
+        }
+    }
+
+    /**
+     * Keeps only water a basin holds. The fill puts water in every air block of a lake cave's cells up to the lake level,
+     * but the cave's own floor often climbs out of the basin below that level (or the cells reach past the cave's wall
+     * into another cave): that water had nothing to hold it, and it stood as walls and poured down the cave's terraces
+     * once the chunk loaded (Calvin, Oct 27, X -2773 Y 137 Z -2396). A placed block next to open air beside it or under
+     * it is removed, and so are the blocks that leaves exposed, until all the water left is held by rock (or by more
+     * water). Blocks past the chunk's edge can't be seen and count as holding.
+     */
+    private static void drain(ChunkAccess chunk, boolean[] placed, int minY, int height) {
+        int x0 = chunk.getPos().getMinBlockX(), z0 = chunk.getPos().getMinBlockZ();
+        LevelChunkSection[] sections = chunk.getSections();
+        int minSection = chunk.getMinSectionY();
+        int size = 256 * height;
+        int[] queue = new int[1024];
+        int head = 0, tail = 0;
+        boolean[] queued = new boolean[size];
+        for (int i = 0; i < size; i++) {
+            if (!placed[i]) continue;
+            if (tail == queue.length) queue = java.util.Arrays.copyOf(queue, queue.length * 2);
+            queue[tail++] = i;
+            queued[i] = true;
+        }
+        int[] dx = {1, -1, 0, 0, 0}, dz = {0, 0, 1, -1, 0}, dy = {0, 0, 0, 0, -1};
+        while (head < tail) {
+            int i = queue[head++];
+            queued[i] = false;
+            if (!placed[i]) continue;
+            int lx = i & 15, lz = (i >> 4) & 15, y = i / 256 + minY;
+            boolean leaks = false;
+            for (int k = 0; k < 5 && !leaks; k++) {
+                int nx = lx + dx[k], nz = lz + dz[k], ny = y + dy[k];
+                if (nx < 0 || nx > 15 || nz < 0 || nz > 15 || ny < minY) continue;   // unseen: holds
+                int ni = ((ny - minY) * 16 + nz) * 16 + nx;
+                if (placed[ni]) continue;
+                LevelChunkSection sec = sections[(ny >> 4) - minSection];
+                if (sec == null || sec.getBlockState(nx, ny & 15, nz).isAir()) leaks = true;
+            }
+            if (!leaks) continue;
+            placed[i] = false;
+            LevelChunkSection own = sections[(y >> 4) - minSection];
+            if (own != null) own.setBlockState(lx, y & 15, lz, AIR, false);
+            // Its neighbours beside and above may now leak.
+            int[] ox = {1, -1, 0, 0, 0}, oz = {0, 0, 1, -1, 0}, oy = {0, 0, 0, 0, 1};
+            for (int k = 0; k < 5; k++) {
+                int nx = lx + ox[k], nz = lz + oz[k], ny = y + oy[k];
+                if (nx < 0 || nx > 15 || nz < 0 || nz > 15 || ny >= minY + height) continue;
+                int ni = ((ny - minY) * 16 + nz) * 16 + nx;
+                if (!placed[ni] || queued[ni]) continue;
+                if (tail == queue.length) {
+                    // Compact the queue before growing it.
+                    System.arraycopy(queue, head, queue, 0, tail - head);
+                    tail -= head;
+                    head = 0;
+                    if (tail == queue.length) queue = java.util.Arrays.copyOf(queue, queue.length * 2);
+                }
+                queue[tail++] = ni;
+                queued[ni] = true;
             }
         }
     }

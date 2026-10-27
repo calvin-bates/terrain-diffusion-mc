@@ -434,6 +434,11 @@ public final class AridLandforms {
 
         /** Precipitation (mm) at world block (bi, bj). */
         float precip(float bi, float bj);
+
+        /** Temperature seasonality (standard deviation x 100, as in the climate maps) at world block (bi, bj), or NaN. */
+        default float tSeason(float bi, float bj) {
+            return Float.NaN;
+        }
     }
 
     /**

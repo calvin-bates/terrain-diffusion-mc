@@ -692,6 +692,38 @@ public final class RiverCarver {
             if (!grew) break;
         }
 
+        // Pillars: a channel column skipped for steepness whose own cross-section holds water (the rest of the stream's width
+        // flows past it) was left standing as a one-block stone pillar in the middle of a cascade (Calvin, Oct 27, X -2972
+        // Z -2745). Give it the cross-section's water instead. A step across the whole channel (every column of the
+        // cross-section skipped) is a real drop and is still left alone.
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int idx = r * W + c;
+                if (!steepSkip[idx] || chanWater[idx] != NOWATER) continue;
+                float sc = score[idx];
+                if (sc == Float.POSITIVE_INFINITY || sc > 0f) continue;
+                int top = ytop[idx];
+                if (top < SEA_SURFACE_Y) continue;
+                int rad = Math.min(8, (int) Math.ceil(halfWidthAt(zA[idx], scale)) + 1);
+                int lvl = Integer.MAX_VALUE;
+                for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
+                    for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
+                        int j = rr * W + cc;
+                        if (j == idx || steepSkip[j] || chanWater[j] == NOWATER) continue;
+                        float ddx = cpx[j] - cpx[idx], ddz = cpz[j] - cpz[idx];
+                        if (ddx * ddx + ddz * ddz > 2.25f) continue;
+                        lvl = Math.min(lvl, chanWater[j]);
+                    }
+                }
+                if (lvl == Integer.MAX_VALUE || lvl > top) continue;
+                int bed = Math.max(bedFloor[idx], lvl - columnDepth(cA[idx], zA[idx], sc, wA[idx], scale));
+                surfaceY[r][c] = (short) Math.min(top, bed);
+                waterY[r][c] = (short) lvl;
+                chanWater[idx] = lvl;
+                any = true;
+            }
+        }
+
         // Neighbouring channel columns never differ by more than one block of water level. On rough ground the "lowest nearby
         // ground" rule jumps by several blocks between adjacent columns, which showed as broken, stepped water and gaps along
         // the stream. Higher columns are lowered to meet the lower ones (a 45-degree cone around any dip, never raised).
