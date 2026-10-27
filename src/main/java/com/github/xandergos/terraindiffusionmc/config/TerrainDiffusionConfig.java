@@ -183,6 +183,8 @@ public final class TerrainDiffusionConfig {
     public static boolean waterCaves() { return readBoolean("caves.water", true); }
     /** Sea caves in coastal cliffs, and caves opening onto the sea floor in places. */
     public static boolean seaCaves() { return readBoolean("caves.sea", true); }
+    /** Natural cave formations: columns, stalactites and stalagmites, boxwork, crystal rooms (caves plan v1.5 part four). */
+    public static boolean caveFormations() { return readBoolean("caves.formations", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */

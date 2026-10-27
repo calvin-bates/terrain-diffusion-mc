@@ -258,6 +258,9 @@ public final class FeatureFinder {
         CAVES.put("cenote", (short) -2);
         CAVES.put("river_sink", (short) -3);
         CAVES.put("sea_caves", (short) -4);
+        // Formations (part four): rare zones, found zone by zone.
+        CAVES.put("boxwork", (short) -5);
+        CAVES.put("crystal_room", (short) -6);
     }
 
     /** How far around the player cave biomes are searched, in blocks, and the spacing of the searched columns. */
@@ -286,6 +289,8 @@ public final class FeatureFinder {
                 String cutKind = id == -2 ? "cenote" : id == -3 ? "river_sink"
                         : CaveBiomes.isSurfaceCut(id) ? word : null;
                 int[] found = cutKind != null ? findCut(cutKind, px, pz) : id == -4 ? findSeaCave(px, pz)
+                        : id == -5 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_BOXWORK, px, pz)
+                        : id == -6 ? findZone(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.ZONE_CRYSTAL, px, pz)
                         : id >= 0 && CaveBiomes.shapeFamily(id) == CaveBiomes.SHAPE_HALL ? findHall(id, px, pz)
                         : findCave(id, px, pz);
                 server.execute(() -> reportCave(source, name, found, pos));
@@ -388,6 +393,76 @@ public final class FeatureFinder {
                 }
             if (best != null) return best;
         }
+        return null;
+    }
+
+    /**
+     * The nearest formation zone of a type (boxwork, crystal room) that holds a cave ceiling, zone cell by zone cell in
+     * rings out to about 3 km: a standing spot under that ceiling. Only Terra's noise caves are known here.
+     */
+    private static int[] findZone(int type, int x0, int z0) {
+        long seed = LocalTerrainProvider.getSeed();
+        CaveBiomes layer = CaveBiomes.forSeed(seed);
+        CaveShapes shapes = CaveShapes.forSeed(seed);
+        CaveSurface surface = CaveSurface.get();
+        TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
+        int sxz = com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.zoneXZ(type);
+        int sy = com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.zoneY(type);
+        float[] chance = com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.zoneChance(type);
+        int cx0 = Math.floorDiv(x0, sxz), cz0 = Math.floorDiv(z0, sxz);
+        int cyLo = Math.floorDiv(-64, sy), cyHi = Math.floorDiv(320, sy);
+        for (int ring = 0; ring <= 3000 / sxz; ring++) {
+            int[] best = null;
+            double bestD = Double.MAX_VALUE;
+            for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
+                    for (int cy = cyLo; cy <= cyHi; cy++) {
+                        var zone = com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.zone(type, seed, layer,
+                                surface, cx0 + dx, cy, cz0 + dz, chance);
+                        if (zone == null) continue;
+                        double d = Math.hypot(zone.x() - x0, zone.z() - z0);
+                        if (d >= bestD) continue;
+                        int[] spot = zoneSpot(zone, shapes, cache);
+                        if (spot != null) {
+                            bestD = d;
+                            best = spot;
+                        }
+                    }
+                }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /** A standing spot under a cave ceiling inside the zone (columns 3 blocks apart from the middle out), or null. */
+    private static int[] zoneSpot(com.github.xandergos.terraindiffusionmc.pipeline.CaveFormationLayout.Zone zone,
+                                  CaveShapes shapes, TerrainDiffusionDensityFunction.TileCache cache) {
+        int r = (int) zone.r(), ry = (int) (zone.r() * zone.stretch());
+        for (int rr = 0; rr <= r; rr += 3)
+            for (int dz = -rr; dz <= rr; dz += 3)
+                for (int dx = -rr; dx <= rr; dx += 3) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != rr) continue;
+                    int x = zone.x() + dx, z = zone.z() + dz;
+                    int ref = cache.caveRefTop(x, z);
+                    if (ref == Integer.MIN_VALUE) continue;
+                    float roof = switch (cache.caveKind) {
+                        case TerrainDiffusionDensityFunction.TileCache.CAVE_SEA -> CaveShapes.ROOF_SEA;
+                        case TerrainDiffusionDensityFunction.TileCache.CAVE_WATER -> CaveShapes.ROOF_WATER;
+                        default -> shapes.landRoof(x, z);
+                    };
+                    // Coarse steps of 3 for cave air, then up to its ceiling and down to its floor.
+                    for (int y = Math.min(zone.y() + ry, ref - 2); y > zone.y() - ry && y > -60; y -= 3) {
+                        if (!caveAir(shapes, x, y, z, ref, roof)) continue;
+                        int c = y;
+                        while (c < ref && caveAir(shapes, x, c + 1, z, ref, roof)) c++;
+                        if (zone.dist(x, c + 1, z) >= 1f) continue;
+                        int f = y;
+                        while (f > -60 && caveAir(shapes, x, f - 1, z, ref, roof)) f--;
+                        if (c - f >= 2) return new int[]{x, f, z};
+                        y = f;   // skip below this run
+                    }
+                }
         return null;
     }
 
