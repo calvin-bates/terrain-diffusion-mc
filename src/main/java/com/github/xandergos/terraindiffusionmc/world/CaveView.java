@@ -93,17 +93,36 @@ public final class CaveView {
      * from the window's elevation (metres) and surface biomes. Approximate: the surface is the pixel's elevation (no
      * river cutting), and region anchors outside the window use the nearest edge pixel.
      */
-    public static Result overview(short[] surfaceBiomes, float[] elevM, int i1, int j1, int H, int W, int y, int scale) {
+    public static Result overview(short[] surfaceBiomes, float[] elevM, boolean[] inlandWater, int i1, int j1, int H, int W,
+                                  int y, int scale) {
         CaveBiomes layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
         int[] top = new int[H * W];
         for (int i = 0; i < H * W; i++) {
             top[i] = HeightConverter.convertToMinecraftHeight((short) Math.max(Short.MIN_VALUE,
                     Math.min(Short.MAX_VALUE, Math.round(elevM[i]))), scale) - 1;
         }
-        CaveBiomes.Surface surface = (bx, bz) -> {
-            int r = Math.max(0, Math.min(H - 1, Math.floorDiv(bz, scale) - i1));
-            int c = Math.max(0, Math.min(W - 1, Math.floorDiv(bx, scale) - j1));
-            return surfaceBiomes[r * W + c];
+        CaveBiomes.Surface surface = new CaveBiomes.Surface() {
+            private int idx(int bx, int bz) {
+                int r = Math.max(0, Math.min(H - 1, Math.floorDiv(bz, scale) - i1));
+                int c = Math.max(0, Math.min(W - 1, Math.floorDiv(bx, scale) - j1));
+                return r * W + c;
+            }
+
+            @Override
+            public short biomeAt(int bx, int bz) {
+                return surfaceBiomes[idx(bx, bz)];
+            }
+
+            @Override
+            public int groundTop(int bx, int bz) {
+                return top[idx(bx, bz)];
+            }
+
+            @Override
+            public int inlandWater(int bx, int bz) {
+                int i = idx(bx, bz);
+                return inlandWater != null && inlandWater[i] ? top[i] + 1 : Integer.MIN_VALUE;
+            }
         };
         byte[] mat = new byte[H * W], bio = new byte[H * W];
         for (int r = 0; r < H; r++) {

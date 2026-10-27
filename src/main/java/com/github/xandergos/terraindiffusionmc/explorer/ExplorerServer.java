@@ -487,7 +487,7 @@ public final class ExplorerServer {
         if (r != null && key.equals(lastCaveOverviewKey)) return r;
         BiomeView v = biomeView(i1, j1, H, W);
         int scale = Math.max(1, com.github.xandergos.terraindiffusionmc.world.WorldScaleManager.getCurrentScale());
-        r = com.github.xandergos.terraindiffusionmc.world.CaveView.overview(v.biomes(), v.elev(), i1, j1, H, W, y, scale);
+        r = com.github.xandergos.terraindiffusionmc.world.CaveView.overview(v.biomes(), v.elev(), v.water(), i1, j1, H, W, y, scale);
         lastCaveOverview = r;
         lastCaveOverviewKey = key;
         return r;
