@@ -1145,6 +1145,29 @@ cave_biome("giant_geode_hall", 173, 0.8,
 biome("deep_dark_caves", id=175, base="deep_dark", temp=0.8, downfall=0.4, colors={}, veg=[], top=None, cave=True,
       no_tags=["has_structure/ancient_city"])
 
+# ---- v1.5 part three round B: surface cuts (pipeline/CaveSites); these biomes fill the region under each site ----
+FEATURES.update({
+    "cave_sinkhole_floor": patch_cfg(weighted(("minecraft:grass_block", 3), ("minecraft:moss_block", 2)), "floor",
+                                     "terra:cave_jungle_plants", 0.6, depth=(1, 2), radius=(5, 9)),
+})
+PLACED.update({
+    "cave_sinkhole_floor": cave_placed("terra:cave_sinkhole_floor", 90, SCAN_FLOOR),
+    "cave_sinkhole_mega_trees": cave_placed("minecraft:mega_jungle_tree", 3, SCAN_FLOOR, post=[survive("minecraft:jungle_sapling")]),
+    "cave_sinkhole_trees": cave_placed("minecraft:jungle_tree", 10, SCAN_FLOOR, post=[survive("minecraft:jungle_sapling")]),
+    "cave_wall_vines": cave_placed("minecraft:vines", 200),
+})
+cave_biome("canyon_ravine", 168, 0.7, under=["terra:cave_rubble_floor", "terra:cave_moss_floor"],
+           veg=["terra:cave_wall_vines", "terra:cave_glow_lichen_sparse"])
+cave_biome("sinkhole_jungle", 169, 0.95, downfall=0.9,
+           under=["terra:cave_sinkhole_floor", "terra:cave_jungle_ceiling"],
+           veg=["terra:cave_sinkhole_mega_trees", "terra:cave_sinkhole_trees", "terra:cave_jungle_bamboo",
+                "terra:cave_jungle_bushes", "terra:cave_jungle_vines", "terra:cave_glow_lichen_sparse"],
+           spawns_from="jungle")
+cave_biome("blue_hole", 170, 0.8)
+cave_biome("deep_shaft", 171, 0.7, under=["terra:cave_moss_ceiling"],
+           veg=["terra:cave_wall_vines", "terra:cave_glow_lichen_sparse"],
+           add_spawns={"ambient": [{"type": "minecraft:bat", "count": uniform(4, 8), "weight": 40}]})
+
 def write(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:

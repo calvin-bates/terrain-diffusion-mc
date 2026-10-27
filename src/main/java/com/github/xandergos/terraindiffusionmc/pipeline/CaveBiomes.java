@@ -41,6 +41,8 @@ public final class CaveBiomes {
     public static final short MOLTEN_CAVERN = 160, MANTLE_CAVE = 161, CRYSTALLINE_CHASM = 162, DEEP_DARK = 163;
     public static final short LAVA_TUBES = 165, SLOT_CANYON_CAVES = 166, GLACIER_CAVES = 167;
     public static final short GIANT_GEODE_HALL = 173, DEEP_DARK_CAVES = 175;
+    // Round B: surface cuts (pipeline/CaveSites), each a cave biome for the region under its site.
+    public static final short CANYON_RAVINE = 168, SINKHOLE_JUNGLE = 169, BLUE_HOLE = 170, DEEP_SHAFT = 171;
 
     /** Id → biome name ({@code terra} namespace unless it has its own), for the biome source and the finder. */
     public static final Map<Short, String> NAMES = new LinkedHashMap<>();
@@ -74,6 +76,10 @@ public final class CaveBiomes {
         NAMES.put(SLOT_CANYON_CAVES, "terra:slot_canyon_caves");
         NAMES.put(GLACIER_CAVES, "terra:glacier_caves");
         NAMES.put(GIANT_GEODE_HALL, "terra:giant_geode_hall");
+        NAMES.put(CANYON_RAVINE, "terra:canyon_ravine");
+        NAMES.put(SINKHOLE_JUNGLE, "terra:sinkhole_jungle");
+        NAMES.put(BLUE_HOLE, "terra:blue_hole");
+        NAMES.put(DEEP_SHAFT, "terra:deep_shaft");
     }
 
     // ---- Tier shares (fractions of cave regions; tune in testing) ----
@@ -278,15 +284,15 @@ public final class CaveBiomes {
      * Terra's copy of it, without ancient cities, everywhere else deep down.
      */
     private static final short[] RARE = {MOLTEN_CAVERN, MANTLE_CAVE, CRYSTALLINE_CHASM, DEEP_DARK, DEEP_DARK_CAVES,
-            LAVA_TUBES, SLOT_CANYON_CAVES, GLACIER_CAVES};
-    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 30f, 6f, 10f, 10f, 10f};
+            LAVA_TUBES, SLOT_CANYON_CAVES, GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT};
+    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 30f, 6f, 10f, 10f, 10f, 7f, 5f, 7f, 5f};
     private static final short[] VERY_RARE = {GIANT_GEODE_HALL};
     private static final float[] VERY_RARE_WEIGHT = {0.5f};
     /**
      * Weight held for the caves of rounds B and C (deep dark forest, canyon ravine, sinkhole jungle, blue hole, deep
      * shaft; deep dark incursion, selenite beams), plain stone until they exist, so adding them moves nothing.
      */
-    private static final float RARE_RESERVED = 30f, VERY_RARE_RESERVED = 2f;
+    private static final float RARE_RESERVED = 6f, VERY_RARE_RESERVED = 2f;
 
     /**
      * Picks a tier's cave for this region. With {@code reserved} 0 (the uncommon tier) the pick is among the caves
@@ -315,6 +321,10 @@ public final class CaveBiomes {
                 boolean mountain = in(MOUNTAIN, anchorBiome) || (ground != Integer.MIN_VALUE && ground >= MOUNTAIN_GROUND_Y);
                 ok = id == DEEP_DARK ? mountain : !mountain;
             }
+            if (ok && isSurfaceCut(id)) {
+                if (ground == Integer.MIN_VALUE + 1) ground = surface == null ? Integer.MIN_VALUE : surface.groundTop(anchorX(cell), anchorZ(cell));
+                ok = ground != Integer.MIN_VALUE && cutFits(id, anchorBiome, ground, y);
+            }
             w[i] = ok ? weights[i] : 0f;
             sum += w[i];
         }
@@ -335,6 +345,25 @@ public final class CaveBiomes {
             if (target < acc && w[i] > 0) return ids[i];
         }
         return NONE;
+    }
+
+    /** Surface cuts (round B): their region must be the one just under the ground, and the ground must suit them. */
+    public static boolean isSurfaceCut(short id) {
+        return id == CANYON_RAVINE || id == SINKHOLE_JUNGLE || id == BLUE_HOLE || id == DEEP_SHAFT;
+    }
+
+    /** Ground height for ravines and deep shafts outside mountain biomes. */
+    public static int HIGH_GROUND_Y = 150;
+
+    private static boolean cutFits(short id, short anchorBiome, int ground, int regionMid) {
+        if (regionMid > ground || regionMid < ground - 100) return false;
+        return switch (id) {
+            case CANYON_RAVINE -> in(MOUNTAIN, anchorBiome) || ground >= HIGH_GROUND_Y;
+            case DEEP_SHAFT -> in(MOUNTAIN, anchorBiome) || anchorBiome == KARST_SURFACE || ground >= HIGH_GROUND_Y;
+            case SINKHOLE_JUNGLE -> anchorBiome == KARST_SURFACE || in(TROPICAL, anchorBiome);
+            case BLUE_HOLE -> (anchorBiome == 41 || anchorBiome == 42) && ground >= 28 && ground <= 58;
+            default -> true;
+        };
     }
 
     /** Mountain surfaces (peaks, slopes, groves, windswept hills, taiga mountain) and ground this high count as mountains. */

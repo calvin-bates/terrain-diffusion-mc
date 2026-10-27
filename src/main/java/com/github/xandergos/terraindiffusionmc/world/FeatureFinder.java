@@ -283,7 +283,9 @@ public final class FeatureFinder {
         Thread worker = new Thread(() -> {
             try {
                 int px = (int) Math.floor(pos.x), pz = (int) Math.floor(pos.z);
-                int[] found = id == -2 || id == -3 ? findShaft(id == -3, px, pz) : id == -4 ? findSeaCave(px, pz)
+                String cutKind = id == -2 ? "cenote" : id == -3 ? "river_sink"
+                        : CaveBiomes.isSurfaceCut(id) ? word : null;
+                int[] found = cutKind != null ? findCut(cutKind, px, pz) : id == -4 ? findSeaCave(px, pz)
                         : findCave(id, px, pz);
                 server.execute(() -> reportCave(source, name, found, pos));
             } catch (Exception e) {
@@ -344,8 +346,8 @@ public final class FeatureFinder {
         return null;
     }
 
-    /** The nearest cenote or river sink (CaveSites), searched anchor by anchor out to about 3 km. */
-    private static int[] findShaft(boolean sink, int x0, int z0) {
+    /** The nearest cut of a kind (CaveSites: cenote, river sink, ravine, deep shaft, sinkhole jungle, blue hole). */
+    private static int[] findCut(String kind, int x0, int z0) {
         long seed = LocalTerrainProvider.getSeed();
         CaveBiomes layer = CaveBiomes.forSeed(seed);
         CaveSurface surface = CaveSurface.get();
@@ -359,11 +361,13 @@ public final class FeatureFinder {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
                     var s = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.site((cx + dx) * r + half,
                             (cz + dz) * r + half, layer, surface);
-                    if (s == null || s.sink() != sink) continue;
+                    if (s == null || !s.kind().equals(kind)) continue;
                     double d = Math.hypot(s.x() - x0, s.z() - z0);
                     if (d < bestD) {
                         bestD = d;
-                        best = new int[]{s.x(), s.top() + 2, s.z()};
+                        // Arrive just above the surface beside the opening (top() is far above for open cuts).
+                        int y = Math.min(s.top(), surface.groundTop(s.x(), s.z()) + 3) + 2;
+                        best = new int[]{s.x(), y, s.z()};
                     }
                 }
             }

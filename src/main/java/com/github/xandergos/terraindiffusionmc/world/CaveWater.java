@@ -59,10 +59,12 @@ public final class CaveWater {
     static List<CaveSites.Shaft> sinksNear(int x0, int z0) {
         if (!enabled()) return List.of();
         try {
-            List<CaveSites.Shaft> all = CaveSites.near(x0, z0, x0 + 15, z0 + 15,
-                    CaveBiomes.forSeed(LocalTerrainProvider.getSeed()), CaveSurface.get());
-            all.removeIf(s -> !s.sink());
-            return all;
+            List<CaveSites.Shaft> out = new java.util.ArrayList<>();
+            for (CaveSites.Cut c : CaveSites.near(x0, z0, x0 + 15, z0 + 15,
+                    CaveBiomes.forSeed(LocalTerrainProvider.getSeed()), CaveSurface.get())) {
+                if (c instanceof CaveSites.Shaft s && s.sink()) out.add(s);
+            }
+            return out;
         } catch (RuntimeException e) {
             return List.of();
         }
