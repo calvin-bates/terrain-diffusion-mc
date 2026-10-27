@@ -358,6 +358,8 @@ public final class CaveBiomes {
             72, 74, 81, 82, 83);
     private static final boolean[] TROPICAL = ids(23, 24, 25, 72, 73, 92, 95, 134);
     private static final boolean[] HOT_GROUND = ids(86, 87, 93);
+    /** Where sulfur (thermal) caves may lie: the hot ground plus Yellowstone (97), whose surface has sulfur and geysers. */
+    private static final boolean[] THERMAL_GROUND = ids(86, 87, 93, 97);
     private static final boolean[] DRY = ids(5, 26, 63, 71, 79, 80, 84, 89, 90, 91);
     private static final boolean[] WET = ids(6, 58, 64, 66, 76, 77, 134);
 
@@ -501,7 +503,7 @@ public final class CaveBiomes {
             case UNDERGROUND_JUNGLE -> in(TROPICAL, anchorBiome);
             case ICY_CAVES -> in(COLD, anchorBiome);
             case FROSTFIRE_CAVES -> in(COLD, anchorBiome) && y <= 30;   // as Terralith's: below Y 30
-            case THERMAL_CAVES -> y <= VANILLA_FEATURE_MAX_Y && in(HOT_GROUND, anchorBiome);
+            case THERMAL_CAVES -> y <= VANILLA_FEATURE_MAX_Y && in(THERMAL_GROUND, anchorBiome);
             case SALT_CAVES -> in(DRY, anchorBiome);
             case MUD_CAVES -> in(WET, anchorBiome) && y >= -16;
             case INFESTED_CAVES -> y <= 200;
