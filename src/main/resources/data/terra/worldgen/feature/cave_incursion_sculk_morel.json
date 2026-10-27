@@ -1,0 +1,48 @@
+{
+  "type": "minecraft:tree",
+  "decorators": [],
+  "ignore_vines": true,
+  "below_trunk_provider": {
+    "type": "minecraft:rule_based",
+    "rules": [
+      {
+        "if_true": {
+          "type": "minecraft:true"
+        },
+        "then": {
+          "id": "minecraft:stripped_warped_stem",
+          "properties": {
+            "axis": "y"
+          }
+        }
+      }
+    ]
+  },
+  "minimum_size": {
+    "type": "minecraft:two_layers_feature_size",
+    "limit": 0,
+    "lower_size": 0,
+    "upper_size": 0
+  },
+  "trunk_placer": {
+    "type": "minecraft:straight_trunk_placer",
+    "base_height": 3,
+    "height_rand_a": 1,
+    "height_rand_b": 0
+  },
+  "foliage_placer": {
+    "type": "minecraft:fancy_foliage_placer",
+    "radius": 1,
+    "offset": 1,
+    "height": 4
+  },
+  "foliage_provider": {
+    "id": "minecraft:sculk"
+  },
+  "trunk_provider": {
+    "id": "minecraft:stripped_warped_stem",
+    "properties": {
+      "axis": "y"
+    }
+  }
+}

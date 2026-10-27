@@ -1487,27 +1487,72 @@ FEATURES.update({
     # The forest floor: sculk carpets over the deepslate.
     "cave_dd_forest_floor": patch_cfg("minecraft:sculk", "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), radius=(4, 8),
                                       replaceable="#minecraft:sculk_replaceable_world_gen"),
-    # Shriekers that can summon wardens (vanilla's world generation only makes harmless ones outside ancient cities).
-    "cave_summoning_shrieker": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:sculk_shrieker",
-        "properties": {"can_summon": "true", "shrieking": "false", "waterlogged": "false"}}},
 })
-ON_SCULK = {"type": "minecraft:block_predicate_filter",
-            "predicate": {"type": "minecraft:matching_blocks", "offset": [0, -1, 0], "blocks": ["minecraft:sculk"]}}
 PLACED.update({
     "cave_dd_forest_floor": cave_placed("terra:cave_dd_forest_floor", 70, SCAN_FLOOR),
     "cave_dd_warped_trees": cave_placed("terra:cave_dd_warped_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
     "cave_dd_sculk_trees": cave_placed("terra:cave_dd_sculk_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
     "cave_dd_dead_pale_trees": cave_placed("terra:cave_dd_dead_pale_tree", 20, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
-    "cave_incursion_sculk": cave_placed("minecraft:sculk_patch_deep_dark", 200),
-    "cave_summoning_shriekers": cave_placed("terra:cave_summoning_shrieker", 40, SCAN_FLOOR, post=[ON_SCULK]),
 })
-# Deep dark forest and incursion: vanilla's deep dark (sculk, music, no mob spawns) without ancient cities. No
-# Terra-placed sensors or shriekers in the forest; the incursion's shriekers can summon wardens (no natural wardens).
+# Deep dark forest: vanilla's deep dark (sculk, music, no mob spawns) without ancient cities. Shriekers come only from
+# vanilla's sculk patches, and those grown in world generation can summon wardens (no natural warden spawns).
 biome("deep_dark_forest", id=164, base="deep_dark", temp=0.8, downfall=0.4, colors={}, top=None, cave=True,
       veg=["terra:cave_dd_warped_trees", "terra:cave_dd_sculk_trees", "terra:cave_dd_dead_pale_trees"],
       add_steps={7: ["terra:cave_dd_forest_floor"]}, no_tags=["has_structure/ancient_city"])
-biome("deep_dark_incursion", id=172, base="deep_dark", temp=0.8, downfall=0.4, colors={}, top=None, cave=True,
-      veg=["terra:cave_summoning_shriekers"], add_steps={7: ["terra:cave_incursion_sculk"]},
+
+# ---- The deep dark incursion, exactly WWOO's (wythers:deep_dark_incursion, Abbie5/WWOO, Oct 27): plain caves (no
+# hall) 45-115 blocks under cool, humid ground (pipeline/CaveBiomes), vanilla's deep dark sculk, and WWOO's "emergent
+# deep dark vegetation": sculk patches on the cave floors with a rare giant sculk mushroom, stripped warped stems under
+# a sculk cap (WWOO's sculk morel) or a forked stem with verdant froglight caps (its sculk omphalotus illudens). ----
+def sculk_fungus(trunk_placer, foliage_placer, cap):
+    return {"type": "minecraft:tree", "decorators": [], "ignore_vines": True,
+            # WWOO's force_dirt with a stripped warped stem dirt provider: always under the trunk.
+            "below_trunk_provider": {"type": "minecraft:rule_based", "rules": [
+                {"if_true": {"type": "minecraft:true"},
+                 "then": {"id": "minecraft:stripped_warped_stem", "properties": {"axis": "y"}}}]},
+            "minimum_size": {"type": "minecraft:two_layers_feature_size", "limit": 0, "lower_size": 0, "upper_size": 0},
+            "trunk_placer": trunk_placer, "foliage_placer": foliage_placer, "foliage_provider": cap,
+            "trunk_provider": {"id": "minecraft:stripped_warped_stem", "properties": {"axis": "y"}}}
+
+
+FEATURES.update({
+    "cave_incursion_sculk_morel": sculk_fungus(
+        {"type": "minecraft:straight_trunk_placer", "base_height": 3, "height_rand_a": 1, "height_rand_b": 0},
+        {"type": "minecraft:fancy_foliage_placer", "radius": 1, "offset": 1, "height": 4}, {"id": "minecraft:sculk"}),
+    "cave_incursion_sculk_omphalotus": sculk_fungus(
+        {"type": "minecraft:forking_trunk_placer", "base_height": 2, "height_rand_a": 0, "height_rand_b": 2},
+        {"type": "minecraft:acacia_foliage_placer", "radius": 1, "offset": 1},
+        {"id": "minecraft:verdant_froglight", "properties": {"axis": "y"}}),
+    # WWOO's caves/sculk_patch: a sculk floor patch over base stone, 1% of its blocks growing a giant sculk mushroom.
+    "cave_incursion_patch": patch_cfg("minecraft:sculk", "floor", "terra:cave_incursion_fungi", 0.01, radius=(4, 7),
+                                      replaceable="#minecraft:base_stone_overworld"),
+})
+SELECTORS["cave_incursion_fungi"] = ("terra:cave_incursion_sculk_morel", [("terra:cave_incursion_sculk_omphalotus", 0.1)])
+PLACED.update({
+    "cave_incursion_sculk_morel": {"feature": "terra:cave_incursion_sculk_morel", "placement": []},
+    "cave_incursion_sculk_omphalotus": {"feature": "terra:cave_incursion_sculk_omphalotus", "placement": []},
+    # WWOO: 125 per chunk from the bottom of the world to Y 256 (320 blocks), so 100 per 256 blocks of cave layer; the
+    # floor found 12 blocks down, then up or down 1.
+    "cave_incursion_vegetation": cave_placed("terra:cave_incursion_patch", 100, [
+        {"type": "minecraft:environment_scan", "allowed_search_condition": {"type": "minecraft:matching_blocks", "blocks": "minecraft:air"},
+         "direction_of_search": "down", "max_steps": 12, "target_condition": {"type": "minecraft:solid"}},
+        {"type": "minecraft:offset", "x": 0, "y": uniform(-1, 1), "z": 0}]),
+})
+# Its ores are WWOO's list (vanilla's dripstone caves' of its day: large copper veins, no medium diamonds).
+WWOO_INCURSION_ORES = ["minecraft:ore_dirt", "minecraft:ore_gravel", "minecraft:ore_granite_upper",
+    "minecraft:ore_granite_lower", "minecraft:ore_diorite_upper", "minecraft:ore_diorite_lower",
+    "minecraft:ore_andesite_upper", "minecraft:ore_andesite_lower", "minecraft:ore_tuff", "minecraft:ore_coal_upper",
+    "minecraft:ore_coal_lower", "minecraft:ore_iron_upper", "minecraft:ore_iron_middle", "minecraft:ore_iron_small",
+    "minecraft:ore_gold", "minecraft:ore_gold_lower", "minecraft:ore_redstone", "minecraft:ore_redstone_lower",
+    "minecraft:ore_diamond", "minecraft:ore_diamond_large", "minecraft:ore_diamond_buried", "minecraft:ore_lapis",
+    "minecraft:ore_lapis_buried", "minecraft:ore_copper_large", "minecraft:underwater_magma", "minecraft:disk_sand",
+    "minecraft:disk_clay", "minecraft:disk_gravel"]
+# Vanilla's deep dark already gives the rest: geodes, monster rooms, sculk veins and deep dark sculk patches, glow
+# lichen, freeze top layer, no mob spawns, deep dark music and sky #78a7ff. WWOO's colours on top: fog #c0d8ff, water
+# #021f2c, underwater fog #010d13.
+biome("deep_dark_incursion", id=172, base="deep_dark", temp=0.8, downfall=0.4, colors={"water_color": "#021f2c"},
+      top=None, cave=True, veg=["terra:cave_incursion_vegetation"], steps={6: WWOO_INCURSION_ORES},
+      attrs={"minecraft:visual/fog_color": "#c0d8ff", "minecraft:visual/water_fog_color": "#010d13"},
       no_tags=["has_structure/ancient_city"])
 # Giant selenite chamber: hot and dark (no glow lichen), magma patches and amethyst on the floor and on the beams.
 biome("giant_selenite_beams", id=174, base="dripstone_caves", temp=2.0, downfall=0.0, colors={}, veg=[], top=None,

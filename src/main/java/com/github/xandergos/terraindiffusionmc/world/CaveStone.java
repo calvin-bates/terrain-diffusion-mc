@@ -38,11 +38,9 @@ public final class CaveStone {
     // Part three round A.
     private static final byte MOLTEN = 7, TUBES = 8, CRYSTAL = 9, SLOT = 10, GLACIER = 11, GEODE = 12;
     // Round C.
-    private static final byte INCURSION = 13, SELENITE = 14;
-    private static final ResourceKey<Biome> DEEP_DARK_INCURSION = key("deep_dark_incursion"),
-            GIANT_SELENITE_BEAMS = key("giant_selenite_beams");
-    /** Incursion pillars: polished basalt, which sculk does not spread onto, so they stay bare. */
-    private static final BlockState PILLAR = Blocks.POLISHED_BASALT.defaultBlockState();
+    // 13 was the incursion's pillars (polished basalt) until the incursion became WWOO's plain sculk caves (Oct 27).
+    private static final byte SELENITE = 14;
+    private static final ResourceKey<Biome> GIANT_SELENITE_BEAMS = key("giant_selenite_beams");
     /** The selenite chamber's hot walls: granite and tuff with smooth basalt and magma seams. */
     private static final BlockState[] HOT_BEDS = {b(Blocks.GRANITE), b(Blocks.TUFF), b(Blocks.GRANITE),
             b(Blocks.SMOOTH_BASALT), b(Blocks.TUFF), b(Blocks.MAGMA_BLOCK), b(Blocks.GRANITE)};
@@ -106,7 +104,7 @@ public final class CaveStone {
                     : h.is(TUFF_CAVES) ? TUFF : h.is(SALT_CAVES) ? SALT : h.is(KARST_CAVES) ? KARST
                     : h.is(MOLTEN_CAVERN) ? MOLTEN : h.is(LAVA_TUBES) ? TUBES : h.is(CRYSTALLINE_CHASM) ? CRYSTAL
                     : h.is(SLOT_CANYON_CAVES) ? SLOT : h.is(GLACIER_CAVES) ? GLACIER : h.is(GIANT_GEODE_HALL) ? GEODE
-                    : h.is(DEEP_DARK_INCURSION) ? INCURSION : h.is(GIANT_SELENITE_BEAMS) ? SELENITE : NONE;
+                    : h.is(GIANT_SELENITE_BEAMS) ? SELENITE : NONE;
             memo.put(h, k);
         }
         return k;
@@ -191,9 +189,9 @@ public final class CaveStone {
                             if (layer == null) layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
                             rock = geodeShell(layer, bx, by, bz, h);
                             if (rock == null) continue;
-                        } else if (k == INCURSION || k == SELENITE) {
+                        } else if (k == SELENITE) {
                             if (layer == null) layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
-                            rock = k == INCURSION ? incursionRock(layer, bx, by, bz) : seleniteRock(layer, bx, by, bz);
+                            rock = seleniteRock(layer, bx, by, bz);
                             if (rock == null) continue;
                         }
                         else if (k == SALT) {
@@ -250,13 +248,6 @@ public final class CaveStone {
     }
 
     private static final ThreadLocal<HallMemo> HALL_MEMO = ThreadLocal.withInitial(HallMemo::new);
-
-    /** Incursion rock: polished basalt where a pillar stands (CaveHalls), else null (deepslate stays, for the sculk). */
-    private static BlockState incursionRock(CaveBiomes layer, int x, int y, int z) {
-        CaveHalls.Hall hall = hallAt(layer, x, y, z, CaveBiomes.DEEP_DARK_INCURSION);
-        if (hall == null) return null;
-        return hall.detail(LocalTerrainProvider.getSeed(), x, y, z) >= -0.5f ? PILLAR : null;
-    }
 
     /** Selenite chamber rock: calcite beams with amethyst tips (CaveHalls), hot banded rock around them. */
     private static BlockState seleniteRock(CaveBiomes layer, int x, int y, int z) {

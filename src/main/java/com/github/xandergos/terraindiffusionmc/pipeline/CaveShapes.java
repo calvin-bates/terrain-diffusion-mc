@@ -194,7 +194,7 @@ public final class CaveShapes {
         return v;
     }
 
-    /** Hall details at a block (CaveHalls: incursion pillars, selenite beams): positive where rock stays standing. */
+    /** Hall details at a block (CaveHalls: pillars, selenite beams): positive where rock stays standing. */
     private float hallDetail(java.util.List<CaveHalls.Hall> halls, int x, int y, int z) {
         float v = Float.NEGATIVE_INFINITY;
         for (int i = 0; i < halls.size(); i++) {

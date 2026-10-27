@@ -1,9 +1,9 @@
 {
-  "feature": "terra:cave_summoning_shrieker",
+  "feature": "terra:cave_incursion_patch",
   "placement": [
     {
       "type": "minecraft:count",
-      "count": 40
+      "count": 100
     },
     {
       "type": "minecraft:in_square"
@@ -17,8 +17,8 @@
     {
       "type": "minecraft:environment_scan",
       "allowed_search_condition": {
-        "type": "minecraft:matching_block_tag",
-        "tag": "minecraft:air"
+        "type": "minecraft:matching_blocks",
+        "blocks": "minecraft:air"
       },
       "direction_of_search": "down",
       "max_steps": 12,
@@ -29,22 +29,12 @@
     {
       "type": "minecraft:offset",
       "x": 0,
-      "y": 1,
+      "y": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 1,
+        "min_inclusive": -1
+      },
       "z": 0
-    },
-    {
-      "type": "minecraft:block_predicate_filter",
-      "predicate": {
-        "type": "minecraft:matching_blocks",
-        "offset": [
-          0,
-          -1,
-          0
-        ],
-        "blocks": [
-          "minecraft:sculk"
-        ]
-      }
     }
   ]
 }

@@ -241,7 +241,7 @@ public final class CaveBiomes {
     }
 
     /**
-     * The giant hall of a region cell (geode hall, deep dark forest, incursion, selenite chamber), or {@link #NONE}.
+     * The giant hall of a region cell (geode hall, deep dark forest, selenite chamber), or {@link #NONE}.
      * A hall is centred on its cell's anchor and fits inside the unwarped cell, so a point can only be in the hall of
      * the unwarped cell holding it. Cheap when the cell isn't a hall: one hash, no surface lookups.
      */
@@ -372,17 +372,19 @@ public final class CaveBiomes {
      * Terra's copy of it, without ancient cities, everywhere else deep down.
      */
     private static final short[] RARE = {MOLTEN_CAVERN, MANTLE_CAVE, CRYSTALLINE_CHASM, LAVA_TUBES, SLOT_CANYON_CAVES,
-            GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT, DEEP_DARK_FOREST};
+            GLACIER_CAVES, CANYON_RAVINE, SINKHOLE_JUNGLE, BLUE_HOLE, DEEP_SHAFT, DEEP_DARK_FOREST, DEEP_DARK_INCURSION};
     // Surface cuts (ravine, sinkhole jungle, blue hole, deep shaft) weigh more since Oct 27: regions are five times
     // bigger, and Calvin wants many more big holes, chasms and ravines.
-    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 10f, 10f, 10f, 20f, 10f, 14f, 14f, 8f};
-    private static final short[] VERY_RARE = {GIANT_GEODE_HALL, DEEP_DARK_INCURSION, GIANT_SELENITE_BEAMS};
-    private static final float[] VERY_RARE_WEIGHT = {0.5f, 0.4f, 0.4f};
+    // The incursion (WWOO's, Oct 27) moved here from very rare: its own gates (cool humid ground, 45-115 blocks down)
+    // already keep it scarce.
+    private static final float[] RARE_WEIGHT = {6f, 6f, 5f, 10f, 10f, 10f, 20f, 10f, 14f, 14f, 8f, 20f};
+    private static final short[] VERY_RARE = {GIANT_GEODE_HALL, GIANT_SELENITE_BEAMS};
+    private static final float[] VERY_RARE_WEIGHT = {0.5f, 0.4f};
     /**
      * Very rare weight held back as plain stone (the tier totals 2.5 as before, so the geode hall keeps its draws):
      * each very rare cave stays about as rare as the rarest rare caves in the deep layers where they all fit.
      */
-    private static final float VERY_RARE_SPARE = 1.2f;
+    private static final float VERY_RARE_SPARE = 1.6f;
 
     /**
      * Picks a tier's cave for this region. With {@code spare} negative (the uncommon tier) the pick is among the caves
@@ -412,6 +414,10 @@ public final class CaveBiomes {
                 if (nearWater < 0) nearWater = surface != null && surface.nearInlandWater(anchorX(cell), anchorZ(cell)) ? 1 : 0;
                 ok = nearWater == 1;
             }
+            if (ok && id == DEEP_DARK_INCURSION) {
+                if (ground == Integer.MIN_VALUE + 1) ground = surface == null ? Integer.MIN_VALUE : surface.groundTop(anchorX(cell), anchorZ(cell));
+                ok = ground != Integer.MIN_VALUE && y <= ground - INCURSION_MIN_DEPTH && y >= ground - INCURSION_MAX_DEPTH;
+            }
             if (ok && isSurfaceCut(id)) {
                 if (ground == Integer.MIN_VALUE + 1) ground = surface == null ? Integer.MIN_VALUE : surface.groundTop(anchorX(cell), anchorZ(cell));
                 ok = ground != Integer.MIN_VALUE && cutFits(id, anchorBiome, ground, y);
@@ -437,6 +443,12 @@ public final class CaveBiomes {
         }
         return NONE;
     }
+
+    /**
+     * WWOO's incursion sits at multi-noise depth 0.35 to 0.9 (about 45 to 115 blocks under the surface), well above
+     * vanilla's deep dark (1.1 and deeper). Here: the region's middle that far under the ground at its anchor.
+     */
+    public static int INCURSION_MIN_DEPTH = 45, INCURSION_MAX_DEPTH = 115;
 
     /** Surface cuts (round B): their region must be the one just under the ground, and the ground must suit them. */
     public static boolean isSurfaceCut(short id) {
@@ -494,9 +506,12 @@ public final class CaveBiomes {
             case SLOT_CANYON_CAVES -> in(SANDSTONE_GROUND, anchorBiome) && y >= -16;
             case GLACIER_CAVES -> in(GLACIAL, anchorBiome);
             case GIANT_GEODE_HALL -> y <= 30;
-            // Round C: the deep dark forest and incursion in the deepest layers; selenite beams deep or under hot ground.
+            // Round C: the deep dark forest in the deepest layers; selenite beams deep or under hot ground.
             case DEEP_DARK_FOREST -> y <= -8;
-            case DEEP_DARK_INCURSION -> y <= -16;
+            // WWOO's incursion (temperature -0.13 to -0.08, humidity 0.7 and up): under cool, humid ground; its depth
+            // below the ground is checked in fromTier.
+            case DEEP_DARK_INCURSION -> in(HUMID, anchorBiome) && !in(TROPICAL, anchorBiome) && !in(COLD, anchorBiome)
+                    && !in(HOT_GROUND, anchorBiome);
             case GIANT_SELENITE_BEAMS -> y <= 0 || (in(HOT_GROUND, anchorBiome) && y <= 40);
             // Water caves: above the lava of the deepest caves.
             case UNDERGROUND_LAKES -> y >= WATER_MIN_Y;
@@ -558,7 +573,7 @@ public final class CaveBiomes {
             case MANTLE_CAVE, CRYSTALLINE_CHASM -> SHAPE_CHASM;
             case SLOT_CANYON_CAVES -> SHAPE_SLOT;
             case LAVA_TUBES, GLACIER_CAVES -> SHAPE_TUBE;
-            case GIANT_GEODE_HALL, DEEP_DARK_FOREST, DEEP_DARK_INCURSION, GIANT_SELENITE_BEAMS -> SHAPE_HALL;
+            case GIANT_GEODE_HALL, DEEP_DARK_FOREST, GIANT_SELENITE_BEAMS -> SHAPE_HALL;
             default -> SHAPE_NONE;
         };
     }
@@ -580,21 +595,20 @@ public final class CaveBiomes {
         return unpack(cell, 21) * REGION_Y + 22 + (int) (draw2(cell) * 20f);
     }
 
-    /** The centre of a region's giant hall: its anchor, halfway up its unwarped cell (the incursion 2 blocks higher). */
+    /** The centre of a region's giant hall: its anchor, halfway up its unwarped cell. */
     public static int hallY(long cell, short id) {
-        return unpack(cell, 21) * REGION_Y + REGION_Y / 2 + (id == DEEP_DARK_INCURSION ? 2 : 0);
+        return unpack(cell, 21) * REGION_Y + REGION_Y / 2;
     }
 
     /**
      * Hall sizes (blocks): horizontal and vertical radius, and how far below the centre the floor is cut flat (the
      * vertical radius for a round floor). The geode hall is a full ellipsoid; the deep dark forest a wide low hall
-     * with a flat floor for its trees; the incursion a towering hall (with stone pillars, CaveHalls); the selenite
+     * with a flat floor for its trees; the selenite
      * chamber a flat-floored hall crossed by crystal beams (CaveHalls).
      */
     public static float hallRX(short id) {
         return switch (id) {
             case DEEP_DARK_FOREST -> 92f;
-            case DEEP_DARK_INCURSION -> 80f;
             case GIANT_SELENITE_BEAMS -> 60f;
             default -> 44f;
         };
@@ -604,7 +618,6 @@ public final class CaveBiomes {
     public static float hallRY(short id) {
         return switch (id) {
             case DEEP_DARK_FOREST -> 28f;
-            case DEEP_DARK_INCURSION -> 29f;
             case GIANT_SELENITE_BEAMS -> 24f;
             default -> 27f;
         };
@@ -613,17 +626,16 @@ public final class CaveBiomes {
     public static float hallFloor(short id) {
         return switch (id) {
             case DEEP_DARK_FOREST -> 12f;
-            case DEEP_DARK_INCURSION -> 18f;
             case GIANT_SELENITE_BEAMS -> 12f;
             default -> hallRY(id);
         };
     }
 
-    /** Hall details CaveHalls adds per block: none, stone pillars (incursion), crystal beams (selenite). */
+    /** Hall details CaveHalls adds per block: none, stone pillars (unused since the incursion became WWOO's), crystal beams (selenite). */
     public static final int DETAIL_NONE = 0, DETAIL_PILLARS = 1, DETAIL_BEAMS = 2;
 
     public static int hallDetail(short id) {
-        return id == DEEP_DARK_INCURSION ? DETAIL_PILLARS : id == GIANT_SELENITE_BEAMS ? DETAIL_BEAMS : DETAIL_NONE;
+        return id == GIANT_SELENITE_BEAMS ? DETAIL_BEAMS : DETAIL_NONE;
     }
 
     /**

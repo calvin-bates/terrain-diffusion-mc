@@ -363,7 +363,7 @@ public final class FeatureFinder {
     }
 
     /**
-     * The nearest giant hall of a kind (geode hall, deep dark forest, incursion, selenite chamber), cell by cell in
+     * The nearest giant hall of a kind (geode hall, deep dark forest, selenite chamber), cell by cell in
      * rings out to about 6 km: a standing spot on the hall's floor near its centre, or the centre itself.
      */
     private static int[] findHall(short id, int x0, int z0) {

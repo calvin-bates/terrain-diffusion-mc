@@ -1,10 +1,10 @@
 package com.github.xandergos.terraindiffusionmc.pipeline;
 
 /**
- * Per-block details inside the giant halls of part three round C (caves plan v1.5): the bare stone pillars of the
- * deep dark incursion and the crystal beams of the giant selenite chamber. Both are solid shapes kept standing in the
- * hall's air ({@link CaveShapes} takes the maximum with them where the hall is fully in), and world/CaveStone paints
- * them (polished basalt pillars, calcite beams).
+ * Per-block details inside the giant halls of part three round C (caves plan v1.5): stone pillars (made for the deep
+ * dark incursion's hall, unused since Oct 27, when the incursion became WWOO's plain sculk caves) and the crystal beams
+ * of the giant selenite chamber. Both are solid shapes kept standing in the hall's air ({@link CaveShapes} takes the
+ * maximum with them where the hall is fully in), and world/CaveStone paints the beams (calcite).
  *
  * <p>Everything is a pure function of world position, the seed and the hall's centre and size, so it is the same
  * whichever chunk or tile asks. Values are densities in blocks: positive inside the shape.
@@ -184,7 +184,7 @@ public final class CaveHalls {
     public static final int PILLAR_CELL = 18;
 
     /**
-     * The pillars at (x, y, z) in an incursion hall centred at (cx, cy, cz) with radii rx, ry: positive inside a
+     * The pillars at (x, y, z) in a pillared hall centred at (cx, cy, cz) with radii rx, ry: positive inside a
      * pillar. Pillars are 3 to 7 blocks in radius, wobble a little, flare where they meet the floor and the ceiling, and
      * stay away from the hall's walls; about one in five is broken (a stalagmite and a stalactite that don't meet).
      */
