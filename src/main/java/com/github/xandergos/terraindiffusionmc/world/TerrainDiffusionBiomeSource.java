@@ -176,7 +176,7 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
             int refTop = cache.caveRefTopMemo(blockX + 2, blockZ + 2);
             int blockY = QuartPos.toBlock(y) + 2;
             if (refTop != Integer.MIN_VALUE && refTop - blockY >= CaveBiomes.START_DEPTH) {
-                short cave = CaveBiomes.forSeed(LocalTerrainProvider.getSeed()).pick(blockX + 2, blockY, blockZ + 2);
+                short cave = CaveBiomes.forSeed(LocalTerrainProvider.getSeed()).pick(blockX + 2, blockY, blockZ + 2, CaveSurface.get());
                 if (cave >= 0 && cave < byId.length && byId[cave] != null) return byId[cave];
             }
         }

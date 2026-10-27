@@ -77,6 +77,10 @@ public final class ExplorerServer {
         server.createContext("/api/features", ExplorerServer::handleFeatures);
         server.createContext("/api/detail_biomes", ExplorerServer::handleDetailBiomes);
         server.createContext("/api/biome_palette", ExplorerServer::handleBiomePalette);
+        server.createContext("/api/detail_caves", ExplorerServer::handleDetailCaves);
+        server.createContext("/api/cave_palette", ExplorerServer::handleCavePalette);
+        server.createContext("/api/cave_view.png", ExplorerServer::handleCaveViewPng);
+        server.createContext("/api/cave_view_raw", ExplorerServer::handleCaveViewRaw);
         // Single-thread executor matches Python's threaded=False
         server.setExecutor(Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "terrain-explorer-http");
@@ -469,6 +473,153 @@ public final class ExplorerServer {
         }
     }
 
+    // =========================================================================
+    // Caves (caves plan v1.5): overview on the detail map, block slices and sections
+    // =========================================================================
+
+    private static volatile com.github.xandergos.terraindiffusionmc.world.CaveView.Result lastCaveOverview, lastCaveView;
+    private static volatile String lastCaveOverviewKey, lastCaveViewKey;
+
+    private static com.github.xandergos.terraindiffusionmc.world.CaveView.Result caveOverview(int i1, int j1, int H, int W, int y)
+            throws Exception {
+        String key = LocalTerrainProvider.getSeed() + "/" + i1 + "/" + j1 + "/" + H + "/" + W + "/" + y;
+        var r = lastCaveOverview;
+        if (r != null && key.equals(lastCaveOverviewKey)) return r;
+        BiomeView v = biomeView(i1, j1, H, W);
+        int scale = Math.max(1, com.github.xandergos.terraindiffusionmc.world.WorldScaleManager.getCurrentScale());
+        r = com.github.xandergos.terraindiffusionmc.world.CaveView.overview(v.biomes(), v.elev(), i1, j1, H, W, y, scale);
+        lastCaveOverview = r;
+        lastCaveOverviewKey = key;
+        return r;
+    }
+
+    /** Slice or section around block (x, z): view=slice (size x size at y), ew or ns (size long, full height). */
+    private static com.github.xandergos.terraindiffusionmc.world.CaveView.Result caveView(Map<String, String> q) {
+        int x = getInt(q, "x", 0), z = getInt(q, "z", 0), y = getInt(q, "y", 20);
+        int size = Math.max(64, Math.min(1024, getInt(q, "size", 512)));
+        String view = q.getOrDefault("view", "slice");
+        String key = LocalTerrainProvider.getSeed() + "/" + x + "/" + z + "/" + y + "/" + size + "/" + view;
+        var r = lastCaveView;
+        if (r != null && key.equals(lastCaveViewKey)) return r;
+        int half = size / 2;
+        r = switch (view) {
+            case "ew" -> com.github.xandergos.terraindiffusionmc.world.CaveView.section(x - half, z, size, true, 1024);
+            case "ns" -> com.github.xandergos.terraindiffusionmc.world.CaveView.section(x, z - half, size, false, 1024);
+            default -> com.github.xandergos.terraindiffusionmc.world.CaveView.slice(x - half, z - half, size, y);
+        };
+        lastCaveView = r;
+        lastCaveViewKey = key;
+        return r;
+    }
+
+    private static int hexRgb(String hex) {
+        return Integer.parseInt(hex.substring(1), 16);
+    }
+
+    /** Material and biome codes to colours: rock in its cave biome's colour, cave air the same much darker. */
+    private static byte[] cavePng(com.github.xandergos.terraindiffusionmc.world.CaveView.Result r) throws IOException {
+        Map<Integer, Integer> biomeRgb = new java.util.HashMap<>();
+        for (Map<String, Object> e : com.github.xandergos.terraindiffusionmc.world.CaveView.palette()) {
+            biomeRgb.put((Integer) e.get("code"), hexRgb((String) e.get("color")));
+        }
+        BufferedImage img = new BufferedImage(r.w(), r.h(), BufferedImage.TYPE_INT_RGB);
+        for (int row = 0; row < r.h(); row++) {
+            for (int c = 0; c < r.w(); c++) {
+                int i = row * r.w() + c;
+                int b = biomeRgb.getOrDefault((int) r.biome()[i], 0xff00ff);
+                int rgb = switch (r.material()[i]) {
+                    case 0 -> 0x9fc3e6;            // sky
+                    case 7 -> 0x30384a;            // above the ground at this Y (overview)
+                    case 1 -> 0x3b7ddd;            // river or lake
+                    case 2 -> 0x1f4c9e;            // sea
+                    case 5 -> 0x1d3566;            // flooded cave
+                    case 6 -> 0xe8641e;            // lava
+                    case 4 -> scaleRgb(b, 0.22f);  // cave air
+                    default -> b;                  // rock
+                };
+                img.setRGB(c, row, rgb);
+            }
+        }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", baos);
+        return baos.toByteArray();
+    }
+
+    private static int scaleRgb(int rgb, float f) {
+        int r = (int) (((rgb >> 16) & 255) * f), g = (int) (((rgb >> 8) & 255) * f), b = (int) ((rgb & 255) * f);
+        return (r << 16) | (g << 8) | b;
+    }
+
+    /** Raw codes: w*h material bytes then w*h biome bytes; headers give the window and the Y of each row. */
+    private static void sendCaveRaw(HttpExchange ex, com.github.xandergos.terraindiffusionmc.world.CaveView.Result r)
+            throws IOException {
+        int n = r.w() * r.h();
+        byte[] payload = new byte[2 * n];
+        System.arraycopy(r.material(), 0, payload, 0, n);
+        System.arraycopy(r.biome(), 0, payload, n, n);
+        ex.getResponseHeaders().set("Content-Type", "application/octet-stream");
+        ex.getResponseHeaders().set("X-Width", String.valueOf(r.w()));
+        ex.getResponseHeaders().set("X-Height", String.valueOf(r.h()));
+        ex.getResponseHeaders().set("X-X0", String.valueOf(r.x0()));
+        ex.getResponseHeaders().set("X-Z0", String.valueOf(r.z0()));
+        ex.getResponseHeaders().set("X-YTop", String.valueOf(r.yTop()));
+        ex.getResponseHeaders().set("X-StepY", String.valueOf(r.stepY()));
+        ex.getResponseHeaders().set("X-View", r.view());
+        ex.getResponseHeaders().set("Access-Control-Expose-Headers", "X-Width, X-Height, X-X0, X-Z0, X-YTop, X-StepY, X-View");
+        ex.sendResponseHeaders(200, payload.length);
+        ex.getResponseBody().write(payload);
+    }
+
+    /** GET /api/detail_caves — the caves overview's codes (same window parameters as detail.png, plus cy). */
+    private static void handleDetailCaves(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        try {
+            Map<String, String> q = parseQuery(ex.getRequestURI());
+            int detailSize = getInt(q, "detail_size", 1024);
+            int centerI = getInt(q, "ci", 0) * 256 + getInt(q, "pan_i", 0);
+            int centerJ = getInt(q, "cj", 0) * 256 + getInt(q, "pan_j", 0);
+            int half = detailSize / 2;
+            sendCaveRaw(ex, caveOverview(centerI - half, centerJ - half, detailSize, detailSize, getInt(q, "cy", 20)));
+        } catch (Exception e) {
+            LOG.error("detail_caves error", e);
+            sendError(ex, 400, String.valueOf(e.getMessage()));
+        } finally {
+            ex.close();
+        }
+    }
+
+    private static void handleCavePalette(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        sendJson(ex, 200, com.github.xandergos.terraindiffusionmc.world.CaveView.palette());
+    }
+
+    private static void handleCaveViewPng(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        try {
+            byte[] png = cavePng(caveView(parseQuery(ex.getRequestURI())));
+            ex.getResponseHeaders().set("Content-Type", "image/png");
+            ex.sendResponseHeaders(200, png.length);
+            ex.getResponseBody().write(png);
+        } catch (Exception e) {
+            LOG.error("cave_view error", e);
+            sendError(ex, 400, String.valueOf(e.getMessage()));
+        } finally {
+            ex.close();
+        }
+    }
+
+    private static void handleCaveViewRaw(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
+        try {
+            sendCaveRaw(ex, caveView(parseQuery(ex.getRequestURI())));
+        } catch (Exception e) {
+            LOG.error("cave_view_raw error", e);
+            sendError(ex, 400, String.valueOf(e.getMessage()));
+        } finally {
+            ex.close();
+        }
+    }
+
     /** GET /api/biome_palette → {id: {name, color}} for every biome id the map can show. */
     private static void handleBiomePalette(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
@@ -498,6 +649,14 @@ public final class ExplorerServer {
 
             if (mode.equals("biomes")) {
                 byte[] png = biomesPng(biomeView(centerI - half, centerJ - half, H, W));
+                ex.getResponseHeaders().set("Content-Type", "image/png");
+                ex.sendResponseHeaders(200, png.length);
+                ex.getResponseBody().write(png);
+                return;
+            }
+
+            if (mode.equals("caves")) {
+                byte[] png = cavePng(caveOverview(centerI - half, centerJ - half, H, W, getInt(q, "cy", 20)));
                 ex.getResponseHeaders().set("Content-Type", "image/png");
                 ex.sendResponseHeaders(200, png.length);
                 ex.getResponseBody().write(png);

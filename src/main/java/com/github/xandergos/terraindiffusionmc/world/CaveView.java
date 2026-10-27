@@ -1,0 +1,256 @@
+package com.github.xandergos.terraindiffusionmc.world;
+
+import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveBiomes;
+import com.github.xandergos.terraindiffusionmc.pipeline.CaveShapes;
+import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
+import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The explorer's cave views (caves plan v1.5): an overview of the cave biome layer at one Y over the detail map's
+ * window (one pixel per native pixel), and block-resolution horizontal slices and vertical sections of the caves
+ * themselves. Slices and sections use exactly the game's functions (tiles, cave reference ground, roof, cave field,
+ * cave biome layer, the dry-cave rule), so what they show is what generates, apart from vanilla's carver tunnels,
+ * ores and features.
+ */
+public final class CaveView {
+    private CaveView() {
+    }
+
+    // ---- Codes shared with the explorer page ----
+
+    /** Material codes. */
+    public static final byte SKY = 0, INLAND_WATER = 1, SEA = 2, ROCK = 3, AIR = 4, FLOODED = 5, LAVA = 6;
+    /** Biome codes: 0 plain stone caves, 1 the surface layer (no cave biome this close to the ground), 2+ cave biomes. */
+    public static final byte PLAIN = 0, SURFACE_LAYER = 1;
+    /** Overview-only material: above the ground at this Y. */
+    public static final byte ABOVE = 7;
+
+    private static final List<Short> IDS = new ArrayList<>(CaveBiomes.NAMES.keySet());
+
+    private static byte code(short caveId) {
+        if (caveId < 0) return PLAIN;
+        int k = IDS.indexOf(caveId);
+        return k < 0 ? PLAIN : (byte) (2 + k);
+    }
+
+    /** Colours of the cave biomes (rock); the page darkens them for cave air. */
+    private static final Map<Short, String> COLORS = new LinkedHashMap<>();
+    static {
+        COLORS.put(CaveBiomes.ANDESITE_CAVES, "#9a9c9e");
+        COLORS.put(CaveBiomes.DIORITE_CAVES, "#e2e0da");
+        COLORS.put(CaveBiomes.GRANITE_CAVES, "#b7735c");
+        COLORS.put(CaveBiomes.TUFF_CAVES, "#6f7562");
+        COLORS.put(CaveBiomes.DRIPSTONE_CAVES, "#9a6b45");
+    }
+
+    public static void color(short id, String hex) {
+        COLORS.put(id, hex);
+    }
+
+    /** The palette for the page: [{code, name, color}] for plain stone, the surface layer and every cave biome. */
+    public static List<Map<String, Object>> palette() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        out.add(Map.of("code", (int) PLAIN, "name", "plain stone caves", "color", "#5d5f66"));
+        out.add(Map.of("code", (int) SURFACE_LAYER, "name", "surface layer (surface biome)", "color", "#857c6c"));
+        for (short id : IDS) {
+            String name = CaveBiomes.NAMES.get(id).replaceAll(".*:", "").replace('_', ' ');
+            out.add(Map.of("code", 2 + IDS.indexOf(id), "name", name, "color", COLORS.getOrDefault(id, "#ff00ff")));
+        }
+        return out;
+    }
+
+    /** A rendered view: per pixel a material code and a biome code; rows top to bottom. */
+    public record Result(int w, int h, byte[] material, byte[] biome, int x0, int z0, int yTop, int stepY, String view) {
+    }
+
+    // ---- Overview over the detail map (native pixels) ----
+
+    /**
+     * Cave biome codes at block height {@code y} for a window of native pixels (one pixel = {@code scale} blocks),
+     * from the window's elevation (metres) and surface biomes. Approximate: the surface is the pixel's elevation (no
+     * river cutting), and region anchors outside the window use the nearest edge pixel.
+     */
+    public static Result overview(short[] surfaceBiomes, float[] elevM, int i1, int j1, int H, int W, int y, int scale) {
+        CaveBiomes layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
+        int[] top = new int[H * W];
+        for (int i = 0; i < H * W; i++) {
+            top[i] = HeightConverter.convertToMinecraftHeight((short) Math.max(Short.MIN_VALUE,
+                    Math.min(Short.MAX_VALUE, Math.round(elevM[i]))), scale) - 1;
+        }
+        CaveBiomes.Surface surface = (bx, bz) -> {
+            int r = Math.max(0, Math.min(H - 1, Math.floorDiv(bz, scale) - i1));
+            int c = Math.max(0, Math.min(W - 1, Math.floorDiv(bx, scale) - j1));
+            return surfaceBiomes[r * W + c];
+        };
+        byte[] mat = new byte[H * W], bio = new byte[H * W];
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int i = r * W + c;
+                int ref = top[i];
+                if (scale <= 4) {   // the cave reference ground looks 4 blocks around: about one pixel at small scales
+                    if (c > 0) ref = Math.min(ref, top[i - 1]);
+                    if (c < W - 1) ref = Math.min(ref, top[i + 1]);
+                    if (r > 0) ref = Math.min(ref, top[i - W]);
+                    if (r < H - 1) ref = Math.min(ref, top[i + W]);
+                }
+                if (y > top[i]) {
+                    mat[i] = elevM[i] < 0 && y < 63 ? SEA : ABOVE;
+                    bio[i] = SURFACE_LAYER;
+                    continue;
+                }
+                mat[i] = ROCK;
+                int bx = (j1 + c) * scale + scale / 2, bz = (i1 + r) * scale + scale / 2;
+                bio[i] = ref - y < CaveBiomes.START_DEPTH ? SURFACE_LAYER : code(layer.pick(bx, y, bz, surface));
+            }
+        }
+        return new Result(W, H, mat, bio, j1 * scale, i1 * scale, y, 1, "overview");
+    }
+
+    // ---- Block-resolution slices and sections ----
+
+    /** A horizontal slice of {@code size} x {@code size} blocks at height {@code y}, x0/z0 its north-west corner. */
+    public static Result slice(int x0, int z0, int size, int y) {
+        Columns cols = new Columns(x0, z0, size, size);
+        CaveShapes shapes = CaveShapes.forSeed(LocalTerrainProvider.getSeed());
+        CaveShapes.Scratch scratch = new CaveShapes.Scratch();
+        float[] cave = new float[16 * 16];
+        byte[] mat = new byte[size * size], bio = new byte[size * size];
+        for (int gz = 0; gz < size; gz += 16) {
+            for (int gx = 0; gx < size; gx += 16) {
+                int sx = Math.min(16, size - gx), sz = Math.min(16, size - gz);
+                shapes.fill(x0 + gx, z0 + gz, sx, sz, y, 1, cave, scratch);
+                for (int dz = 0; dz < sz; dz++) {
+                    for (int dx = 0; dx < sx; dx++) {
+                        int c = (gz + dz) * size + gx + dx;
+                        classify(cols, c, y, cave[dx + dz * sx], mat, bio, c);
+                    }
+                }
+            }
+        }
+        return new Result(size, size, mat, bio, x0, z0, y, 1, "slice");
+    }
+
+    /**
+     * A vertical section {@code len} blocks long through (x0, z0), running east (along x) or south (along z), from the
+     * highest ground in it (plus a little sky) down to the bottom of the world, one row per {@code stepY} blocks.
+     */
+    public static Result section(int x0, int z0, int len, boolean alongX, int maxRows) {
+        Columns cols = alongX ? new Columns(x0, z0, len, 1) : new Columns(x0, z0, 1, len);
+        int minY = -64, maxTop = minY;
+        for (int k = 0; k < len; k++) maxTop = Math.max(maxTop, cols.target[k]);
+        int yTop = Math.min(2031, maxTop + 12);
+        int span = yTop - minY + 1;
+        int stepY = Math.max(1, (span + maxRows - 1) / maxRows);
+        int rows = (span + stepY - 1) / stepY;
+        CaveShapes shapes = CaveShapes.forSeed(LocalTerrainProvider.getSeed());
+        float[] cave = new float[len * span];
+        shapes.fill(x0, z0, alongX ? len : 1, alongX ? 1 : len, minY, span, cave, new CaveShapes.Scratch());
+        byte[] mat = new byte[len * rows], bio = new byte[len * rows];
+        for (int r = 0; r < rows; r++) {
+            int y = yTop - r * stepY;
+            for (int k = 0; k < len; k++) {
+                classify(cols, k, y, cave[k * span + (y - minY)], mat, bio, r * len + k);
+            }
+        }
+        return new Result(len, rows, mat, bio, x0, z0, yTop, stepY, alongX ? "ew" : "ns");
+    }
+
+    /** What block (column c, height y) is, mirroring the terrain density, the dry-cave rule and the biome source. */
+    private static void classify(Columns cols, int c, int y, float caveValue, byte[] mat, byte[] bio, int out) {
+        int target = cols.target[c], ref = cols.ref[c];
+        if (y >= target) {
+            mat[out] = cols.water[c] != Short.MIN_VALUE && y <= cols.water[c] ? INLAND_WATER : y < 63 ? SEA : SKY;
+            bio[out] = SURFACE_LAYER;
+            return;
+        }
+        float v = target - y;
+        if (TerrainDiffusionConfig.caves() && ref != Integer.MIN_VALUE && y <= ref) {
+            v = Math.min(v, caveValue + CaveShapes.roof(ref - y, cols.roof[c]));
+        }
+        if (v > 0) mat[out] = ROCK;
+        else if (y < -54) mat[out] = LAVA;
+        else if (y < 63 && !cols.dry[c]) mat[out] = FLOODED;
+        else mat[out] = AIR;
+        bio[out] = cols.biome(c, y);
+    }
+
+    /** Per-column terrain data for a block rectangle, from the game's tile cache on this thread. */
+    private static final class Columns {
+        final int x0, z0, w, h;
+        final int[] target, ref;
+        final float[] roof;
+        final short[] water;
+        final boolean[] dry;
+        final TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
+        final CaveBiomes layer = CaveBiomes.forSeed(LocalTerrainProvider.getSeed());
+        final CaveSurface surface = CaveSurface.get();
+        final boolean biomesOn = TerrainDiffusionConfig.caveBiomes();
+
+        Columns(int x0, int z0, int w, int h) {
+            this.x0 = x0;
+            this.z0 = z0;
+            this.w = w;
+            this.h = h;
+            int n = w * h;
+            target = new int[n];
+            ref = new int[n];
+            roof = new float[n];
+            water = new short[n];
+            dry = new boolean[n];
+            CaveShapes shapes = CaveShapes.forSeed(LocalTerrainProvider.getSeed());
+            for (int dz = 0; dz < h; dz++) {
+                for (int dx = 0; dx < w; dx++) {
+                    int x = x0 + dx, z = z0 + dz, c = dz * w + dx;
+                    target[c] = cache.surfaceHeight(x, z, 0);
+                    ref[c] = cache.caveRefTop(x, z);
+                    roof[c] = switch (cache.caveKind) {
+                        case TerrainDiffusionDensityFunction.TileCache.CAVE_SEA -> CaveShapes.ROOF_SEA;
+                        case TerrainDiffusionDensityFunction.TileCache.CAVE_WATER -> CaveShapes.ROOF_WATER;
+                        default -> shapes.landRoof(x, z);
+                    };
+                    water[c] = waterAt(x, z);
+                }
+            }
+            // The dry-cave rule (DryCaves): a column's caves are dry when every column within 4 blocks is land.
+            final int R = 4, mw = w + 2 * R, mh = h + 2 * R;
+            boolean[] land = new boolean[mw * mh];
+            for (int dz = 0; dz < mh; dz++) {
+                for (int dx = 0; dx < mw; dx++) {
+                    int x = x0 - R + dx, z = z0 - R + dz;
+                    land[dz * mw + dx] = waterAt(x, z) != Short.MIN_VALUE || cache.surfaceHeight(x, z, 0) - 1 >= 62;
+                }
+            }
+            for (int dz = 0; dz < h; dz++) {
+                for (int dx = 0; dx < w; dx++) {
+                    boolean ok = true;
+                    for (int oz = -R; oz <= R && ok; oz++)
+                        for (int ox = -R; ox <= R && ok; ox++)
+                            if (ox * ox + oz * oz <= R * R && !land[(dz + R + oz) * mw + dx + R + ox]) ok = false;
+                    dry[dz * w + dx] = ok;
+                }
+            }
+        }
+
+        private short waterAt(int x, int z) {
+            HeightmapData t = cache.tile(x, z);
+            if (t == null || t.waterY == null) return Short.MIN_VALUE;
+            return t.waterY[Math.min(t.height - 1, z - cache.blockStartZ)][Math.min(t.width - 1, x - cache.blockStartX)];
+        }
+
+        /** The biome code at column c, height y, as the biome source answers for its 4x4x4 cell. */
+        byte biome(int c, int y) {
+            if (!biomesOn) return SURFACE_LAYER;
+            int x = x0 + c % w, z = z0 + c / w;
+            int bx = (x & ~3) + 2, by = (y & ~3) + 2, bz = (z & ~3) + 2;
+            int r = cache.caveRefTopMemo(bx, bz);
+            if (r == Integer.MIN_VALUE || r - by < CaveBiomes.START_DEPTH) return SURFACE_LAYER;
+            return code(layer.pick(bx, by, bz, surface));
+        }
+    }
+}

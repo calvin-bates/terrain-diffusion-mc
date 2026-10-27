@@ -299,6 +299,7 @@ public final class FeatureFinder {
         long seed = LocalTerrainProvider.getSeed();
         CaveBiomes biomes = CaveBiomes.forSeed(seed);
         CaveShapes shapes = CaveShapes.forSeed(seed);
+        CaveSurface surface = CaveSurface.get();
         TerrainDiffusionDensityFunction.TileCache cache = TerrainDiffusionDensityFunction.TileCache.get();
         for (int r = 0; r <= CAVE_RADIUS; r += CAVE_STEP) {
             int[] best = null;
@@ -315,11 +316,11 @@ public final class FeatureFinder {
                     default -> shapes.landRoof(x, z);
                 };
                 for (int y = ref - CaveBiomes.START_DEPTH; y > -60; y--) {
-                    if ((y & 3) == 0 && biomes.pick(x, y, z) != id) {
+                    if ((y & 3) == 0 && biomes.pick(x, y, z, surface) != id) {
                         y -= 3;   // skip the rest of this 4-block step quickly
                         continue;
                     }
-                    if (biomes.pick(x, y, z) != id) continue;
+                    if (biomes.pick(x, y, z, surface) != id) continue;
                     // Two air blocks over a rock floor.
                     if (caveAir(shapes, x, y, z, ref, roof) && caveAir(shapes, x, y + 1, z, ref, roof)
                             && !caveAir(shapes, x, y - 1, z, ref, roof)) {

@@ -510,6 +510,15 @@
   .bl-item.on { border-color: var(--accent); background: var(--accent-dim); }
   .bl-sw { width: 11px; height: 11px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); flex-shrink: 0; }
   .bl-pct { color: var(--muted); }
+  /* ── Caves (v1.5) ── */
+  .map-area.three { grid-template-columns: 0.8fr 1fr 1fr; }
+  .map-area.three .panel-header { flex-wrap: wrap; }
+  #cave-img { image-rendering: pixelated; object-fit: contain; }
+  .cave-params { font-size: 11px; gap: 6px; flex-wrap: wrap; }
+  .cave-params input { flex: 0 0 64px; width: 64px; min-width: 64px; }
+  .cave-params .hint { color: var(--muted); }
+  #cave-panel .panel-header button.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  #cave-close { margin-left: 4px; }
   .feat-dot {
     position: absolute;
     width: 10px; height: 10px;
@@ -651,8 +660,15 @@
         <button id="mode-temperature">Temperature</button>
         <button id="mode-rivers">Rivers</button>
         <button id="mode-biomes">Biomes</button>
+        <button id="mode-caves">Caves</button>
         <span class="panel-info" id="detail-info">click coarse map to load</span>
       </div>
+      <div class="panel-header cave-params" id="cave-params" style="display:none">
+        <span>Cave biomes at Y</span><input id="cave-y" type="number" value="20" step="8" min="-64" max="2031">
+        <button id="cave-y-down">−16</button><button id="cave-y-up">+16</button>
+        <span class="hint">Click the map to open a block slice there.</span>
+      </div>
+      <div class="panel-header biome-legend" id="cave-legend" style="display:none"></div>
       <div class="panel-header" id="river-params" style="font-size:11px;gap:6px;flex-wrap:wrap">
         <span>Rivers: stream</span><input id="rp-sq" type="number" value="2400" step="100" style="width:64px">
         <span>river</span><input id="rp-rq" type="number" value="9000" step="1000" style="width:70px">
@@ -673,6 +689,31 @@
         </div>
         <button class="pan-btn btn-right" id="detail-right">→</button>
         <button class="pan-btn btn-down"  id="detail-down">↓</button>
+      </div>
+    </div>
+
+    <!-- Cave slice (v1.5) -->
+    <div class="map-panel" id="cave-panel" style="display:none">
+      <div class="panel-header">
+        <span class="panel-title">Cave Slice</span>
+        <button class="active" id="cave-view-slice" title="Horizontal slice at the chosen Y">Slice</button>
+        <button id="cave-view-ew" title="Vertical section running east–west through the centre">E–W</button>
+        <button id="cave-view-ns" title="Vertical section running north–south through the centre">N–S</button>
+        <span class="panel-info" id="cave-info"></span>
+        <button id="cave-close" title="Close">×</button>
+      </div>
+      <div class="panel-header cave-params">
+        <span class="hint" id="cave-hint">Wheel: Y ±4 · click: copy /tp · double-click a section: slice at that Y</span>
+      </div>
+      <div class="nav-grid">
+        <button class="pan-btn btn-up"    id="cave-up">↑</button>
+        <button class="pan-btn btn-left"  id="cave-left">←</button>
+        <div class="map-container" id="cave-container">
+          <img id="cave-img" class="map-img" alt="cave slice">
+          <div class="spinner" id="cave-spinner"></div>
+        </div>
+        <button class="pan-btn btn-right" id="cave-right">→</button>
+        <button class="pan-btn btn-down"  id="cave-down">↓</button>
       </div>
     </div>
 
@@ -901,7 +942,7 @@
 
   function detailUrl() {
     const { seed, detailCI: ci, detailCJ: cj, detailPanI: pi, detailPanJ: pj, detailMode: mode } = state;
-    return `/api/detail.png?ci=${ci}&cj=${cj}&detail_size=${DETAIL_SIZE}&pan_i=${pi}&pan_j=${pj}&mode=${mode}&sq=${rv('sq')}&rq=${rv('rq')}&mq=${rv('mq')}&la=${rv('la')}&ld=${rv('ld')}&_s=${seed}`;
+    return `/api/detail.png?ci=${ci}&cj=${cj}&detail_size=${DETAIL_SIZE}&pan_i=${pi}&pan_j=${pj}&mode=${mode}&sq=${rv('sq')}&rq=${rv('rq')}&mq=${rv('mq')}&la=${rv('la')}&ld=${rv('ld')}&cy=${caveY()}&_s=${seed}`;
   }
 
   // ── Load helpers ──
@@ -928,6 +969,10 @@
     state.biomeRaw = null;
     biomeHl.style.display = 'none';
     biomeLegend.style.display = state.detailMode === 'biomes' ? '' : 'none';
+    state.caveOverview = null;
+    caveParams.style.display = state.detailMode === 'caves' ? '' : 'none';
+    caveLegend.style.display = state.detailMode === 'caves' ? '' : 'none';
+    if (state.detailMode === 'caves') caveLegend.innerHTML = '<span class="bl-pct">Working out cave biomes…</span>';
     if (state.detailMode === 'biomes') biomeLegend.innerHTML = '<span class="bl-pct">Classifying biomes…</span>';
     detailFeatures.innerHTML = '';
     detailImg.style.display = 'block';
@@ -975,6 +1020,7 @@
     detailSpinner.classList.remove('active');
     loadDetailRaw();
     if (state.detailMode === 'biomes') loadBiomeRaw();
+    if (state.detailMode === 'caves') loadCaveOverview();
     loadDetailFeatures();
   };
   detailImg.onerror = () => {
@@ -1074,6 +1120,10 @@
       html += `<div class="ht-row"><span class="ht-label">Biome</span><span class="ht-val">${biomeName(id)}</span></div>`;
       if (br.water[idx]) html += `<div class="ht-row"><span class="ht-label">Water</span><span class="ht-val">river or lake</span></div>`;
     }
+    const co = state.caveOverview;
+    if (state.detailMode === 'caves' && co && co.h === h && co.w === w) {
+      html += `<div class="ht-row"><span class="ht-label">At Y ${caveY()}</span><span class="ht-val">${caveOverviewLabel(co, idx)}</span></div>`;
+    }
     showTooltip(e, html);
   });
   detailImg.addEventListener('mouseleave', hideTooltip);
@@ -1086,6 +1136,12 @@
     const row = Math.floor((e.clientY - rect.top)  / rect.height * h);
     if (row < 0 || row >= h || col < 0 || col >= w) return;
     showDetailCoords(row, col);
+    if (state.detailMode === 'caves') {
+      const scale = state.coordScale;
+      const i = state.detailCI * 256 + state.detailPanI - h / 2 + row;
+      const j = state.detailCJ * 256 + state.detailPanJ - w / 2 + col;
+      openCaveView(Math.round(j * scale), Math.round(i * scale), 'slice');
+    }
   });
 
   // ── Channel buttons ──
@@ -1105,7 +1161,7 @@
   }
 
   // ── Detail mode ──
-  const DETAIL_MODES = ['relief', 'elevation', 'temperature', 'rivers', 'biomes'];
+  const DETAIL_MODES = ['relief', 'elevation', 'temperature', 'rivers', 'biomes', 'caves'];
   DETAIL_MODES.forEach(mode => {
     document.getElementById(`mode-${mode}`).addEventListener('click', () => {
       state.detailMode = mode;
@@ -1202,6 +1258,209 @@
     ctx.putImageData(img, 0, 0);
     biomeHl.style.display = 'block';
   }
+
+  // ── Caves (v1.5) ──
+  // Caves mode on the detail map: cave biomes at one Y, one pixel per native pixel. Clicking it opens the Cave Slice
+  // panel: block-resolution horizontal slices and vertical sections computed with the game's own cave functions.
+  const caveParams = document.getElementById('cave-params');
+  const caveLegend = document.getElementById('cave-legend');
+  const caveYInput = document.getElementById('cave-y');
+  const cavePanel  = document.getElementById('cave-panel');
+  const caveImg    = document.getElementById('cave-img');
+  const caveSpinner = document.getElementById('cave-spinner');
+  const caveInfo   = document.getElementById('cave-info');
+  const mapArea    = document.querySelector('.map-area');
+  const CAVE_MATERIAL = ['open air', 'river or lake', 'sea', 'rock', 'cave air', 'flooded cave', 'lava', 'above the ground'];
+  state.cavePalette = [];
+  state.caveOverview = null;
+  state.cave = null;      // {x, z, view}
+  state.caveRaw = null;
+
+  function caveY() {
+    const v = parseInt(caveYInput.value);
+    return isNaN(v) ? 20 : Math.max(-64, Math.min(2031, v));
+  }
+  function setCaveY(y) {
+    caveYInput.value = Math.max(-64, Math.min(2031, y));
+    if (state.detailMode === 'caves') loadDetail();
+    if (state.cave && state.cave.view === 'slice') loadCaveView();
+  }
+  caveYInput.addEventListener('change', () => setCaveY(caveY()));
+  document.getElementById('cave-y-down').addEventListener('click', () => setCaveY(caveY() - 16));
+  document.getElementById('cave-y-up').addEventListener('click', () => setCaveY(caveY() + 16));
+
+  function cavePaletteEntry(code) {
+    return state.cavePalette.find(e => e.code === code) || { name: `cave ${code}`, color: '#ff00ff' };
+  }
+  async function loadCavePalette() {
+    try { state.cavePalette = await (await fetch('/api/cave_palette')).json(); } catch (_) {}
+  }
+
+  async function fetchCaveRaw(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.statusText);
+    const hd = k => res.headers.get(k);
+    const w = parseInt(hd('X-Width')), h = parseInt(hd('X-Height'));
+    const buf = await res.arrayBuffer();
+    return { mat: new Uint8Array(buf, 0, w * h), bio: new Uint8Array(buf, w * h, w * h), w, h,
+             x0: parseInt(hd('X-X0')), z0: parseInt(hd('X-Z0')), yTop: parseInt(hd('X-YTop')),
+             stepY: parseInt(hd('X-StepY')), view: hd('X-View') };
+  }
+
+  async function loadCaveOverview() {
+    const { detailCI: ci, detailCJ: cj, detailPanI: pi, detailPanJ: pj, seed } = state;
+    const y = caveY();
+    try {
+      const raw = await fetchCaveRaw(`/api/detail_caves?ci=${ci}&cj=${cj}&detail_size=${DETAIL_SIZE}&pan_i=${pi}&pan_j=${pj}&cy=${y}&_s=${seed}`);
+      if (state.detailCI !== ci || state.detailCJ !== cj || state.detailPanI !== pi || state.detailPanJ !== pj
+          || state.detailMode !== 'caves' || caveY() !== y) return;
+      state.caveOverview = raw;
+      renderCaveLegend();
+    } catch (e) {
+      caveLegend.innerHTML = '<span class="bl-pct">Could not load cave biomes</span>';
+    }
+  }
+
+  function caveOverviewLabel(co, i) {
+    const m = co.mat[i];
+    if (m === 7) return 'above the ground';
+    if (m === 2) return 'sea';
+    return cavePaletteEntry(co.bio[i]).name;
+  }
+
+  /** Cave biomes in view at this Y, largest first, as a share of the underground part of the window. */
+  function renderCaveLegend() {
+    const co = state.caveOverview;
+    if (!co) return;
+    const counts = new Map();
+    let under = 0;
+    for (let i = 0; i < co.mat.length; i++) {
+      if (co.mat[i] !== 3) continue;
+      under++;
+      counts.set(co.bio[i], (counts.get(co.bio[i]) || 0) + 1);
+    }
+    caveLegend.innerHTML = '';
+    if (under === 0) { caveLegend.innerHTML = '<span class="bl-pct">Everything in view is above the ground at this Y</span>'; return; }
+    [...counts.entries()].sort((a, b) => b[1] - a[1]).forEach(([code, c]) => {
+      const e = cavePaletteEntry(code), pct = 100 * c / under;
+      const item = document.createElement('span');
+      item.className = 'bl-item';
+      item.innerHTML = `<span class="bl-sw" style="background:${e.color}"></span>${e.name}`
+        + ` <span class="bl-pct">${pct < 0.1 ? '<0.1' : pct.toFixed(1)}%</span>`;
+      caveLegend.appendChild(item);
+    });
+  }
+
+  function openCaveView(x, z, view) {
+    state.cave = { x, z, view };
+    cavePanel.style.display = '';
+    mapArea.classList.add('three');
+    loadCaveView();
+  }
+
+  function caveViewParams() {
+    const { x, z, view } = state.cave;
+    return `x=${x}&z=${z}&y=${caveY()}&view=${view}&size=512&_s=${state.seed}`;
+  }
+
+  function loadCaveView() {
+    if (!state.cave) return;
+    state.caveRaw = null;
+    ['slice', 'ew', 'ns'].forEach(v =>
+      document.getElementById(`cave-view-${v}`).classList.toggle('active', v === state.cave.view));
+    const { x, z, view } = state.cave;
+    caveInfo.textContent = view === 'slice' ? `centre ${x}, ${z} · Y ${caveY()} · 512×512 blocks`
+      : `${view === 'ew' ? 'east–west' : 'north–south'} through ${x}, ${z} · 512 blocks`;
+    caveImg.classList.add('loading');
+    caveSpinner.classList.add('active');
+    caveImg.src = `/api/cave_view.png?${caveViewParams()}`;
+  }
+  caveImg.onload = async () => {
+    caveImg.classList.remove('loading');
+    caveSpinner.classList.remove('active');
+    const want = caveViewParams();
+    try {
+      const raw = await fetchCaveRaw(`/api/cave_view_raw?${want}`);
+      if (state.cave && caveViewParams() === want) state.caveRaw = raw;
+    } catch (_) {}
+  };
+  caveImg.onerror = () => {
+    caveImg.classList.remove('loading');
+    caveSpinner.classList.remove('active');
+    statusBar.textContent = 'Error loading cave slice';
+  };
+
+  /** The image pixel under the mouse (the image keeps its aspect inside its box). */
+  function cavePixel(e) {
+    const r = state.caveRaw;
+    if (!r) return null;
+    const rect = caveImg.getBoundingClientRect();
+    const k = Math.min(rect.width / r.w, rect.height / r.h);
+    const ox = rect.left + (rect.width - r.w * k) / 2, oy = rect.top + (rect.height - r.h * k) / 2;
+    const col = Math.floor((e.clientX - ox) / k), row = Math.floor((e.clientY - oy) / k);
+    if (col < 0 || col >= r.w || row < 0 || row >= r.h) return null;
+    let x, y, z;
+    if (r.view === 'slice') { x = r.x0 + col; z = r.z0 + row; y = r.yTop; }
+    else if (r.view === 'ew') { x = r.x0 + col; z = r.z0; y = r.yTop - row * r.stepY; }
+    else { x = r.x0; z = r.z0 + col; y = r.yTop - row * r.stepY; }
+    return { i: row * r.w + col, x, y, z };
+  }
+
+  caveImg.addEventListener('mousemove', (e) => {
+    const p = cavePixel(e);
+    if (!p) { hideTooltip(); return; }
+    const r = state.caveRaw, m = r.mat[p.i];
+    let html = `<div class="ht-coord">${p.x}, ${p.y}, ${p.z}</div>`;
+    html += `<div class="ht-row"><span class="ht-label">Block</span><span class="ht-val">${CAVE_MATERIAL[m]}</span></div>`;
+    if (m === 3 || m === 4 || m === 5 || m === 6)
+      html += `<div class="ht-row"><span class="ht-label">Biome</span><span class="ht-val">${cavePaletteEntry(r.bio[p.i]).name}</span></div>`;
+    showTooltip(e, html);
+  });
+  caveImg.addEventListener('mouseleave', hideTooltip);
+  caveImg.addEventListener('click', (e) => {
+    const p = cavePixel(e);
+    if (!p) return;
+    const tp = `/tp @s ${p.x} ${p.y} ${p.z}`;
+    navigator.clipboard.writeText(tp).then(() => { statusBar.textContent = `Copied ${tp}`; }, () => {});
+  });
+  caveImg.addEventListener('dblclick', (e) => {
+    const p = cavePixel(e);
+    if (!p || state.caveRaw.view === 'slice') return;
+    caveYInput.value = p.y;
+    openCaveView(p.x, p.z, 'slice');
+  });
+  let caveWheelTimer = null;
+  document.getElementById('cave-container').addEventListener('wheel', (e) => {
+    if (!state.cave || state.cave.view !== 'slice') return;
+    e.preventDefault();
+    caveYInput.value = caveY() + (e.deltaY < 0 ? 4 : -4);
+    caveInfo.textContent = `Y ${caveY()}…`;
+    clearTimeout(caveWheelTimer);
+    caveWheelTimer = setTimeout(() => setCaveY(caveY()), 300);
+  }, { passive: false });
+
+  ['slice', 'ew', 'ns'].forEach(v => document.getElementById(`cave-view-${v}`).addEventListener('click', () => {
+    if (!state.cave) return;
+    state.cave.view = v;
+    loadCaveView();
+  }));
+  document.getElementById('cave-close').addEventListener('click', () => {
+    state.cave = null;
+    cavePanel.style.display = 'none';
+    mapArea.classList.remove('three');
+  });
+  // Arrows: a slice moves 128 blocks; a section moves 128 blocks along itself (left/right) or 16 across (up/down).
+  function moveCave(dx, dz) { if (state.cave) { state.cave.x += dx; state.cave.z += dz; loadCaveView(); } }
+  document.getElementById('cave-left').addEventListener('click', () => {
+    const v = state.cave && state.cave.view; moveCave(v === 'ns' ? 0 : -128, v === 'ns' ? -128 : 0); });
+  document.getElementById('cave-right').addEventListener('click', () => {
+    const v = state.cave && state.cave.view; moveCave(v === 'ns' ? 0 : 128, v === 'ns' ? 128 : 0); });
+  document.getElementById('cave-up').addEventListener('click', () => {
+    const v = state.cave && state.cave.view;
+    moveCave(v === 'ns' ? -16 : 0, v === 'slice' ? -128 : v === 'ew' ? -16 : 0); });
+  document.getElementById('cave-down').addEventListener('click', () => {
+    const v = state.cave && state.cave.view;
+    moveCave(v === 'ns' ? 16 : 0, v === 'slice' ? 128 : v === 'ew' ? 16 : 0); });
 
   // ── Seed ──
   btnSetSeed.addEventListener('click', async () => {
@@ -1518,6 +1777,7 @@
 
   // ── Init ──
   async function init() {
+    loadCavePalette();
     try {
       const res = await fetch('/api/status');
       const data = await res.json();

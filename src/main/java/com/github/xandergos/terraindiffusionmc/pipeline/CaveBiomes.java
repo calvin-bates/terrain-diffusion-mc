@@ -97,17 +97,27 @@ public final class CaveBiomes {
     }
 
     /**
+     * What the cave layer needs to know about the surface: the surface biome id (Terra's ids, as in the tiles) of the
+     * column at (x, z). Gated caves (lush, icy, mud...) look at the surface above their region's anchor, the centre of
+     * its unwarped cell, so a whole region agrees and every chunk computes the same answer.
+     */
+    public interface Surface {
+        short biomeAt(int x, int z);
+    }
+
+    /**
      * The cave biome at block (x, y, z), {@code refTop} being the top block of the lowest ground nearby (the same
      * reference the cave roof uses), or {@link #NONE} for plain stone caves and everything above the cave layer.
      */
-    public short at(int x, int y, int z, int refTop) {
+    public short at(int x, int y, int z, int refTop, Surface surface) {
         if (refTop - y < START_DEPTH) return NONE;
-        return pick(x, y, z);
+        return pick(x, y, z, surface);
     }
 
-    /** The cave biome a point's region draws, after the depth gates (no surface check). */
-    public short pick(int x, int y, int z) {
-        float u = regionDraw(x, y, z);
+    /** The cave biome a point's region draws, after its gates (no start depth check). */
+    public short pick(int x, int y, int z, Surface surface) {
+        long cell = regionCell(x, y, z);
+        float u = draw(cell);
         float total = COMMON_SHARE + UNCOMMON_SHARE + RARE_SHARE + VERY_RARE_SHARE;
         u *= total;
         if (u < PLAIN_SHARE) return NONE;
@@ -115,23 +125,91 @@ public final class CaveBiomes {
             float t = (u - PLAIN_SHARE) / Math.max(1e-6f, COMMON_SHARE - PLAIN_SHARE);
             return gate(weighted(COMMON, COMMON_WEIGHT, t), y);
         }
-        // Uncommon, rare and very rare tiers: parts two and three. Plain stone until then.
+        if (u < COMMON_SHARE + UNCOMMON_SHARE) {
+            float t = (u - COMMON_SHARE) / UNCOMMON_SHARE;
+            return uncommon(t, y, cell, surface);
+        }
+        // Rare and very rare tiers: part three. Plain stone until then.
         return NONE;
     }
 
-    /** The region's draw in [0, 1): a hash of the warped region cell and the seed. */
+    /** The region's draw in [0, 1). */
     public float regionDraw(int x, int y, int z) {
+        return draw(regionCell(x, y, z));
+    }
+
+    /** The warped region cell holding a point, packed (21 bits per axis). */
+    public long regionCell(int x, int y, int z) {
         float wx = x + WARP * warpX.GetNoise(x, y, z);
         float wy = y + WARP * 0.5f * warpY.GetNoise(x, y, z);
         float wz = z + WARP * warpZ.GetNoise(x, y, z);
-        int cx = (int) Math.floor(wx / REGION_XZ);
-        int cy = (int) Math.floor(wy / REGION_Y);
-        int cz = (int) Math.floor(wz / REGION_XZ);
+        long cx = (long) Math.floor(wx / REGION_XZ) & 0x1FFFFF;
+        long cy = (long) Math.floor(wy / REGION_Y) & 0x1FFFFF;
+        long cz = (long) Math.floor(wz / REGION_XZ) & 0x1FFFFF;
+        return (cx << 42) | (cy << 21) | cz;
+    }
+
+    private static int unpack(long cell, int shift) {
+        return (int) (((cell >>> shift) & 0x1FFFFF) << 43 >> 43);   // sign-extend 21 bits
+    }
+
+    /** Block x and z of a region cell's anchor (the centre of the unwarped cell). */
+    public static int anchorX(long cell) {
+        return unpack(cell, 42) * REGION_XZ + REGION_XZ / 2;
+    }
+
+    public static int anchorZ(long cell) {
+        return unpack(cell, 0) * REGION_XZ + REGION_XZ / 2;
+    }
+
+    private float draw(long cell) {
         long h = seed ^ 0x9E3779B97F4A7C15L;
-        h = mix(h + cx * 0xC2B2AE3D27D4EB4FL);
-        h = mix(h + cy * 0x165667B19E3779F9L);
-        h = mix(h + cz * 0x27D4EB2F165667C5L);
+        h = mix(h + unpack(cell, 42) * 0xC2B2AE3D27D4EB4FL);
+        h = mix(h + unpack(cell, 21) * 0x165667B19E3779F9L);
+        h = mix(h + unpack(cell, 0) * 0x27D4EB2F165667C5L);
         return (h >>> 40) / (float) (1L << 24);
+    }
+
+    /** A second, independent draw for the same region (sub-choices that mustn't correlate with the tier draw). */
+    public float draw2(long cell) {
+        long h = seed ^ 0x2545F4914F6CDD1DL;
+        h = mix(h + unpack(cell, 42) * 0xC2B2AE3D27D4EB4FL);
+        h = mix(h + unpack(cell, 21) * 0x165667B19E3779F9L);
+        h = mix(h + unpack(cell, 0) * 0x27D4EB2F165667C5L);
+        return (h >>> 40) / (float) (1L << 24);
+    }
+
+    // ---- Uncommon tier (part two) ----
+
+    /** The uncommon caves built so far, their weights, and their gates. Empty until part two round A. */
+    private static final short[] UNCOMMON = {};
+    private static final float[] UNCOMMON_WEIGHT = {};
+
+    /**
+     * Picks among the uncommon caves whose gates pass for this region (so the tier keeps its share wherever any of
+     * them fits), or plain stone if none does.
+     */
+    private short uncommon(float t, int y, long cell, Surface surface) {
+        if (UNCOMMON.length == 0) return NONE;
+        short anchorBiome = surface == null ? -1 : surface.biomeAt(anchorX(cell), anchorZ(cell));
+        float sum = 0;
+        float[] w = new float[UNCOMMON.length];
+        for (int i = 0; i < UNCOMMON.length; i++) {
+            w[i] = eligible(UNCOMMON[i], y, anchorBiome) ? UNCOMMON_WEIGHT[i] : 0f;
+            sum += w[i];
+        }
+        if (sum <= 0) return NONE;
+        float target = t * sum, acc = 0;
+        for (int i = 0; i < UNCOMMON.length; i++) {
+            acc += w[i];
+            if (target < acc && w[i] > 0) return UNCOMMON[i];
+        }
+        return NONE;
+    }
+
+    /** Whether an uncommon cave suits this depth and the surface above its region. */
+    private static boolean eligible(short id, int y, short anchorBiome) {
+        return true;
     }
 
     private static long mix(long z) {
