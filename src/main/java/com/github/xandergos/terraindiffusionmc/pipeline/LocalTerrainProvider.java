@@ -20,10 +20,11 @@ import java.util.Random;
 import java.util.Comparator;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -92,15 +93,72 @@ public final class LocalTerrainProvider {
     }
 
     private static record CacheKey(int i1, int j1, int i2, int j2) {}
-    private static record CacheEntry(HeightmapData data, AtomicLong lastAccessed) {}
+    /**
+     * A cached tile and when it was last used ({@link System#nanoTime}), for eviction. A time stamp rather than a
+     * shared counter, so the chunk threads looking tiles up don't all write the same contended counter.
+     */
+    private static record CacheEntry(HeightmapData data, AtomicLong lastAccessed) {
+        CacheEntry(HeightmapData data) {
+            this(data, new AtomicLong(System.nanoTime()));
+        }
+
+        void touch() {
+            lastAccessed.lazySet(System.nanoTime());
+        }
+    }
 
     private static final int MAX_CACHE_SIZE = 64;
     private static final int MAX_CACHE_SIZE_HEADROOM = 8;
     private static final Map<CacheKey, CacheEntry> CACHE = new ConcurrentHashMap<>();
-    private static final AtomicLong CACHE_CLOCK = new AtomicLong();
-    private static final Map<CacheKey, Future<HeightmapData>> PENDING = new ConcurrentHashMap<>();
-    /** Single thread for pipeline.get() so MemoryTileStore is not accessed concurrently. */
-    private static final ExecutorService INFERENCE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+    private static final Map<CacheKey, TileTask> PENDING = new ConcurrentHashMap<>();
+
+    /** Inference work someone is waiting for (a chunk, the explorer, a command) runs before prefetching. */
+    private static final int PRIORITY_DEMAND = 0, PRIORITY_PREFETCH = 1;
+    private static final AtomicLong TASK_SEQ = new AtomicLong();
+
+    /** A task for the inference thread: lower priority first, then first come first served. */
+    private static class InferenceTask<T> extends FutureTask<T> implements Comparable<InferenceTask<?>> {
+        final int priority;
+        final long seq = TASK_SEQ.getAndIncrement();
+
+        InferenceTask(Callable<T> callable, int priority) {
+            super(callable);
+            this.priority = priority;
+        }
+
+        InferenceTask(Runnable runnable, int priority) {
+            super(runnable, null);
+            this.priority = priority;
+        }
+
+        @Override
+        public int compareTo(InferenceTask<?> o) {
+            return priority != o.priority ? Integer.compare(priority, o.priority) : Long.compare(seq, o.seq);
+        }
+    }
+
+    /** Building one tile. A prefetch nobody asked for within {@link #PREFETCH_STALE_NS} is dropped unbuilt. */
+    private static final class TileTask extends InferenceTask<HeightmapData> {
+        final boolean prefetch;
+        final long enqueued = System.nanoTime();
+        /** Set when a chunk asks for a prefetched tile: it is then built at demand priority and never dropped. */
+        volatile boolean promoted;
+
+        TileTask(Callable<HeightmapData> body, boolean prefetch) {
+            super(body, prefetch ? PRIORITY_PREFETCH : PRIORITY_DEMAND);
+            this.prefetch = prefetch;
+        }
+    }
+
+    /** A queued prefetch older than this (the player has moved on) is skipped. */
+    private static final long PREFETCH_STALE_NS = 45_000_000_000L;
+
+    /**
+     * Single thread for pipeline.get() so MemoryTileStore is not accessed concurrently. Its queue is ordered by
+     * {@link InferenceTask} priority, so only {@link InferenceTask}s may be given to it, with {@code execute}.
+     */
+    private static final ThreadPoolExecutor INFERENCE_EXECUTOR = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+            new PriorityBlockingQueue<>(), r -> {
         Thread t = new Thread(r, "terrain-diffusion-inference");
         t.setDaemon(true);
         return t;
@@ -466,7 +524,9 @@ public final class LocalTerrainProvider {
     }
 
     private static <T> T submitToInferenceThread(Callable<T> task) throws Exception {
-        return INFERENCE_EXECUTOR.submit(task).get();
+        InferenceTask<T> t = new InferenceTask<>(task, PRIORITY_DEMAND);
+        INFERENCE_EXECUTOR.execute(t);
+        return t.get();
     }
 
     /**
@@ -479,7 +539,7 @@ public final class LocalTerrainProvider {
         CacheKey key = new CacheKey(i1, j1, i2, j2);
         CacheEntry cached = CACHE.get(key);
         if (cached != null) {
-            cached.lastAccessed.set(CACHE_CLOCK.incrementAndGet());
+            cached.touch();
             return cached.data;
         }
 
@@ -490,7 +550,7 @@ public final class LocalTerrainProvider {
     public static HeightmapData peekHeightmap(int i1, int j1, int i2, int j2) {
         CacheEntry cached = CACHE.get(new CacheKey(i1, j1, i2, j2));
         if (cached == null) return null;
-        cached.lastAccessed.set(CACHE_CLOCK.incrementAndGet());
+        cached.touch();
         return cached.data;
     }
 
@@ -906,50 +966,126 @@ public final class LocalTerrainProvider {
     }
 
     private HeightmapData genHeightmap(CacheKey key, int i1, int j1, int i2, int j2) {
-        int scale = WorldScaleManager.getCurrentScale();
-        FutureTask<HeightmapData> task = new FutureTask<>(() -> {
-            long computedWindowCountBefore = pipeline.getTotalComputedWindowCount();
-            long tBuild = System.nanoTime();
-            HeightmapData data = scale <= 1
-                    ? handle1x(i1, j1, i2, j2)
-                    : handleUpsampled(i1, j1, i2, j2, scale);
-            long tr = TerraPerf.start();
-            applyRivers(data, i1, j1, Math.max(1, scale));
-            noWaterOnLava(data);
-            noWaterUnderIce(data);
-            TerraPerf.end("tile.rivers", tr);
-            long computedWindowCountAfter = pipeline.getTotalComputedWindowCount();
-
-            long newlyComputedWindowCount = computedWindowCountAfter - computedWindowCountBefore;
-            int regionWidth = j2 - j1;
-            int regionHeight = i2 - i1;
-            LOG.info(
-                    "Terrain Diffusion ({}) finished generating region {}x{} ({} newly computed windows) in {} ms",
-                    OnnxModel.getResolvedInferenceProvider(), regionWidth, regionHeight, newlyComputedWindowCount,
-                    (System.nanoTime() - tBuild) / 1_000_000L);
-            CACHE.put(key, new CacheEntry(data, new AtomicLong(CACHE_CLOCK.incrementAndGet())));
-            evictLruTo(MAX_CACHE_SIZE);
-            PENDING.remove(key);
-            return data;
-        });
-        Future<HeightmapData> existing = PENDING.putIfAbsent(key, task);
-        FutureTask<HeightmapData> toRun = (existing == null) ? task : (FutureTask<HeightmapData>) existing;
-        if (existing == null) {
-            int regionWidth = j2 - j1;
-            int regionHeight = i2 - i1;
-            LOG.info(
-                    "Terrain Diffusion ({}) uncached region requested: ({}, {})-({}, {}) size {}x{}",
-                    OnnxModel.getResolvedInferenceProvider(), j1, i1, j2, i2, regionWidth, regionHeight);
-            INFERENCE_EXECUTOR.submit(toRun);
-        }
         long tw = TerraPerf.start();
         try {
-            return toRun.get();
-        } catch (Exception e) {
-            PENDING.remove(key);
-            throw new RuntimeException("Terrain tile failed: " + key, e);
+            for (int attempt = 0; ; attempt++) {
+                CacheEntry cached = CACHE.get(key);
+                if (cached != null) {
+                    cached.touch();
+                    return cached.data;
+                }
+                TileTask task = PENDING.get(key);
+                if (task == null) {
+                    TileTask fresh = newTileTask(key, i1, j1, i2, j2, false);
+                    task = PENDING.putIfAbsent(key, fresh);
+                    if (task == null) {
+                        // It may have been finished (cached, no longer pending) between the two lookups above.
+                        cached = CACHE.get(key);
+                        if (cached != null) {
+                            PENDING.remove(key, fresh);
+                            cached.touch();
+                            return cached.data;
+                        }
+                        task = fresh;
+                        LOG.info(
+                                "Terrain Diffusion ({}) uncached region requested: ({}, {})-({}, {}) size {}x{}",
+                                OnnxModel.getResolvedInferenceProvider(), j1, i1, j2, i2, j2 - j1, i2 - i1);
+                        INFERENCE_EXECUTOR.execute(fresh);
+                    }
+                }
+                if (task.prefetch && !task.promoted) {
+                    // Someone needs a tile that was only queued as a prefetch: build it now, ahead of other prefetches.
+                    task.promoted = true;
+                    INFERENCE_EXECUTOR.execute(new InferenceTask<>(task, PRIORITY_DEMAND));
+                }
+                HeightmapData data;
+                try {
+                    data = task.get();
+                } catch (ExecutionException e) {
+                    PENDING.remove(key, task);
+                    throw new RuntimeException("Terrain tile failed: " + key, e.getCause());
+                } catch (Exception e) {
+                    PENDING.remove(key, task);
+                    throw new RuntimeException("Terrain tile failed: " + key, e);
+                }
+                if (data != null) return data;
+                // A stale prefetch dropped itself, or the world changed while it waited: ask again.
+                if (attempt >= 4) throw new RuntimeException("Terrain tile failed: " + key + " (dropped repeatedly)");
+            }
         } finally {
             TerraPerf.end("tile.wait", tw);
+        }
+    }
+
+    /**
+     * A task building the tile {@code key} on the inference thread. It returns null without building when it is a
+     * stale prefetch or the world (seed) changed since it was queued.
+     */
+    private TileTask newTileTask(CacheKey key, int i1, int j1, int i2, int j2, boolean prefetch) {
+        int scale = WorldScaleManager.getCurrentScale();
+        int generation = cacheGeneration;
+        TileTask[] self = new TileTask[1];
+        TileTask task = new TileTask(() -> {
+            TileTask me = self[0];
+            if (generation != cacheGeneration
+                    || (me.prefetch && !me.promoted && System.nanoTime() - me.enqueued > PREFETCH_STALE_NS)) {
+                PENDING.remove(key, me);
+                return null;
+            }
+            try {
+                long computedWindowCountBefore = pipeline.getTotalComputedWindowCount();
+                long tBuild = System.nanoTime();
+                HeightmapData data = scale <= 1
+                        ? handle1x(i1, j1, i2, j2)
+                        : handleUpsampled(i1, j1, i2, j2, scale);
+                long tr = TerraPerf.start();
+                applyRivers(data, i1, j1, Math.max(1, scale));
+                noWaterOnLava(data);
+                noWaterUnderIce(data);
+                TerraPerf.end("tile.rivers", tr);
+                long newlyComputedWindowCount = pipeline.getTotalComputedWindowCount() - computedWindowCountBefore;
+                LOG.info(
+                        "Terrain Diffusion ({}) finished generating region {}x{} ({} newly computed windows) in {} ms{}",
+                        OnnxModel.getResolvedInferenceProvider(), j2 - j1, i2 - i1, newlyComputedWindowCount,
+                        (System.nanoTime() - tBuild) / 1_000_000L, me.prefetch && !me.promoted ? " (prefetched)" : "");
+                if (generation == cacheGeneration) {
+                    CACHE.put(key, new CacheEntry(data));
+                    evictLruTo(MAX_CACHE_SIZE);
+                }
+                PENDING.remove(key, me);
+                if (!me.prefetch) prefetchAround(i1, j1, i2, j2);
+                return data;
+            } catch (RuntimeException | Error e) {
+                PENDING.remove(key, me);
+                if (me.prefetch && !me.promoted && e instanceof RuntimeException) {
+                    // Nobody is waiting; a chunk that asks later builds it again and sees the error itself.
+                    LOG.warn("Terra: prefetching the tile at ({}, {}) failed: {}", j1, i1, e.toString());
+                    return null;
+                }
+                throw e;
+            }
+        }, prefetch);
+        self[0] = task;
+        return task;
+    }
+
+    /**
+     * Queues the eight tiles around a tile a chunk just waited for, at prefetch priority, so that while the player is
+     * inside one tile the inference thread (otherwise idle) builds the ones they are likely to walk into next. Demand
+     * always goes first; a prefetch still queued when the player has moved on is dropped ({@link #PREFETCH_STALE_NS}).
+     */
+    private void prefetchAround(int i1, int j1, int i2, int j2) {
+        if (!TerrainDiffusionConfig.prefetchTiles()) return;
+        int h = i2 - i1, w = j2 - j1;
+        for (int di = -1; di <= 1; di++) {
+            for (int dj = -1; dj <= 1; dj++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = i1 + di * h, nj = j1 + dj * w;
+                CacheKey nk = new CacheKey(ni, nj, ni + h, nj + w);
+                if (CACHE.containsKey(nk) || PENDING.containsKey(nk)) continue;
+                TileTask t = newTileTask(nk, ni, nj, ni + h, nj + w, true);
+                if (PENDING.putIfAbsent(nk, t) == null) INFERENCE_EXECUTOR.execute(t);
+            }
         }
     }
 

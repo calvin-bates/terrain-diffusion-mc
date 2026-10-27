@@ -252,8 +252,9 @@ public final class CaveShapes {
         float b = Math.abs(spagB.GetNoise(x, y, z));
         float w = SPAGHETTI_WIDTH + SPAGHETTI_WIDTH_VAR * spagWidth.GetNoise(x, y, z);
         float d = (Math.max(a, b) - w) * SPAGHETTI_GAIN;
-        // Noodles: thinner and twistier, only in part of the world.
-        if (noodleGate.GetNoise(x, y, z) > NOODLE_GATE) {
+        // Noodles: thinner and twistier, only in part of the world. They can't go below -NOODLE_WIDTH * NOODLE_GAIN, so
+        // skip their three noises where the spaghetti is already deeper than that (same result).
+        if (d > -NOODLE_WIDTH * NOODLE_GAIN && noodleGate.GetNoise(x, y, z) > NOODLE_GATE) {
             float na = Math.abs(noodleA.GetNoise(x, y, z));
             float nb = Math.abs(noodleB.GetNoise(x, y, z));
             d = Math.min(d, (Math.max(na, nb) - NOODLE_WIDTH) * NOODLE_GAIN);
@@ -321,24 +322,30 @@ public final class CaveShapes {
                 int b00 = (iz * nx + ix) * ny, b10 = (iz * nx + ix + 1) * ny;
                 int b01 = ((iz + 1) * nx + ix) * ny, b11 = ((iz + 1) * nx + ix + 1) * ny;
                 int base = (x + z * sx) * sy;
-                int cell = Integer.MIN_VALUE;
-                boolean rock = false;
-                for (int y = 0; y < sy; y++) {
-                    int by = y0 + y, gy = Math.floorDiv(by, cy), iy = gy - ly0;
-                    if (iy != cell) {
-                        // A cell whose eight corners are all rock is rock throughout (trilinear weights are convex):
-                        // skip the interpolation. Only the sign of the field is used, so the exact value doesn't matter.
-                        cell = iy;
-                        rock = lattice[b00 + iy] > 0 && lattice[b00 + iy + 1] > 0 && lattice[b10 + iy] > 0
-                                && lattice[b10 + iy + 1] > 0 && lattice[b01 + iy] > 0 && lattice[b01 + iy + 1] > 0
-                                && lattice[b11 + iy] > 0 && lattice[b11 + iy + 1] > 0;
-                    }
+                // Walk up the column a lattice cell at a time. Within a cell the field is linear in y (the x and z
+                // weights are fixed), so it is lo + slope * fy with lo and slope set once per cell.
+                int gy = Math.floorDiv(y0, cy), oy = y0 - gy * cy;
+                for (int y = 0; y < sy; ) {
+                    int iy = gy - ly0, run = Math.min(cy - oy, sy - y);
+                    // A cell whose eight corners are all rock is rock throughout (trilinear weights are convex): skip
+                    // the interpolation. Only the sign of the field is used, so the exact value doesn't matter.
+                    boolean rock = lattice[b00 + iy] > 0 && lattice[b00 + iy + 1] > 0 && lattice[b10 + iy] > 0
+                            && lattice[b10 + iy + 1] > 0 && lattice[b01 + iy] > 0 && lattice[b01 + iy + 1] > 0
+                            && lattice[b11 + iy] > 0 && lattice[b11 + iy + 1] > 0;
                     if (rock) {
-                        if (!min) out[base + y] = CLAMP;
-                        continue;
+                        if (!min) java.util.Arrays.fill(out, base + y, base + y + run, CLAMP);
+                    } else {
+                        float lo = bilinear(lattice, b00 + iy, b10 + iy, b01 + iy, b11 + iy, fx, fz);
+                        float slope = bilinear(lattice, b00 + iy + 1, b10 + iy + 1, b01 + iy + 1, b11 + iy + 1, fx, fz) - lo;
+                        for (int k = 0; k < run; k++) {
+                            float v = lo + slope * ((oy + k) * invY);
+                            int o = base + y + k;
+                            out[o] = min ? Math.min(out[o], v) : v;
+                        }
                     }
-                    float v = trilinear(lattice, b00 + iy, b10 + iy, b01 + iy, b11 + iy, fx, (by - gy * cy) * invY, fz);
-                    out[base + y] = min ? Math.min(out[base + y], v) : v;
+                    y += run;
+                    gy++;
+                    oy = 0;
                 }
             }
         }
@@ -387,16 +394,17 @@ public final class CaveShapes {
         for (float v : l) rock &= v > 0;
         if (rock) return CLAMP;   // as in fillFamily
         float invXZ = 1f / cxz, invY = 1f / cy;
-        return trilinear(l, 0, 2, 4, 6, (x - gx * cxz) * invXZ, (y - gy * cy) * invY, (z - gz * cxz) * invXZ);
+        float fx = (x - gx * cxz) * invXZ, fz = (z - gz * cxz) * invXZ;
+        // Same arithmetic as fillFamily(), so a block gets exactly the value a chunk fill gives it.
+        float lo = bilinear(l, 0, 2, 4, 6, fx, fz);
+        float slope = bilinear(l, 1, 3, 5, 7, fx, fz) - lo;
+        return lo + slope * ((y - gy * cy) * invY);
     }
 
-    private static float trilinear(float[] l, int i00, int i10, int i01, int i11, float fx, float fy, float fz) {
-        float c00 = l[i00] + (l[i00 + 1] - l[i00]) * fy;
-        float c10 = l[i10] + (l[i10 + 1] - l[i10]) * fy;
-        float c01 = l[i01] + (l[i01 + 1] - l[i01]) * fy;
-        float c11 = l[i11] + (l[i11 + 1] - l[i11]) * fy;
-        float c0 = c00 + (c10 - c00) * fx;
-        float c1 = c01 + (c11 - c01) * fx;
+    /** Bilinear in x and z between four lattice values (one layer of a cell). */
+    private static float bilinear(float[] l, int i00, int i10, int i01, int i11, float fx, float fz) {
+        float c0 = l[i00] + (l[i10] - l[i00]) * fx;
+        float c1 = l[i01] + (l[i11] - l[i01]) * fx;
         return c0 + (c1 - c0) * fz;
     }
 

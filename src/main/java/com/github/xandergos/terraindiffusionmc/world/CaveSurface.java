@@ -46,12 +46,26 @@ public final class CaveSurface implements CaveBiomes.Surface {
         return t.biomeIds[Math.min(t.height - 1, z - tileZ)][Math.min(t.width - 1, x - tileX)];
     }
 
+    /** The tile used before the current one: the cave layer's region anchors often sit in a neighbouring tile. */
+    private HeightmapData prevTile;
+    private int prevX = Integer.MIN_VALUE, prevZ = Integer.MIN_VALUE, prevGen = Integer.MIN_VALUE;
+
     private HeightmapData tileAt(int x, int z, int gen) {
         int size = TerrainDiffusionConfig.tileSize(), shift = Integer.numberOfTrailingZeros(size);
         int tx = (x >> shift) << shift, tz = (z >> shift) << shift;
         if (tile == null || tx != tileX || tz != tileZ || gen != tileGen) {
-            LocalTerrainProvider p = LocalTerrainProvider.getInstance();
-            tile = p == null ? null : p.fetchHeightmap(tz, tx, tz + size, tx + size);
+            HeightmapData t;
+            if (prevTile != null && tx == prevX && tz == prevZ && gen == prevGen) {
+                t = prevTile;   // swap back without a trip to the shared tile cache
+            } else {
+                LocalTerrainProvider p = LocalTerrainProvider.getInstance();
+                t = p == null ? null : p.fetchHeightmap(tz, tx, tz + size, tx + size);
+            }
+            prevTile = tile;
+            prevX = tileX;
+            prevZ = tileZ;
+            prevGen = tileGen;
+            tile = t;
             tileX = tx;
             tileZ = tz;
             tileGen = gen;

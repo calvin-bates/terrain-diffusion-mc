@@ -12,6 +12,12 @@ public final class TerrainDiffusionConfig {
     private static final String FILE_NAME = "terra.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
+    /**
+     * Parsed settings, so each is parsed once rather than on every call: several are read in the hottest generation
+     * loops (once per 4x4x4 biome cell, per block column of the cave field, per tile switch). The properties never
+     * change while the game runs, except through {@link #setForTools}, which clears this.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> VALUES = new java.util.concurrent.ConcurrentHashMap<>();
     private static final String BUILD_VARIANT = readBuildVariant();
     private static final boolean DEFAULT_OFFLOAD_MODELS = true;
     private static final boolean DEFAULT_VALIDATE_MODEL = true;
@@ -32,6 +38,7 @@ public final class TerrainDiffusionConfig {
     /** Overrides a setting in this JVM only (tools outside the game, such as TerraPreview). */
     public static void setForTools(String key, String value) {
         PROPERTIES.setProperty(key, value);
+        VALUES.clear();
     }
 
     /** Inference device: "cpu", "gpu", or "auto" (try GPU then fall back to CPU). */
@@ -75,6 +82,7 @@ public final class TerrainDiffusionConfig {
         int configuredTileSize = readInt("tile_size", DEFAULT_TILE_SIZE);
         if (configuredTileSize <= 0 || !isPowerOfTwo(configuredTileSize)) {
             System.err.println("Invalid tile_size: " + configuredTileSize + ", using default " + DEFAULT_TILE_SIZE);
+            VALUES.put("tile_size", DEFAULT_TILE_SIZE);   // warn once
             return DEFAULT_TILE_SIZE;
         }
         return configuredTileSize;
@@ -188,6 +196,11 @@ public final class TerrainDiffusionConfig {
      * flowstone, rimstone pools, cave waterfalls, travertine terraces, natural bridges, collapse domes, rock shelters.
      */
     public static boolean caveFormations() { return readBoolean("caves.formations", true); }
+    /**
+     * Build the tiles around the one a chunk just waited for in the background, while the inference thread is
+     * otherwise idle, so walking or flying into them doesn't stall chunk loading. Chunks always come first.
+     */
+    public static boolean prefetchTiles() { return readBoolean("performance.prefetch_tiles", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
     public static boolean timing() { return readBoolean("debug.timing", true); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */
@@ -232,8 +245,11 @@ public final class TerrainDiffusionConfig {
     }
 
     private static String readString(String key, String defaultValue) {
+        if (VALUES.get(key) instanceof String cached) return cached;
         String value = PROPERTIES.getProperty(key);
-        return value != null ? value.trim().toLowerCase() : defaultValue;
+        String result = value != null ? value.trim().toLowerCase() : defaultValue;
+        if (result != null) VALUES.put(key, result);
+        return result;
     }
 
     private static Path resolveConfigPath() {
@@ -275,30 +291,41 @@ public final class TerrainDiffusionConfig {
     }
 
     private static boolean readBoolean(String key, boolean defaultValue) {
+        if (VALUES.get(key) instanceof Boolean cached) return cached;
         String value = PROPERTIES.getProperty(key);
-        return value != null ? Boolean.parseBoolean(value.trim()) : defaultValue;
+        boolean result = value != null ? Boolean.parseBoolean(value.trim()) : defaultValue;
+        VALUES.put(key, result);
+        return result;
     }
 
     private static int readInt(String key, int defaultValue) {
+        if (VALUES.get(key) instanceof Integer cached) return cached;
         String value = PROPERTIES.getProperty(key);
-        if (value == null) return defaultValue;
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid int for " + key + ": " + value + ", using default " + defaultValue);
-            return defaultValue;
+        int result = defaultValue;
+        if (value != null) {
+            try {
+                result = Integer.parseInt(value.trim());
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid int for " + key + ": " + value + ", using default " + defaultValue);
+            }
         }
+        VALUES.put(key, result);
+        return result;
     }
 
     private static float readFloat(String key, float defaultValue) {
+        if (VALUES.get(key) instanceof Float cached) return cached;
         String value = PROPERTIES.getProperty(key);
-        if (value == null) return defaultValue;
-        try {
-            return Float.parseFloat(value.trim());
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid float for " + key + ": " + value + ", using default " + defaultValue);
-            return defaultValue;
+        float result = defaultValue;
+        if (value != null) {
+            try {
+                result = Float.parseFloat(value.trim());
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid float for " + key + ": " + value + ", using default " + defaultValue);
+            }
         }
+        VALUES.put(key, result);
+        return result;
     }
 
     private static boolean isPowerOfTwo(int value) {
