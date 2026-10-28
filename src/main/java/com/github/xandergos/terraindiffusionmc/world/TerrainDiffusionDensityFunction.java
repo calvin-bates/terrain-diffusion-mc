@@ -270,11 +270,14 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
             java.util.List<Beardifier.Rigid> guards = StructureGuards.near(context.getField(Beardifier.CONTEXT_KEY),
                     volume.blockX(0), volume.blockZ(0), volume.blockX(sizeX - 1), volume.blockZ(sizeZ - 1));
             java.util.List<Beardifier.Rigid> colGuards = guards.isEmpty() ? null : new java.util.ArrayList<>();
+            // Volcano craters and lava lakes stay sealed: no cave comes within VOLCANO_SEAL blocks of their ground.
+            float[] seal = volcanoSeal(cache, volume.blockX(0), volume.blockZ(0), sizeX, sizeZ);
             int index = 0;
             for (int z = 0; z < sizeZ; z++) {
                 for (int x = 0; x < sizeX; x++) {
                     int c = x + z * sizeX, t = target[c], r = ref[c];
                     float rf = roof[c];
+                    int sealFrom = seal == null || seal[c] <= 0f ? Integer.MAX_VALUE : t - (int) Math.ceil(seal[c]);
                     int top = (cave == null || r == Integer.MIN_VALUE) ? minY - 1 : Math.min(CaveShapes.caveTop(r), caveTop);
                     int base = c * caveRows;
                     int eTop = extras.any ? extras.maxY(c) : Integer.MIN_VALUE;
@@ -301,11 +304,93 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                             if (ev < v) v = ev;
                         }
                         if (sill && blockY < t && blockY <= com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.SILL_TOP && v < 0.5f) v = 0.5f;
+                        if (blockY >= sealFrom && blockY < t && v < 0.5f) v = 0.5f;
                         if (guarded && blockY < t) v = StructureGuards.apply(colGuards, blockX, blockY, blockZ, v);
                         buffer.set(index++, v);
                     }
                 }
             }
+        }
+
+        /** How deep (blocks) the rock under a crater or lava lake stays solid, and how far round it that holds in full / fades out. */
+        private static final float VOLCANO_SEAL = 40f, VOLCANO_SEAL_FULL = 8f, VOLCANO_SEAL_FADE = 16f;
+        private static final int VOLCANO_STEP = 2;
+
+        /**
+         * Per column of the volume, how many blocks under the ground stay solid because a volcano's crater or lava lake
+         * is near (Calvin, Oct 28: a cave ran through the crater of an active volcano, opening a pit beside the lava
+         * lake): {@link #VOLCANO_SEAL} within {@link #VOLCANO_SEAL_FULL} blocks of crater or lava-lake ground (the
+         * Landforms tags), fading to nothing over the next {@link #VOLCANO_SEAL_FADE}, so a cave nearby rises to a
+         * domed end instead of a wall. Null if there is none near. The tags are read on a 2-block grid with the
+         * distance from a two-pass chamfer transform; a function of position only, so seamless across chunks.
+         */
+        private static float[] volcanoSeal(TileCache cache, int x0, int z0, int sizeX, int sizeZ) {
+            int reach = (int) (VOLCANO_SEAL_FULL + VOLCANO_SEAL_FADE) + VOLCANO_STEP;
+            int gx0 = Math.floorDiv(x0 - reach, VOLCANO_STEP), gz0 = Math.floorDiv(z0 - reach, VOLCANO_STEP);
+            int gx1 = Math.floorDiv(x0 + sizeX - 1 + reach, VOLCANO_STEP), gz1 = Math.floorDiv(z0 + sizeZ - 1 + reach, VOLCANO_STEP);
+            int gw = gx1 - gx0 + 1, gh = gz1 - gz0 + 1;
+            float[] d = new float[gw * gh];
+            boolean any = false;
+            for (int gz = 0; gz < gh; gz++) {
+                for (int gx = 0; gx < gw; gx++) {
+                    int bx = (gx0 + gx) * VOLCANO_STEP, bz = (gz0 + gz) * VOLCANO_STEP;
+                    HeightmapData tile = cache.tile(bx, bz);
+                    boolean hot = false;
+                    if (tile != null && tile.oceanTags != null) {
+                        int lx = bx - cache.blockStartX, lz = bz - cache.blockStartZ;
+                        if (lx >= 0 && lz >= 0 && lz < tile.oceanTags.length && lx < tile.oceanTags[lz].length) {
+                            byte tag = tile.oceanTags[lz][lx];
+                            hot = tag == com.github.xandergos.terraindiffusionmc.pipeline.Landforms.TAG_CRATER
+                                    || tag == com.github.xandergos.terraindiffusionmc.pipeline.Landforms.TAG_HOT_CRATER
+                                    || tag == com.github.xandergos.terraindiffusionmc.pipeline.Landforms.TAG_LAVA_LAKE;
+                        }
+                    }
+                    d[gx + gz * gw] = hot ? 0f : 1e9f;
+                    any |= hot;
+                }
+            }
+            if (!any) return null;
+            final float o = VOLCANO_STEP, g = VOLCANO_STEP * 1.4142f;
+            for (int gz = 0; gz < gh; gz++)
+                for (int gx = 0; gx < gw; gx++) {
+                    int i = gx + gz * gw;
+                    float v = d[i];
+                    if (gx > 0) v = Math.min(v, d[i - 1] + o);
+                    if (gz > 0) {
+                        v = Math.min(v, d[i - gw] + o);
+                        if (gx > 0) v = Math.min(v, d[i - gw - 1] + g);
+                        if (gx < gw - 1) v = Math.min(v, d[i - gw + 1] + g);
+                    }
+                    d[i] = v;
+                }
+            for (int gz = gh - 1; gz >= 0; gz--)
+                for (int gx = gw - 1; gx >= 0; gx--) {
+                    int i = gx + gz * gw;
+                    float v = d[i];
+                    if (gx < gw - 1) v = Math.min(v, d[i + 1] + o);
+                    if (gz < gh - 1) {
+                        v = Math.min(v, d[i + gw] + o);
+                        if (gx < gw - 1) v = Math.min(v, d[i + gw + 1] + g);
+                        if (gx > 0) v = Math.min(v, d[i + gw - 1] + g);
+                    }
+                    d[i] = v;
+                }
+            float[] out = new float[sizeX * sizeZ];
+            boolean some = false;
+            for (int z = 0; z < sizeZ; z++)
+                for (int x = 0; x < sizeX; x++) {
+                    // Bilinear between grid points, so the seal is smooth at block scale.
+                    float fx = (x0 + x) / (float) VOLCANO_STEP - gx0, fz = (z0 + z) / (float) VOLCANO_STEP - gz0;
+                    int ix = Math.min(gw - 2, (int) Math.floor(fx)), iz = Math.min(gh - 2, (int) Math.floor(fz));
+                    float tx = fx - ix, tz = fz - iz;
+                    float dist = (d[ix + iz * gw] * (1 - tx) + d[ix + 1 + iz * gw] * tx) * (1 - tz)
+                            + (d[ix + (iz + 1) * gw] * (1 - tx) + d[ix + 1 + (iz + 1) * gw] * tx) * tz;
+                    float f = 1f - Math.max(0f, Math.min(1f, (dist - VOLCANO_SEAL_FULL) / VOLCANO_SEAL_FADE));
+                    f = f * f * (3f - 2f * f);
+                    out[x + z * sizeX] = VOLCANO_SEAL * f;
+                    some |= f > 0f;
+                }
+            return some ? out : null;
         }
 
         /** The chunk's beardifier when structure pads are on and it has pieces, else null. */
