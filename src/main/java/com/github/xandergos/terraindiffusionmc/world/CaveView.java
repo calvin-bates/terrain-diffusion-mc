@@ -224,7 +224,7 @@ public final class CaveView {
         }
         float v = target - y;
         if (TerrainDiffusionConfig.caves() && ref != Integer.MIN_VALUE && y <= ref) {
-            v = Math.min(v, caveValue + CaveShapes.roof(ref - y, cols.roof[c]));
+            v = Math.min(v, CaveShapes.roofed(caveValue, ref - y, cols.roof[c]));
         }
         if (cols.extras != null && cols.extras.any) v = Math.min(v, cols.extras.value(c, cols.x0 + c % cols.w, y, cols.z0 + c / cols.w));
         short cave = cols.cave(c, y);

@@ -33,7 +33,7 @@ public class FormationProbe {
         for (int cz = 0; cz < W; cz += 16) for (int cx = 0; cx < W; cx += 16) {
             S.fill(cx, cz, 16, 16, MIN_Y, H, col, sc, SURF);
             for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) for (int y = 0; y < H; y++) {
-                float d = col[(x + z * 16) * H + y] + CaveShapes.roof(TOP - (MIN_Y + y), CaveShapes.ROOF_LAND);
+                float d = CaveShapes.roofed(col[(x + z * 16) * H + y], TOP - (MIN_Y + y), CaveShapes.ROOF_LAND);
                 v[cx + x][cz + z][y] = d <= 0 ? AIR : ROCK;
             }
         }

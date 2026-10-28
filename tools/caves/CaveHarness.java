@@ -81,7 +81,7 @@ public class CaveHarness {
         float v = top + 1 - y;
         if (y <= ref) {
             float roof = top < 62 ? S.seaRoof(x, z) : Math.abs(z - 300) < 8 ? CaveShapes.ROOF_WATER : S.landRoof(x, z);
-            float cv = cave + CaveShapes.roof(ref - y, roof);
+            float cv = CaveShapes.roofed(cave, ref - y, roof);
             v = Math.min(v, cv);
         }
         for (CaveSites.Cut sh : SHAFTS) v = Math.min(v, sh.value(x, y, z));

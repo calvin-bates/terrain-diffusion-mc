@@ -454,6 +454,17 @@ public final class CaveShapes {
         return missing > 0 ? missing * ROOF_GAIN : 0f;
     }
 
+    /**
+     * The cave field {@code cave} at {@code depth} blocks under the reference ground, with the roof of {@code roofDepth}
+     * blocks kept solid. {@link #roof} alone is added to the field, so a strong cavern or hall (values far below
+     * -15) still broke through it as ragged holes in flat ground (Calvin, Oct 28: openings in a savanna); within the roof
+     * the result is now at least solid, whatever the field.
+     */
+    public static float roofed(float cave, int depth, float roofDepth) {
+        float v = cave + roof(depth, roofDepth);
+        return depth < roofDepth ? Math.max(v, 0.5f) : v;
+    }
+
     /** Highest Y caves can reach under a reference ground top: the reference top itself (see {@link #roof}). */
     public static int caveTop(int refTop) {
         return refTop;

@@ -296,7 +296,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                         float v = t - blockY;
                         if (blockY >= open && blockY < t) v = Math.min(v, -0.5f);
                         if (blockY <= top) {
-                            float cv = cave[base + y] + CaveShapes.roof(r - blockY, rf);
+                            float cv = CaveShapes.roofed(cave[base + y], r - blockY, rf);
                             if (cv < v) v = cv;
                         }
                         if (blockY >= eBottom && blockY <= eTop) {

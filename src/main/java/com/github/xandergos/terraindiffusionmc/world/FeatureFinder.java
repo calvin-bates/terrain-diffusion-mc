@@ -690,7 +690,7 @@ public final class FeatureFinder {
     }
 
     private static boolean caveAir(CaveShapes shapes, int x, int y, int z, int ref, float roof) {
-        return y <= ref && shapes.at(x, y, z, CaveSurface.get()) + CaveShapes.roof(ref - y, roof) <= 0;
+        return y <= ref && CaveShapes.roofed(shapes.at(x, y, z, CaveSurface.get()), ref - y, roof) <= 0;
     }
 
     private static void reportCave(CommandSourceStack source, String name, int[] found, Vec3 from) {
