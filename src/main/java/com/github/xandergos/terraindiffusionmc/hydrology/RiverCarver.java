@@ -184,6 +184,76 @@ public final class RiverCarver {
     /** How many lake pixels a stream's channel is carried into (inlets) or out of (outlets) a lake. */
     private static final int LAKE_LINK = 8;
 
+    /**
+     * Draws the channel segments that start at native pixel (pi, pj) in one region's data (see the loop in apply):
+     * a stream pixel's segment to its downstream pixel (carried LAKE_LINK pixels into a lake it enters), or a lake
+     * outlet's channel.
+     */
+    private static void drawPixel(RiverService.Region reg, int pi, int pj, int scale, int i1, int j1, int H, int W,
+                                  float[] score, float[] sA, byte[] cA, float[] wA, float[] zA, float[] cpx, float[] cpz,
+                                  float[] pt) {
+        int k = reg.index(pi, pj);
+        if (k < 0) return;
+        byte cls0 = reg.cls[k];
+        int q0 = reg.downstream[k];
+        if (q0 < 0) return;
+        // A channel also runs through the edge of a lake's pixels: a lake pixel whose flow leaves the lake within
+        // LAKE_LINK pixels carries the outlet stream, and a stream entering a lake continues LAKE_LINK pixels in.
+        // Otherwise the flat ground inside the lake mask but level with the water (left dry) cut the stream off.
+        byte cls;
+        boolean inlet = false;
+        if (cls0 >= RiverMap.STREAM && cls0 <= RiverMap.MAIN) {
+            cls = cls0;
+            inlet = true;
+        } else if (cls0 == RiverMap.LAKE) {
+            // Only the lake pixel that drains straight into a stream (the outlet). Its channel is carried straight
+            // back into the lake, against the stream's direction, so it is one line and not a fan of every lake
+            // pixel that drains toward the outlet.
+            byte cq = reg.cls[q0];
+            if (cq < RiverMap.STREAM || cq > RiverMap.MAIN) return;
+            int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
+            int dr = qr - kr, dc = qc - kc;
+            drawSegment(reg, k, q0, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
+            int curR = kr, curC = kc;
+            for (int st = 0; st < LAKE_LINK; st++) {
+                int prR = curR - dr, prC = curC - dc;
+                if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
+                int prev = prR * reg.width + prC;
+                if (reg.cls[prev] != RiverMap.LAKE) break;
+                drawSegment(reg, prev, curR * reg.width + curC, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
+                curR = prR; curC = prC;
+            }
+            return;
+        } else {
+            return;
+        }
+        int segK = k, q = q0;
+        float widen = estuaryWiden(reg, k, cls);
+        for (int seg = 0; seg <= LAKE_LINK; seg++) {
+            drawSegment(reg, segK, q, cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
+            if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
+            segK = q;
+            q = reg.downstream[segK];
+            if (q < 0) break;
+        }
+    }
+
+    /**
+     * The region across the nearest boundary from region index {@code r} (one axis) if {@code pixel} lies within
+     * {@code seam} pixels of that boundary and {@code r} is its owner or the region next to it, else {@code r}. Tiles
+     * on both sides get the same pair, whichever of the two they prefer.
+     */
+    private static int seamNeighbour(int pixel, int r, int regionSize, int seam) {
+        int owner = Math.floorDiv(pixel, regionSize);
+        int off = pixel - owner * regionSize;
+        int other = off < seam ? owner - 1 : off >= regionSize - seam ? owner + 1 : owner;
+        if (other == owner) return r;
+        // The pair is {owner, other}; return the one that isn't r.
+        if (r == owner) return other;
+        if (r == other) return owner;
+        return r;
+    }
+
     /** Rasterises one flow segment (pixel k to its downstream pixel q) into the per-column channel score. */
     private static void drawSegment(RiverService.Region reg, int k, int q, byte cls, float widen, int scale, int i1, int j1,
                                     int H, int W, float[] score, float[] sA, byte[] cA, float[] wA, float[] zA, float[] cpx,
@@ -455,6 +525,9 @@ public final class RiverCarver {
         int pi0 = Math.floorDiv(i1, scale) - pad, pi1 = Math.floorDiv(i1 + H - 1, scale) + pad;
         int pj0 = Math.floorDiv(j1, scale) - pad, pj1 = Math.floorDiv(j1 + W - 1, scale) + pad;
 
+        // Pixels this close to a region boundary are drawn from the regions on both sides (see drawPixel's caller): at
+        // least the farthest a segment reaches into a tile, so both tiles at a seam draw the same set there.
+        final int seam = pad + 1;
         final int prefRi = Math.floorDiv(Math.floorDiv(i1 + H / 2, scale), regionSize);
         final int prefRj = Math.floorDiv(Math.floorDiv(j1 + W / 2, scale), regionSize);
 
@@ -514,50 +587,15 @@ public final class RiverCarver {
                     reg = regions.get(ri, rj);
                     curRi = ri; curRj = rj;
                 }
-                int k = reg.index(pi, pj);
-                if (k < 0) continue;
-                byte cls0 = reg.cls[k];
-                int q0 = reg.downstream[k];
-                if (q0 < 0) continue;
-                // A channel also runs through the edge of a lake's pixels: a lake pixel whose flow leaves the lake within
-                // LAKE_LINK pixels carries the outlet stream, and a stream entering a lake continues LAKE_LINK pixels in.
-                // Otherwise the flat ground inside the lake mask but level with the water (left dry) cut the stream off.
-                byte cls;
-                boolean inlet = false;
-                if (cls0 >= RiverMap.STREAM && cls0 <= RiverMap.MAIN) {
-                    cls = cls0;
-                    inlet = true;
-                } else if (cls0 == RiverMap.LAKE) {
-                    // Only the lake pixel that drains straight into a stream (the outlet). Its channel is carried straight
-                    // back into the lake, against the stream's direction, so it is one line and not a fan of every lake
-                    // pixel that drains toward the outlet.
-                    byte cq = reg.cls[q0];
-                    if (cq < RiverMap.STREAM || cq > RiverMap.MAIN) continue;
-                    int kr = k / reg.width, kc = k % reg.width, qr = q0 / reg.width, qc = q0 % reg.width;
-                    int dr = qr - kr, dc = qc - kc;
-                    drawSegment(reg, k, q0, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
-                    int curR = kr, curC = kc;
-                    for (int st = 0; st < LAKE_LINK; st++) {
-                        int prR = curR - dr, prC = curC - dc;
-                        if (prR < 0 || prC < 0 || prR >= reg.height || prC >= reg.width) break;
-                        int prev = prR * reg.width + prC;
-                        if (reg.cls[prev] != RiverMap.LAKE) break;
-                        drawSegment(reg, prev, curR * reg.width + curC, cq, 1f, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
-                        curR = prR; curC = prC;
-                    }
-                    continue;
-                } else {
-                    continue;
-                }
-                int segK = k, q = q0;
-                float widen = estuaryWiden(reg, k, cls);
-                for (int seg = 0; seg <= LAKE_LINK; seg++) {
-                    drawSegment(reg, segK, q, cls, widen, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
-                    if (!inlet || reg.cls[q] != RiverMap.LAKE) break;
-                    segK = q;
-                    q = reg.downstream[segK];
-                    if (q < 0) break;
-                }
+                drawPixel(reg, pi, pj, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
+                // Near a region boundary, also the other side's data (Oct 27, Calvin's X 3054-3071 Z 3241): two regions
+                // can see a stream's path there differently, and each tile drawing only its own region's view left a
+                // 20-block gap where neither drew the channel. Within SEAM pixels of the boundary every tile draws both
+                // regions' segments, so the tiles on either side draw the same channels there.
+                int seamI = seamNeighbour(pi, ri, regionSize, seam), seamJ = seamNeighbour(pj, rj, regionSize, seam);
+                if (seamI != ri) drawPixel(regions.get(seamI, rj), pi, pj, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
+                if (seamJ != rj) drawPixel(regions.get(ri, seamJ), pi, pj, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
+                if (seamI != ri && seamJ != rj) drawPixel(regions.get(seamI, seamJ), pi, pj, scale, i1, j1, H, W, score, sA, cA, wA, zA, cpx, cpz, pt);
             }
         }
 
