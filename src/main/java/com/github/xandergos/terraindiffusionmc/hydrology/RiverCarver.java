@@ -1524,7 +1524,7 @@ public final class RiverCarver {
             float[] extra = new float[n];
             {
                 final float EXTRA_PER_BLOCK = 0.22f, EXTRA_MAX = 5f, SHALLOW_BLOCKS = 0.6f;
-                final float blocksPerMetre = (metersToY.applyAsInt(10000) - metersToY.applyAsInt(0)) / 10000f;
+                final float blocksPerMetre = (metersToY.applyAsInt(1000) - metersToY.applyAsInt(0)) / 1000f;   // below the summit easing, so linear
                 final int maxD = (int) Math.ceil(EXTRA_MAX / EXTRA_PER_BLOCK);
                 final int rpx = maxD / scale + 4;
                 int gi0 = Math.floorDiv(i1, scale) - rpx, gi1 = Math.floorDiv(i1 + H - 1, scale) + rpx;

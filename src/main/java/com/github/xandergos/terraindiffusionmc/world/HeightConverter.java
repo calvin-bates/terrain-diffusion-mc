@@ -5,7 +5,8 @@ import com.github.xandergos.terraindiffusionmc.pipeline.WorldPipelineModelConfig
 /**
  * Converts pipeline elevation (metres, ocean negative) to Minecraft heights.
  *
- * <p>Land is linear: one block per {@code 30 / scale} metres above sea level (Y 63).
+ * <p>Land is linear: one block per {@code 30 / scale} metres above sea level (Y 63), eased under the build limit
+ * above Y {@value #SUMMIT_KNEE_Y} (see {@link #summit}).
  *
  * <p>The sea floor follows a shelf / slope / abyss profile instead of the old single square-root bowl:
  * <ul>
@@ -48,11 +49,26 @@ public class HeightConverter {
     public static int convertToMinecraftHeight(short meters, int configuredScale) {
         float resolution = getResolutionForScale(configuredScale);
         if (meters >= 0) {
-            return (int) (meters / resolution) + SEA_LEVEL;
+            return summit(meters / resolution + SEA_LEVEL);
         }
         // Any ocean pixel lies at least one block below sea level, as before.
         int baseY = -(int) oceanDepthBlocks(-meters, resolution) - 1;
         return Math.max(MIN_FLOOR_Y, baseY + SEA_LEVEL);
+    }
+
+    /**
+     * Summits under the build limit (Oct 27): land above Y {@link #SUMMIT_KNEE_Y} is eased towards
+     * {@link #SUMMIT_CAP_Y} along a tanh curve (slope 1 at the knee, so nothing below changes, then flatter), so the
+     * highest peaks taper to a point under the cap instead of being sheared flat at the build limit. At scale 6 a
+     * 10 km peak lands about Y 1960 instead of a plateau at 2031. The cap leaves 32 blocks of headroom for snow, ice
+     * and trees on top.
+     */
+    public static final int SUMMIT_KNEE_Y = 1600, SUMMIT_CAP_Y = 2000;
+
+    private static int summit(float y) {
+        if (y <= SUMMIT_KNEE_Y) return (int) y;
+        float room = SUMMIT_CAP_Y - SUMMIT_KNEE_Y;
+        return Math.min(SUMMIT_CAP_Y - 1, (int) (SUMMIT_KNEE_Y + room * (float) Math.tanh((y - SUMMIT_KNEE_Y) / room)));
     }
 
     /** Blocks of water above the sea floor (before the one-block offset) for a depth in metres. */
