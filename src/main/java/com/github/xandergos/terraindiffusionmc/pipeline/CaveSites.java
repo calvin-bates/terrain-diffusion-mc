@@ -424,6 +424,9 @@ public final class CaveSites {
         int x = ax + (int) ((v - 0.5f) * 120), z = az + (int) ((w - 0.5f) * 120);
         int ground = surface.groundTop(x, z);
         if (ground == Integer.MIN_VALUE || ground < 64 || surface.nearInlandWater(x, z)) return null;
+        // Away from the sea: a dome by the coast broke through the cliff and its floor sat under sea level, half
+        // flooded with a wall of water (Calvin, Oct 27, X -48914 Z 39830).
+        if (nearSea(surface, x, z, 45f + 28f)) return null;
         float a = unit(h, 3), b = unit(h, 13), c = unit(h, 23);
         float rx = 28f + 17f * a, ry = 18f + 8f * b;
         int cy = ground - 10 - (int) (8 * c) - (int) ry;
@@ -559,6 +562,8 @@ public final class CaveSites {
         int ground = surface.groundTop(x, z);
         if (ground == Integer.MIN_VALUE || ground < 66) return null;
         if (surface.nearInlandWater(x, z)) return null;
+        // A mouth sloping down by the coast would open under the sea level into the sea: keep it inland.
+        if (nearSea(surface, x, z, 96f)) return null;
         // Uphill, if the ground rises: the direction among eight whose ground 24 blocks away is highest.
         float yaw = a * 6.2831855f;
         int best = ground + 5;
@@ -782,6 +787,20 @@ public final class CaveSites {
         z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
         return z ^ (z >>> 31);
+    }
+
+    /** Whether open sea (ground under sea level, no river or lake) lies within r blocks of (x, z): 16 directions at r/3, 2r/3 and r. */
+    public static boolean nearSea(CaveBiomes.Surface s, int x, int z, float r) {
+        for (int k = 1; k <= 3; k++) {
+            float d = r * k / 3f;
+            for (int a = 0; a < 16; a++) {
+                double t = a * Math.PI / 8;
+                int px = x + (int) Math.round(d * Math.cos(t)), pz = z + (int) Math.round(d * Math.sin(t));
+                int g = s.groundTop(px, pz);
+                if (g != Integer.MIN_VALUE && g < 61 && s.inlandWater(px, pz) == Integer.MIN_VALUE) return true;
+            }
+        }
+        return false;
     }
 
     private static long hash(long cell, CaveBiomes layer) {

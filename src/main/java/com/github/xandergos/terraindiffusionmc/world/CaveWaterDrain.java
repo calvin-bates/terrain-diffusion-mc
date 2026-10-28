@@ -45,6 +45,7 @@ public final class CaveWaterDrain {
     public static void finish(WorldGenLevel level, ChunkAccess chunk) {
         if (!TerrainDiffusionConfig.caves() || !TerrainDiffusionConfig.caveBiomes() || !TerrainDiffusionConfig.waterCaves()) return;
         try {
+            flood(level, chunk);
             drain(level, chunk);
         } catch (Throwable t) {
             LOG.error("Terra: cave water drain failed for chunk {}", chunk.getPos(), t);
@@ -152,6 +153,129 @@ public final class CaveWaterDrain {
             }
         }
         if (removed > 0 && LOG.isDebugEnabled()) LOG.debug("Terra: drained {} cave fluid blocks around {}", removed, center.getPos());
+    }
+
+    // ---- Caves open to the sea fill to sea level ----
+
+    /** Sea level water's top block, and how far from the sea (blocks) a cave still floods from it. */
+    private static final int SEA_TOP = 62;
+    public static int FLOOD_RADIUS = 96;
+    private static final int GRID = 8;
+
+    /**
+     * Fills caves that the sea reaches to sea level. The terrain pass floods caves below sea level by column (near the
+     * sea, or under it) and keeps the rest dry, so a cave running inland from the sea stood with a flat wall of water
+     * where the flooded columns ended (Calvin, Oct 27, X -48914 Z 39840). Over the 3 x 3 chunks around the one just
+     * decorated, air at or below Y 62 touching sea-level water is filled with water, and so on, in columns within
+     * {@link #FLOOD_RADIUS} of the open sea (judged on an 8-block world grid, so every pass agrees). Water and lava
+     * caves' own cells are left alone (they have their own levels).
+     */
+    private static void flood(WorldGenLevel level, ChunkAccess center) {
+        int cx = center.getPos().x(), cz = center.getPos().z();
+        int x0 = (cx - 1) * 16, z0 = (cz - 1) * 16, minY = center.getMinY(), minSection = center.getMinSectionY();
+        if (minY > SEA_TOP) return;
+        ChunkAccess[] cs = new ChunkAccess[9];
+        boolean anyWater = false;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++) {
+                ChunkAccess c = dx == 0 && dz == 0 ? center : level.getChunk(cx + dx, cz + dz);
+                cs[(dz + 1) * 3 + dx + 1] = c;
+                if (c == null) continue;
+                LevelChunkSection[] secs = c.getSections();
+                for (int s = 0; s <= ((SEA_TOP - minY) >> 4) && s < secs.length; s++)
+                    if (secs[s] != null && !secs[s].hasOnlyAir() && secs[s].getStates().maybeHas(b -> b.is(Blocks.WATER)))
+                        anyWater = true;
+            }
+        if (!anyWater) return;
+        // Near the sea, on the 8-block grid (the grid points around the area, nearest point per column).
+        CaveSurface surface = CaveSurface.get();
+        int g0x = Math.floorDiv(x0, GRID), g0z = Math.floorDiv(z0, GRID), gn = 48 / GRID + 1;
+        boolean[] near = new boolean[gn * gn];
+        boolean anyNear = false;
+        for (int j = 0; j < gn; j++)
+            for (int i = 0; i < gn; i++) {
+                int gx = (g0x + i) * GRID + GRID / 2, gz = (g0z + j) * GRID + GRID / 2;
+                near[j * gn + i] = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.nearSea(surface, gx, gz, FLOOD_RADIUS);
+                anyNear |= near[j * gn + i];
+            }
+        if (!anyNear) return;
+        final int W = 48, H = SEA_TOP - minY + 1;
+        boolean[] seen = new boolean[W * W * H];
+        int[] queue = new int[4096];
+        int head = 0, tail = 0;
+        // Seeds: air at or below sea level, near the sea, outside water and lava caves, with a sea-level water source
+        // beside, under or over it (only sections that hold both air and water are looked at).
+        int[] nx = {1, -1, 0, 0, 0, 0}, nz = {0, 0, 1, -1, 0, 0}, ny = {0, 0, 0, 0, -1, 1};
+        for (int ci = 0; ci < 9; ci++) {
+            ChunkAccess c = cs[ci];
+            if (c == null) continue;
+            int ox = (ci % 3) * 16, oz = (ci / 3) * 16;
+            LevelChunkSection[] secs = c.getSections();
+            for (int s = 0; s < secs.length && minY + s * 16 <= SEA_TOP; s++) {
+                LevelChunkSection sec = secs[s];
+                if (sec == null || sec.hasOnlyAir() || !sec.getStates().maybeHas(BlockState::isAir)) continue;
+                boolean waterNear = sec.getStates().maybeHas(b -> b.is(Blocks.WATER))
+                        || (s > 0 && secs[s - 1] != null && secs[s - 1].getStates().maybeHas(b -> b.is(Blocks.WATER)))
+                        || (s + 1 < secs.length && secs[s + 1] != null && secs[s + 1].getStates().maybeHas(b -> b.is(Blocks.WATER)))
+                        || ci != 4;   // a neighbouring chunk's water can sit across the border: check those blocks
+                if (!waterNear) continue;
+                for (int ly = 0; ly < 16; ly++) {
+                    int y = minY + s * 16 + ly;
+                    if (y > SEA_TOP) break;
+                    for (int lz = 0; lz < 16; lz++)
+                        for (int lx = 0; lx < 16; lx++) {
+                            if (!sec.getBlockState(lx, ly, lz).isAir()) continue;
+                            int ax = ox + lx, az = oz + lz, ay = y - minY;
+                            if (!nearAt(near, gn, g0x, g0z, x0 + ax, z0 + az)) continue;
+                            if (fluidCave(sec.getNoiseBiome(lx >> 2, ly >> 2, lz >> 2))) continue;
+                            boolean wet = false;
+                            for (int k = 0; k < 6 && !wet; k++) {
+                                int bx = ax + nx[k], bz = az + nz[k], by = ay + ny[k];
+                                if (bx < 0 || bx >= W || bz < 0 || bz >= W || by < 0 || by >= H) continue;
+                                BlockState n = get(cs, bx, minY + by, bz, minSection);
+                                wet = n != null && n.is(Blocks.WATER) && n.getFluidState().isSource();
+                            }
+                            if (!wet) continue;
+                            int i = (ay * W + az) * W + ax;
+                            seen[i] = true;
+                            sec.setBlockState(lx, ly, lz, Blocks.WATER.defaultBlockState(), false);
+                            if (tail == queue.length) queue = java.util.Arrays.copyOf(queue, queue.length * 2);
+                            queue[tail++] = i;
+                        }
+                }
+            }
+        }
+        BlockState water = Blocks.WATER.defaultBlockState();
+        while (head < tail) {
+            int i = queue[head++];
+            int x = i % W, z = (i / W) % W, y = i / (W * W);
+            for (int k = 0; k < 6; k++) {
+                int ax = x + nx[k], az = z + nz[k], ay = y + ny[k];
+                if (ax < 0 || ax >= W || az < 0 || az >= W || ay < 0 || ay >= H) continue;
+                int ni = (ay * W + az) * W + ax;
+                if (seen[ni]) continue;
+                seen[ni] = true;
+                BlockState st = get(cs, ax, minY + ay, az, minSection);
+                if (st == null || !st.isAir()) continue;
+                if (!nearAt(near, gn, g0x, g0z, x0 + ax, z0 + az)) continue;
+                ChunkAccess c = cs[(az >> 4) * 3 + (ax >> 4)];
+                LevelChunkSection sec = c.getSections()[((minY + ay) >> 4) - minSection];
+                if (sec != null && fluidCave(sec.getNoiseBiome((ax & 15) >> 2, ((minY + ay) & 15) >> 2, (az & 15) >> 2))) continue;
+                set(cs, ax, minY + ay, az, minSection, water);
+                if (tail == queue.length) {
+                    System.arraycopy(queue, head, queue, 0, tail - head);
+                    tail -= head;
+                    head = 0;
+                    if (tail == queue.length) queue = java.util.Arrays.copyOf(queue, queue.length * 2);
+                }
+                queue[tail++] = ni;
+            }
+        }
+    }
+
+    private static boolean nearAt(boolean[] near, int gn, int g0x, int g0z, int wx, int wz) {
+        int i = Math.floorDiv(wx, GRID) - g0x, j = Math.floorDiv(wz, GRID) - g0z;
+        return i >= 0 && j >= 0 && i < gn && j < gn && near[j * gn + i];
     }
 
     /** The block at area position (x, y, z) (x, z in 0..47 over the 3 x 3 chunks), or null if unknown. */
