@@ -244,9 +244,94 @@ public final class RiverMap {
             if (!reached) continue;
             for (int k = 0; k < len; k++) if (out[path[k]] == NONE) out[path[k]] = STREAM;
         }
+        joinSourcesToLakes(out, lake, net, elev, climate, p, H, W);
         Result result = new Result(out, net.downstream, net.filled, elev);
         result.size = channelSize(out, q, elev, net.downstream, p);
         return result;
+    }
+
+    /** How far (native pixels) a stream's source looks for a lake to start from, and how far above the lake the ground between may rise (metres). */
+    private static final int JOIN_REACH = 6;
+    private static final float JOIN_RISE_M = 3f;
+    private static final int[] JOIN_DR = {0, 0, -1, 1, -1, -1, 1, 1}, JOIN_DC = {-1, 1, 0, 0, -1, 1, -1, 1};
+
+    /**
+     * A stream that starts just beside a lake, at or below its water, starts from the lake (Oct 28, Calvin's X 1530
+     * Z -4425: a stream a block below a lake's water began 19 blocks from its shore, a strip of land at lake level
+     * between them). The lake's own outlet is elsewhere on its rim, so neither the outlet path nor "a channel never
+     * stops" joined them. For each stream source (a channel pixel no channel flows into), the nearest lake pixel within
+     * {@link #JOIN_REACH} pixels is found over ground no more than {@link #JOIN_RISE_M} above the lake's level; if the
+     * lake's level is at or above the source, the pixels between become stream.
+     */
+    private static void joinSourcesToLakes(byte[] out, boolean[] lake, DrainageNetwork net, float[] elev, float[] climate,
+                                           Params p, int H, int W) {
+        int n = out.length;
+        boolean[] fed = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            if (out[i] < STREAM || out[i] > MAIN) continue;
+            int j = net.downstream[i];
+            if (j >= 0) fed[j] = true;
+        }
+        int side = 2 * JOIN_REACH + 1;
+        int[] parent = new int[side * side];
+        int[] queue = new int[side * side];
+        for (int s = 0; s < n; s++) {
+            if (out[s] < STREAM || out[s] > MAIN || fed[s]) continue;
+            int sr = s / W, sc = s % W;
+            java.util.Arrays.fill(parent, -2);
+            int head = 0, tail = 0, found = -1;
+            parent[JOIN_REACH * side + JOIN_REACH] = -1;
+            queue[tail++] = s;
+            float maxGround = elev[s];
+            while (head < tail && found < 0) {
+                int i = queue[head++];
+                int r = i / W, c = i % W;
+                for (int d8 = 0; d8 < 8 && found < 0; d8++) {
+                    {
+                        // Straight steps before diagonal ones, so the joining channel runs straight where it can.
+                        int dr = JOIN_DR[d8], dc = JOIN_DC[d8];
+                        int rr = r + dr, cc = c + dc;
+                        if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+                        int lr = rr - sr + JOIN_REACH, lc = cc - sc + JOIN_REACH;
+                        if (lr < 0 || lc < 0 || lr >= side || lc >= side || parent[lr * side + lc] != -2) continue;
+                        int j = rr * W + cc;
+                        parent[lr * side + lc] = (r - sr + JOIN_REACH) * side + (c - sc + JOIN_REACH);
+                        if (lake[j]) {
+                            float level = net.filled[j];
+                            if (level >= elev[s] && pathMax(parent, lr * side + lc, sr, sc, side, W, elev) <= level + JOIN_RISE_M) {
+                                found = j;
+                            }
+                            continue;
+                        }
+                        if (elev[j] <= 0f || elev[j] > elev[s] + 2f * JOIN_RISE_M + 10f) continue;
+                        float tj = climate != null ? climate[j] : 10f;
+                        if (tj < p.minTempC || elev[j] > p.maxElevM) continue;
+                        queue[tail++] = j;
+                    }
+                }
+            }
+            if (found < 0) continue;
+            // Mark the path (excluding the lake pixel and the source).
+            int lr = found / W - sr + JOIN_REACH, lc = found % W - sc + JOIN_REACH;
+            int k = parent[lr * side + lc];
+            while (k >= 0) {
+                int pi = (k / side - JOIN_REACH + sr) * W + (k % side - JOIN_REACH + sc);
+                if (pi != s && out[pi] == NONE) out[pi] = STREAM;
+                k = parent[k];
+            }
+        }
+    }
+
+    /** Highest ground (metres) on the BFS path ending at local cell {@code k}, excluding the end cell itself. */
+    private static float pathMax(int[] parent, int k, int sr, int sc, int side, int W, float[] elev) {
+        float m = Float.NEGATIVE_INFINITY;
+        k = parent[k];
+        while (k >= 0) {
+            int pi = (k / side - JOIN_REACH + sr) * W + (k % side - JOIN_REACH + sc);
+            m = Math.max(m, elev[pi]);
+            k = parent[k];
+        }
+        return m;
     }
 
     /** Elevations (metres) over which the size cap eases from a main river's down to a river's (rivers stop at 1500 m). */
