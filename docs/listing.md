@@ -24,7 +24,7 @@ Copy the parts below into each site. Both accept Markdown for the description.
 - `orogeny-1.0.0-cuda+26.3.jar`, "CUDA (NVIDIA)": needs CUDA and cuDNN installed.
 - `orogeny-1.0.0-cpu+26.3.jar`, "CPU / macOS": works everywhere; fast on Apple Silicon, slow elsewhere.
 
-On Modrinth, upload them as three files of one version (mark the windows jar primary). On CurseForge, upload the windows jar as the main file and the other two as additional files.
+The cuda jar is about 560 MB (it bundles NVIDIA's CUDA runtime), which is likely over the stores' upload limits. Upload the windows and cpu jars to Modrinth (one version, windows primary) and CurseForge (windows main, cpu additional), and link the GitHub release for the cuda jar in the description.
 
 **Gallery ideas:** a mountain range at sunrise, a river delta from above, an atoll, a Yellowstone geyser, a cave hall, the `/orogeny-explore` map.
 
@@ -60,7 +60,7 @@ Orogeny replaces the overworld with terrain drawn by [Terrain Diffusion](https:/
 | File | Use it on |
 |---|---|
 | **windows** | Windows with any modern GPU (recommended) |
-| **cuda** | NVIDIA GPUs with CUDA and cuDNN installed |
+| **cuda** | NVIDIA GPUs with CUDA and cuDNN installed ([download from GitHub](https://github.com/calvin-bates/terrain-diffusion-mc/releases)) |
 | **cpu** | Everything else; uses CoreML on Apple Silicon Macs |
 
 ### Getting started
