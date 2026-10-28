@@ -136,7 +136,7 @@ public final class RiverCarver {
      * Z -13470: levels 11 blocks apart). The pixel's own region is used when it sees the lake whole and the lake's
      * deepest pixel lies in its square; otherwise a neighbouring region that does; otherwise its own region.
      */
-    static RiverService.Region lakeRegion(Regions regions, int pi, int pj, int regionSize) {
+    public static RiverService.Region lakeRegion(Regions regions, int pi, int pj, int regionSize) {
         int ori = Math.floorDiv(pi, regionSize), orj = Math.floorDiv(pj, regionSize);
         RiverService.Region o = regions.get(ori, orj);
         int k = o.index(pi, pj);
@@ -146,14 +146,33 @@ public final class RiverCarver {
             if (o.ownsLakeAt(k)) return o;
         } else {
             // Not lake here: only worth asking the neighbours if this region sees a cut-off lake right beside it.
-            boolean near = false;
+            boolean near = false, ownBeside = false;
             for (int dr = -1; dr <= 1 && !near; dr++) {
                 for (int dc = -1; dc <= 1; dc++) {
                     int q = o.index(pi + dr, pj + dc);
+                    if (q >= 0 && o.cls[q] == RiverMap.LAKE) ownBeside = true;
                     if (q >= 0 && o.cls[q] == RiverMap.LAKE && !o.ownsLakeAt(q)) { near = true; break; }
                 }
             }
-            if (!near) return o;
+            if (!near && ownBeside) return o;
+            if (!near) {
+                // Not even a cut-off lake here, but a neighbouring region may see a lake that crosses the seam (Calvin,
+                // Oct 28, X 1536 Z -4430: the east region's lake stopped dead in a straight line along the region seam,
+                // the west region seeing no lake there at all). Its lake is used if it owns it.
+                for (int di = -1; di <= 1; di++) {
+                    for (int dj = -1; dj <= 1; dj++) {
+                        if (di == 0 && dj == 0 || !inWindow(pi, pj, ori + di, orj + dj, regionSize, margin)) continue;
+                        RiverService.Region nb = regions.get(ori + di, orj + dj);
+                        // The pixel or one beside it (its one-pixel rim) in a lake that region owns.
+                        for (int er = -1; er <= 1; er++)
+                            for (int ec = -1; ec <= 1; ec++) {
+                                int q = nb.index(pi + er, pj + ec);
+                                if (q >= 0 && nb.cls[q] == RiverMap.LAKE && nb.ownsLakeAt(q)) return nb;
+                            }
+                    }
+                }
+                return o;
+            }
         }
         for (int di = -1; di <= 1; di++) {
             for (int dj = -1; dj <= 1; dj++) {

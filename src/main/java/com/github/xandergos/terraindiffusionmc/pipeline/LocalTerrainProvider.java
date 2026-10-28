@@ -583,9 +583,17 @@ public final class LocalTerrainProvider {
         try {
             int scale = Math.max(1, WorldScaleManager.getCurrentScale());
             int pi = Math.floorDiv(blockZ, scale), pj = Math.floorDiv(blockX, scale);
-            RiverService.Region reg = rivers().regionOfPixel(pi, pj, (a, b, c, d) -> getPipelineData(a, b, c, d, true));
+            RiverService svc = rivers();
+            RiverService.Source src = (a, b, c, d) -> getPipelineData(a, b, c, d, true);
+            RiverService.Region reg = svc.regionOfPixel(pi, pj, src);
             int k = reg.index(pi, pj);
-            return k < 0 ? (byte) -1 : reg.cls[k];
+            if (k < 0) return (byte) -1;
+            // Lakes as the carver sees them: a lake crossing a region seam comes from the region that owns it.
+            RiverService.Region lr = com.github.xandergos.terraindiffusionmc.hydrology.RiverCarver.lakeRegion(
+                    (ri, rj) -> svc.region(ri, rj, src), pi, pj, svc.regionSize());
+            int lk = lr.index(pi, pj);
+            if (lk >= 0 && lr.cls[lk] == com.github.xandergos.terraindiffusionmc.hydrology.RiverMap.LAKE) return lr.cls[lk];
+            return reg.cls[k];
         } catch (Exception e) {
             return (byte) -1;
         }
