@@ -64,9 +64,20 @@ public final class AridLandforms {
         return smoothstep(450f, 250f, p) * smoothstep(2f, 8f, t);
     }
 
-    /** As {@link #arid}, but hot too (mesas and hoodoos). */
-    static float hotArid(float t, float p) {
-        return smoothstep(420f, 260f, p) * smoothstep(9f, 15f, t);
+    /**
+     * As {@link #arid}, but warm desert country (mesas and hoodoos): rain over the evaporative demand the biome
+     * classifier uses for trees ({@link BiomeClassifier}), where it makes desert or dry savanna, in warm climates. The
+     * old test (under 420 mm, over 9-15 deg C) let mesas into temperate country the classifier covers with sparse
+     * forest (Calvin, Oct 28, X 758 Z 3186: a terraced mesa in the middle of a forest).
+     *
+     * @param tSeason temperature seasonality (standard deviation x 100, as in the climate maps), or NaN
+     */
+    static float hotArid(float t, float p, float tSeason) {
+        float tStd = Float.isNaN(tSeason) ? 0f : tSeason / 100f;
+        float tEff = Math.max(0f, t + 0.5f * tStd);
+        float pet = Math.max(250f, 250f + 25f * tEff + 0.7f * tEff * tEff);
+        // Desert (no trees) below 0.2; savanna up to ~0.5; the mesas fade out across the dry edge of the savanna.
+        return smoothstep(0.32f, 0.2f, p / pet) * smoothstep(17f, 20f, t);
     }
 
     // ---- Mesas ----
@@ -83,7 +94,7 @@ public final class AridLandforms {
         for (int k = 0; k < HW; k++) {
             float e = elev[k];
             if (e < 250f || BiomeClassifier.isOceanBiome(biomes[k])) continue;
-            float a = hotArid(climate[k], climate[2 * HW + k]);
+            float a = hotArid(climate[k], climate[2 * HW + k], climate[HW + k]);
             if (a <= 0f) continue;
             int r = k / W, c = k % W;
             float wx = (j1 + c) * metresPerBlock, wz = (i1 + r) * metresPerBlock;
@@ -464,7 +475,7 @@ public final class AridLandforms {
                 float cz = (gi + 0.2f + 0.6f * unit(h, 2)) * cell, cx = (gj + 0.2f + 0.6f * unit(h, 3)) * cell;
                 float wx = cx * metresPerBlock, wz = cz * metresPerBlock;
                 if (HOODOO_ZONE.GetNoise(wx, wz) < HOODOO_ZONE_LEVEL) continue;
-                if (hotArid(field.temp(cz, cx), field.precip(cz, cx)) < 0.5f) continue;
+                if (hotArid(field.temp(cz, cx), field.precip(cz, cx), field.tSeason(cz, cx)) < 0.5f) continue;
                 float g = Math.max(1f, 30f / metresPerBlock);
                 float sx = (field.ground(cz, cx + g) - field.ground(cz, cx - g)) / (2f * g * metresPerBlock);
                 float sz = (field.ground(cz + g, cx) - field.ground(cz - g, cx)) / (2f * g * metresPerBlock);
