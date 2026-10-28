@@ -13,15 +13,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Waterfalls (biomes plan v1.4 round D): where a river or stream's water reaches the edge of a drop of three blocks or
- * more (a hanging valley's mouth on a Yosemite wall, a terrace cliff, a gorge's lip), its water is woken up after the
- * features step, so it pours over the edge as a falling column instead of standing still at the lip. Lakes are left
- * alone. At most {@link #MAX_PER_CHUNK} per chunk.
+ * Waterfalls (biomes plan v1.4 round D): where a river or stream's water reaches the edge of a drop (a hanging valley's
+ * mouth on a Yosemite wall, a terrace cliff, a gorge's lip, a step down a steep slope), its water is woken up after the
+ * features step, so it pours over the edge instead of standing still at the lip. Lakes are left alone. At most
+ * {@link #MAX_PER_CHUNK} per chunk.
  */
 public final class Waterfalls {
     private static final Logger LOG = LoggerFactory.getLogger(Waterfalls.class);
-    private static final int MAX_PER_CHUNK = 48;
-    private static final int MIN_DROP = 3;
+    private static final int MAX_PER_CHUNK = 96;
+    /**
+     * Air this many blocks deep beside the water wakes it. Was 3: on a steep slope the stream is a run of standing pools
+     * one or two blocks apart, and none of them ever flowed (Calvin, Oct 27, X 20200 Z -10958: a dry stone bowl with
+     * still pockets of water down it). With 1, every pool with open air beside it at its own level spills, so the
+     * stream cascades down the slope into the next pool and on to the bottom.
+     */
+    private static final int MIN_DROP = 1;
 
     private Waterfalls() {
     }
