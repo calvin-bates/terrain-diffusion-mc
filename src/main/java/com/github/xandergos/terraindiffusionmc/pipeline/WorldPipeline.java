@@ -928,6 +928,7 @@ public final class WorldPipeline implements AutoCloseable {
         if (captureStages) debugModel = elevFlat.clone();
         archipelagoShaper.apply(elevFlat, padded, i1, j1, H, W, syntheticMapFactory, 32 * LATENT_COMPRESSION, detailOnly);
         if (captureStages) debugShaped = elevFlat.clone();
+        if (TerrainDiffusionConfig.riftSeas()) drownRifts(elevFlat, i1, j1, H, W);
         if (tagsOut != null) java.util.Arrays.fill(tagsOut, OceanFeatures.TAG_NONE);
         if (TerrainDiffusionConfig.oceanFeatures()) {
             OceanFeatures.CoarseField field = oceanCoarseField(i1, j1, i2, j2);
@@ -951,6 +952,51 @@ public final class WorldPipeline implements AutoCloseable {
         if (TerrainDiffusionConfig.showpieces()) showpieces.apply(elevFlat, i1, j1, H, W, tagsOut);
         float[] climate = withClimate ? computeClimate(i1, j1, i2, j2, elevFlat, H, W) : null;
         return new float[][]{elevFlat, climate};
+    }
+
+    /** Rift sea drowning: low ground (fully below the first, untouched above the second, metres) and floor depth. */
+    private static final float RIFT_LOW_M = 60f, RIFT_HIGH_M = 220f, RIFT_SHELF_M = 30f, RIFT_FLOOR_M = 250f;
+
+    /**
+     * Drowns a rift sea's floor where the model drew it as land (Oct 27, Calvin's X -58065 Z -16625: the coarse model
+     * made the planned sea a narrow valley floored at sea level, all tidal flats and dry "ocean" between walls a
+     * kilometre high). Inside the planned sea (u < 1, see TectonicConditioning#riftSea), ground lower than
+     * {@link #RIFT_LOW_M} is lowered to a floor shelving from {@link #RIFT_SHELF_M} at the coast to
+     * {@link #RIFT_SHELF_M} + {@link #RIFT_FLOOR_M} on the axis; higher ground fades out of it by {@link #RIFT_HIGH_M},
+     * so the valley's walls stay as the sea's steep coasts. Ground already deeper keeps its depth. A function of
+     * position only, so seamless.
+     */
+    private void drownRifts(float[] elev, int i1, int j1, int H, int W) {
+        SyntheticMapFactory syn = syntheticMapFactory;
+        if (syn == null) return;
+        int S = 32 * LATENT_COMPRESSION;
+        // Quick test on the coarse grid (with a pixel of slack): is any rift near this window at all?
+        boolean any = false;
+        for (int ci = Math.floorDiv(i1, S) - 1; ci <= Math.floorDiv(i1 + H, S) + 1 && !any; ci++)
+            for (int cj = Math.floorDiv(j1, S) - 1; cj <= Math.floorDiv(j1 + W, S) + 1 && !any; cj++) {
+                float[] f = syn.riftSea(cj + 0.5f, ci + 0.5f);
+                any = f != null;
+            }
+        if (!any) return;
+        for (int r = 0; r < H; r++) {
+            for (int c = 0; c < W; c++) {
+                int k = r * W + c;
+                float e = elev[k];
+                if (e >= RIFT_HIGH_M) continue;
+                float[] f = syn.riftSea((j1 + c) / (float) S, (i1 + r) / (float) S);
+                if (f == null) continue;
+                float u = f[0];
+                float w = f[1] * (1f - smoothstepF(0.8f, 1.05f, u)) * (1f - smoothstepF(RIFT_LOW_M, RIFT_HIGH_M, e));
+                if (w <= 0f) continue;
+                float target = -(RIFT_SHELF_M + RIFT_FLOOR_M * (1f - u * u));
+                if (e > target) elev[k] = e + (target - e) * w;
+            }
+        }
+    }
+
+    private static float smoothstepF(float a, float b, float x) {
+        float t = Math.max(0f, Math.min(1f, (x - a) / (b - a)));
+        return t * t * (3f - 2f * t);
     }
 
     /** Tools only (TerraPreview): when set, {@link #get} keeps copies of the elevation before and after the archipelago pass. */

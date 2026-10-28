@@ -111,6 +111,12 @@ public final class SyntheticMapFactory {
         return tectonics.riftAxis(x, y, baseElev);
     }
 
+    /** Where coarse position (x, y) lies across a rift sea ({u, along}, see TectonicConditioning#riftSea), or null. */
+    public float[] riftSea(float x, float y) {
+        if (archipelagoZone(x, y) >= 1f) return null;   // rifts are faded out inside archipelago zones
+        return tectonics.riftSea(x, y, baseElev);
+    }
+
     /** Rift sea centres in the coarse window ({x, y, depth} each). */
     public java.util.List<float[]> riftCentres(float x0, float y0, float x1, float y1) {
         return tectonics.riftCentres(x0, y0, x1, y1, baseElev);

@@ -241,6 +241,29 @@ public final class TectonicConditioning {
         return best;
     }
 
+    /**
+     * Where (x, y) lies across a rift sea, for drowning its floor at native resolution: {u, along}, u the distance from
+     * the axis over the half-width there (0 on the axis, 1 at the planned coast) and along the strength along it
+     * (fading where it runs on into the ocean), the nearest rift's; or null if no rift is within 1.2 half-widths.
+     */
+    public float[] riftSea(float x, float y, Base base) {
+        if (!rifts) return null;
+        int cxi = (int) Math.floor(x / RIFT_CELL), cyi = (int) Math.floor(y / RIFT_CELL);
+        float[] best = null;
+        for (int a = -1; a <= 1; a++) {
+            for (int b = -1; b <= 1; b++) {
+                Rift r = rift(cxi + a, cyi + b, base);
+                if (!r.exists()) continue;
+                float[] f = riftFrame(r, x, y);
+                if (f == null || f[2] < 0.5f) continue;
+                float u = f[1] / f[2];
+                if (u > 1.2f) continue;
+                if (best == null || u < best[0]) best = new float[]{u, f[3]};
+            }
+        }
+        return best;
+    }
+
     /** Rift seas whose centres lie in the coarse window: {x, y, depth} each, for the finder and the explorer. */
     public java.util.List<float[]> riftCentres(float x0, float y0, float x1, float y1, Base base) {
         java.util.List<float[]> out = new java.util.ArrayList<>();
