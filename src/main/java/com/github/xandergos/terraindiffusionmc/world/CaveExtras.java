@@ -106,6 +106,35 @@ final class CaveExtras {
         return m;
     }
 
+    /** Thinnest roof (blocks) a cut may leave under the ground; anything thinner is opened to the sky. */
+    static final int THIN_ROOF = 2;
+
+    /**
+     * The lowest Y to open to the sky in column c, or MAX_VALUE: where a cut (cave mouth, ravine, shaft, dome...)
+     * passes 1-2 blocks under the ground's top block {@code s}, that thin crust is opened too, so no one-block strips of
+     * ground are left spanning a cut's opening (Calvin, Oct 27). Rock shelters, sea arches and notches keep their
+     * roofs (they are overhangs by design, with 3+ blocks over them).
+     */
+    int openFrom(int c, int x, int s, int z) {
+        boolean any = false;
+        for (CaveSites.Cut cut : shafts) if (open(cut) && cut.covers(x, z)) { any = true; break; }
+        if (!any) return Integer.MAX_VALUE;
+        if (openValue(x, s, z) < 0f) return Integer.MAX_VALUE;   // already open at the top
+        for (int d = 1; d <= THIN_ROOF; d++)
+            if (openValue(x, s - d, z) < 0f) return s - d + 1;
+        return Integer.MAX_VALUE;
+    }
+
+    private static boolean open(CaveSites.Cut cut) {
+        return !(cut instanceof CaveSites.Shelter) && !(cut instanceof SeaArches.Arch);
+    }
+
+    private float openValue(int x, int y, int z) {
+        float v = Float.POSITIVE_INFINITY;
+        for (CaveSites.Cut cut : shafts) if (open(cut)) v = Math.min(v, cut.value(x, y, z));
+        return v;
+    }
+
     /** Density of the extra shapes at a block of column c (negative is air), +inf where none reaches. */
     float value(int c, int x, int y, int z) {
         float v = Float.POSITIVE_INFINITY;

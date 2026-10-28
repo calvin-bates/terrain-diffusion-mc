@@ -282,9 +282,12 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                     int blockX = volume.blockX(x), blockZ = volume.blockZ(z);
                     if (colGuards != null) StructureGuards.column(guards, blockX, blockZ, colGuards);
                     boolean guarded = colGuards != null && !colGuards.isEmpty();
+                    // A cut passing just under the ground opens the thin crust over it (no one-block strips).
+                    int open = eTop == Integer.MIN_VALUE ? Integer.MAX_VALUE : extras.openFrom(c, blockX, t - 1, blockZ);
                     for (int y = 0; y < sizeY; y++) {
                         int blockY = minY + y;
                         float v = t - blockY;
+                        if (blockY >= open && blockY < t) v = Math.min(v, -0.5f);
                         if (blockY <= top) {
                             float cv = cave[base + y] + CaveShapes.roof(r - blockY, rf);
                             if (cv < v) v = cv;

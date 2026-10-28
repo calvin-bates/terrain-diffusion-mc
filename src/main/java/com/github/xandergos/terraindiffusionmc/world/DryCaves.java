@@ -87,10 +87,17 @@ public final class DryCaves {
                 int x = x0 + dx, z = z0 + dz;
                 int tx = (x >> shift) << shift, tz = (z >> shift) << shift;
                 if (tx != tileX || tz != tileZ) {
-                    tile = LocalTerrainProvider.peekHeightmap(tz, tx, tz + tileSize, tx + tileSize);   // never generates
+                    tile = LocalTerrainProvider.peekHeightmap(tz, tx, tz + tileSize, tx + tileSize);
+                    // A neighbouring tile not built yet used to count as sea, flooding the caves along this chunk's
+                    // edge below Y 62 (a wall of water that then poured into the dry caves beside it). Build it
+                    // instead, as the cave shapes of the same chunk already do (CaveSurface).
+                    if (tile == null) {
+                        LocalTerrainProvider p = LocalTerrainProvider.getInstance();
+                        if (p != null) tile = p.fetchHeightmap(tz, tx, tz + tileSize, tx + tileSize);
+                    }
                     tileX = tx; tileZ = tz;
                 }
-                if (tile == null) continue;   // unknown: treat as sea, the vanilla behaviour
+                if (tile == null) continue;   // unknown (no terrain provider): treat as sea, the vanilla behaviour
                 int lz = z - tz, lx = x - tx;
                 boolean dry;
                 if (tile.waterY != null && tile.waterY[lz][lx] != RiverCarver.NONE) {
