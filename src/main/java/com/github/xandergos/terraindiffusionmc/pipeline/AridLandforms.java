@@ -29,9 +29,16 @@ public final class AridLandforms {
     private static final FastNoiseLite CANYON_ZONE = noise(7404, 1f / 8000f, 2);
     private static final FastNoiseLite CANYON_WALL = noise(7405, 1f / 90f, 2);
     private static final FastNoiseLite ERG_ZONE = noise(7406, 1f / 7000f, 2);
-    private static final FastNoiseLite DUNE_WARP = noise(7407, 1f / 900f, 2);
-    private static final FastNoiseLite DUNE_AMP = noise(7408, 1f / 1200f, 1);
-    private static final FastNoiseLite DUNE_BREAK = noise(7409, 1f / 260f, 1);
+    private static final FastNoiseLite DUNE_WARP = noise(7407, 1f / 2200f, 2);
+    private static final FastNoiseLite DUNE_AMP = noise(7408, 1f / 3000f, 1);
+    private static final FastNoiseLite DUNE_BREAK = noise(7409, 1f / 700f, 1);
+    /**
+     * Dune ridge spacing (m, mean and +-), height (m, least and added), and the share of each ridge that is the
+     * windward slope. Oct 28 (Calvin: packed ripples, wanted spaced-out, higher, hill-like dunes): spacing was 350 +- 100,
+     * height 6-30 m, windward 78% with a steep slip face; now big rolling draa-like ridges.
+     */
+    static final float DUNE_SPACING_M = 900f, DUNE_SPACING_VAR_M = 250f, DUNE_MIN_M = 25f, DUNE_ADD_M = 55f,
+            DUNE_WINDWARD = 0.65f, DUNE_WARP_M = 550f;
     private static final FastNoiseLite HOODOO_ZONE = noise(7410, 1f / 700f, 2);
 
     /** Zone noise levels (2-octave simplex; 0.55 leaves ~10% of the world in the zone, 0.6 ~7%): higher = rarer. */
@@ -424,14 +431,15 @@ public final class AridLandforms {
                 float flat = 1f - smoothstep(0.04f, 0.12f, (float) Math.sqrt(sx * sx + sz * sz));
                 if (riverDist != null) flat *= awayFromChannel(riverDist[k], 1f, 4f);
                 if (flat <= 0f) continue;
-                // Ridges run north-south across a west wind, wandering; spacing 250-450 m.
-                float spacing = 350f + 100f * DUNE_AMP.GetNoise(wz * 0.7f + 3000, wx * 0.7f);
-                float phase = (wx + 220f * DUNE_WARP.GetNoise(wx, wz)) / spacing;
+                // Ridges run north-south across a west wind, wandering; spacing 650-1150 m.
+                float spacing = DUNE_SPACING_M + DUNE_SPACING_VAR_M * DUNE_AMP.GetNoise(wz * 0.7f + 3000, wx * 0.7f);
+                float phase = (wx + DUNE_WARP_M * DUNE_WARP.GetNoise(wx, wz)) / spacing;
                 float p = phase - (float) Math.floor(phase);
-                float h = p < 0.78f ? smoothstep(0f, 0.78f, p) : 1f - smoothstep(0.78f, 1f, p);
+                // A long smooth windward rise and a shorter lee slope, both eased at top and bottom: rounded hills.
+                float h = p < DUNE_WINDWARD ? smoothstep(0f, DUNE_WINDWARD, p) : 1f - smoothstep(DUNE_WINDWARD, 1f, p);
                 // Crests break into crescents and fade in and out along their length.
-                float brk = 0.55f + 0.45f * DUNE_BREAK.GetNoise(wx * 0.4f, wz * 1.3f);
-                float amp = 6f + 24f * (0.5f + 0.5f * DUNE_AMP.GetNoise(wx, wz));
+                float brk = 0.6f + 0.4f * DUNE_BREAK.GetNoise(wx * 0.4f, wz * 1.3f);
+                float amp = DUNE_MIN_M + DUNE_ADD_M * (0.5f + 0.5f * DUNE_AMP.GetNoise(wx, wz));
                 elev[k] = e + amp * h * brk * zone * flat;
             }
         }
