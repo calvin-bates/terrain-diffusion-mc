@@ -1,14 +1,14 @@
 {
   "replace": false,
   "values": [
-    "terra:arctic",
-    "terra:deep_dark_caves",
-    "terra:deep_dark_city",
-    "terra:deep_dark_forest",
-    "terra:deep_dark_incursion",
-    "terra:glacier",
-    "terra:polar_desert",
-    "terra:treeline",
-    "terra:tundra"
+    "orogeny:arctic",
+    "orogeny:deep_dark_caves",
+    "orogeny:deep_dark_city",
+    "orogeny:deep_dark_forest",
+    "orogeny:deep_dark_incursion",
+    "orogeny:glacier",
+    "orogeny:polar_desert",
+    "orogeny:treeline",
+    "orogeny:tundra"
   ]
 }

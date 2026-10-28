@@ -1111,7 +1111,7 @@ public final class WorldPipeline implements AutoCloseable {
     }
 
     /**
-     * Ocean features whose centres lie in the native-pixel window, for the terrain explorer and /terra-find:
+     * Ocean features whose centres lie in the native-pixel window, for the terrain explorer and /orogeny-find:
      * the volcanoes, atolls and trenches from {@link OceanFeatures#landmarks}, plus one marker per archipelago sea
      * (in each 24-coarse-pixel cell well inside an archipelago zone, the point nearest sea level on the coarse map,
      * where the islands are; none where the cell is all deep sea or high ground: markers used to fall on open sea).

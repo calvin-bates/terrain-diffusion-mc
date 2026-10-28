@@ -1,13 +1,13 @@
 {
   "replace": false,
   "values": [
-    "terra:dark_forest",
-    "terra:aspen_grove",
-    "terra:aspen_parkland",
-    "terra:floodplain_forest",
-    "terra:forested_highland",
-    "terra:lush_valley",
-    "terra:riverside_forest",
-    "terra:treeline"
+    "orogeny:dark_forest",
+    "orogeny:aspen_grove",
+    "orogeny:aspen_parkland",
+    "orogeny:floodplain_forest",
+    "orogeny:forested_highland",
+    "orogeny:lush_valley",
+    "orogeny:riverside_forest",
+    "orogeny:treeline"
   ]
 }

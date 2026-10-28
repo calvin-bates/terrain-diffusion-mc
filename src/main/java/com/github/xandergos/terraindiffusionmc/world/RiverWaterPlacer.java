@@ -38,7 +38,7 @@ public final class RiverWaterPlacer {
             placeUnchecked(chunk);
         } catch (Throwable t) {
             // Never let water placement break chunk generation.
-            LOG.error("Terra rivers: water placement failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny rivers: water placement failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -58,7 +58,7 @@ public final class RiverWaterPlacer {
         HeightmapData data = LocalTerrainProvider.peekHeightmap(startZ, startX, startZ + tileSize, startX + tileSize);
         if (!loggedFirst) {
             loggedFirst = true;
-            LOG.info("Terra rivers: first chunk reached the water placer (tile cached: {})", data != null);
+            LOG.info("Orogeny rivers: first chunk reached the water placer (tile cached: {})", data != null);
         }
         if (data == null || data.waterY == null) return;
 
@@ -68,7 +68,7 @@ public final class RiverWaterPlacer {
                 : HeightConverter.convertToMinecraftHeight((short) Math.min(freezeM, 30000f), Math.max(1, WorldScaleManager.getCurrentScale()));
         if (!loggedFreeze) {
             loggedFreeze = true;
-            LOG.info("Terra rivers: water freezes at Y >= {} (freeze_height_m={}, scale={})",
+            LOG.info("Orogeny rivers: water freezes at Y >= {} (freeze_height_m={}, scale={})",
                     freezeY, freezeM, WorldScaleManager.getCurrentScale());
         }
         BlockState water = Blocks.WATER.defaultBlockState();
@@ -354,8 +354,8 @@ public final class RiverWaterPlacer {
                     }
                     postProcessMethod = found;
                     postProcessLookedUp = true;
-                    if (found != null) LOG.info("Terra rivers: water steps use {}.{}", found.getDeclaringClass().getSimpleName(), found.getName());
-                    else LOG.warn("Terra rivers: no post-processing method found, water steps will not flow. Candidates: {}", names);
+                    if (found != null) LOG.info("Orogeny rivers: water steps use {}.{}", found.getDeclaringClass().getSimpleName(), found.getName());
+                    else LOG.warn("Orogeny rivers: no post-processing method found, water steps will not flow. Candidates: {}", names);
                 }
             }
         }
@@ -365,7 +365,7 @@ public final class RiverWaterPlacer {
             m.invoke(chunk, pos);
         } catch (ReflectiveOperationException e) {
             postProcessMethod = null;
-            LOG.warn("Terra rivers: post-processing call failed, water steps will not flow", e);
+            LOG.warn("Orogeny rivers: post-processing call failed, water steps will not flow", e);
         }
     }
 

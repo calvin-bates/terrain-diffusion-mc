@@ -85,7 +85,7 @@ public final class CaveStone {
     }
 
     private static ResourceKey<Biome> key(String name) {
-        return ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", name));
+        return ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", name));
     }
 
     public static void paint(ChunkAccess chunk) {
@@ -93,7 +93,7 @@ public final class CaveStone {
         try {
             paintUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: cave stone failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: cave stone failed for chunk {}", chunk.getPos(), t);
         }
     }
 

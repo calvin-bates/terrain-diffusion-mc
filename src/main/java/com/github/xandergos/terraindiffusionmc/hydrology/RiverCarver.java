@@ -520,7 +520,7 @@ public final class RiverCarver {
      */
     public static Result apply(short[][] heightmap, short[][] biomeIds, int i1, int j1, int scale,
                                IntUnaryOperator metersToY, int regionSize, int trust, Regions regions) {
-        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Terra] lake code build: v30 (river water level from the cross-section, no gorges on steep slopes)"); }
+        if (!LOGGED_BUILD) { LOGGED_BUILD = true; LOG.info("[Orogeny] lake code build: v30 (river water level from the cross-section, no gorges on steep slopes)"); }
         final int H = heightmap.length;
         final int W = H == 0 ? 0 : heightmap[0].length;
         final int n = H * W;
@@ -1131,7 +1131,7 @@ public final class RiverCarver {
                     any = true;
                 }
             }
-            if (fSeeds > 0) LOG.info("[Terra] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, flooded);
+            if (fSeeds > 0) LOG.debug("[Orogeny] lake flood tile x={} z={}: {} lake columns, flooded {} more down to the shore", j1, i1, fSeeds, flooded);
         }
 
         // ---- connect streams to lakes: a stream that starts or ends a few blocks from a lake, with dry ground in
@@ -1336,7 +1336,7 @@ public final class RiverCarver {
                 }
                 // Chunks only see part of a big lake; leveling a partial view would make neighbours disagree.
                 if (touchesEdge) {
-                    LOG.info("[Terra] lake at block x={} z={}: {} columns, level Y{}, touches tile edge -> not leveled", j1, i1, count, level);
+                    LOG.debug("[Orogeny] lake at block x={} z={}: {} columns, level Y{}, touches tile edge -> not leveled", j1, i1, count, level);
                     continue;
                 }
                 final int level0 = level;
@@ -1356,10 +1356,10 @@ public final class RiverCarver {
                     if (rn == 0) break;
                     java.util.Arrays.sort(ring, 0, rn);
                     int spill = ring[Math.min(rn - 1, rn / 12)];
-                    LOG.info("[Terra] lake tile x={} z={}: {} columns, level Y{}, rim min Y{} / spill Y{} / max Y{} ({} rim cells), iter {}", j1, i1, count, level, ring[0], spill, ring[rn - 1], rn, iter);
+                    LOG.debug("[Orogeny] lake tile x={} z={}: {} columns, level Y{}, rim min Y{} / spill Y{} / max Y{} ({} rim cells), iter {}", j1, i1, count, level, ring[0], spill, ring[rn - 1], rn, iter);
                     if (spill >= level) break;
                     level = spill;
-                    LOG.info("[Terra] lake in tile x={} z={}: {} columns, spill lowered Y{} -> Y{}", j1, i1, count, level0, level);
+                    LOG.debug("[Orogeny] lake in tile x={} z={}: {} columns, spill lowered Y{} -> Y{}", j1, i1, count, level0, level);
                     for (int k = 0; k < count; k++) {
                         int idx = queue[k];
                         if (!lakeCol[idx]) continue;
@@ -1410,7 +1410,7 @@ public final class RiverCarver {
                     removed++;
                 }
             }
-            if (removed > 0) LOG.info("[Terra] tile x={} z={}: {} columns of cut-off lake water beside a lower stream left dry", j1, i1, removed);
+            if (removed > 0) LOG.debug("[Orogeny] tile x={} z={}: {} columns of cut-off lake water beside a lower stream left dry", j1, i1, removed);
         }
 
         // ---- stream mouths (v21): where a stream meets a lake, done after the spill step so it uses the lake's final level.
@@ -1485,7 +1485,7 @@ public final class RiverCarver {
                 if (surfaceY[r][c] == NONE || surfaceY[r][c] >= tgt[idx]) surfaceY[r][c] = (short) Math.min(ytop[idx], tgt[idx] - 1);
                 any = true;
             }
-            if (raised + stepped > 0) LOG.info("[Terra] stream mouths tile x={} z={}: {} stream columns raised (next to the lake {}, further along {})", j1, i1, raised + stepped, raised, stepped);
+            if (raised + stepped > 0) LOG.debug("[Orogeny] stream mouths tile x={} z={}: {} stream columns raised (next to the lake {}, further along {})", j1, i1, raised + stepped, raised, stepped);
         }
 
         // ---- lake bed: from the shore to the middle the bed should only go down, never come back up. A column
@@ -1726,7 +1726,7 @@ public final class RiverCarver {
                             if (logged < 6) {
                                 logged++;
                                 int idx = r * W + c;
-                                LOG.info("[Terra] dam at block x={} z={}: water Y{} (lake={}) own ytop Y{} surf {} | dry neighbour x={} z={} ytop Y{} surf {} | cls own/n scores {}/{}",
+                                LOG.debug("[Orogeny] dam at block x={} z={}: water Y{} (lake={}) own ytop Y{} surf {} | dry neighbour x={} z={} ytop Y{} surf {} | cls own/n scores {}/{}",
                                         j1 + c, i1 + r, waterY[r][c], lakeCol[idx], ytop[idx], surfaceY[r][c],
                                         j1 + cc, i1 + rr, ytop[nIdx], surfaceY[rr][cc], score[idx], score[nIdx]);
                             }
@@ -1735,7 +1735,7 @@ public final class RiverCarver {
                     }
                 }
             }
-            if (dams > 0) LOG.info("[Terra] tile x={} z={}: {} water columns with a >8 block drop on the dry side", j1, i1, dams);
+            if (dams > 0) LOG.debug("[Orogeny] tile x={} z={}: {} water columns with a >8 block drop on the dry side", j1, i1, dams);
         }
 
         if (!any) return null;

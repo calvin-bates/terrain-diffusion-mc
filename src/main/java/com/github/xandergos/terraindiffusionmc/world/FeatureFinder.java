@@ -29,9 +29,9 @@ import static net.minecraft.commands.Commands.argument;
 import static net.minecraft.commands.Commands.literal;
 
 /**
- * {@code /terra-find <feature>}: the nearest ocean feature of a kind (volcanic island and its later stages, island-arc
+ * {@code /orogeny-find <feature>}: the nearest ocean feature of a kind (volcanic island and its later stages, island-arc
  * island, landslide scar, aseismic ridge, guyot, seamount, trench, archipelago sea, vent field), river delta, or
- * reef or carbonate bank, with a click-to-teleport. {@code /terra-find biome <name>} finds the nearest land biome of
+ * reef or carbonate bank, with a click-to-teleport. {@code /orogeny-find biome <name>} finds the nearest land biome of
  * Terra's layout (vanilla's {@code /locate biome} doesn't know it). Ocean features use the same placement rules as the terrain
  * ({@link OceanFeatures#landmarks}), so it can point at places that are not generated yet. Deltas, reefs and banks
  * depend on the model's own terrain, so they are searched for by computing it. The search runs off the server thread
@@ -98,7 +98,7 @@ public final class FeatureFinder {
     }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(literal("terra-find")
+        dispatcher.register(literal("orogeny-find")
                 .then(literal("cave")
                         .then(argument("name", StringArgumentType.word())
                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(CAVES.keySet(), builder))
@@ -159,17 +159,17 @@ public final class FeatureFinder {
                 OceanFeatures.Landmark found = LocalTerrainProvider.findNearestLandmark(kind[0], pi, pj, MAX_RADIUS_PX);
                 server.execute(() -> report(source, kind[1], found, pi, pj, scale));
             } catch (Exception e) {
-                LOG.error("terra-find failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
         return 1;
     }
 
     /**
-     * Land biomes {@code /terra-find biome} knows: every biome on the explorer's map except oceans, rivers and the
+     * Land biomes {@code /orogeny-find biome} knows: every biome on the explorer's map except oceans, rivers and the
      * water overlay (key → id, from {@link BiomePalette}).
      */
     private static final Map<String, Integer> BIOMES = new LinkedHashMap<>();
@@ -208,10 +208,10 @@ public final class FeatureFinder {
                         });
                 server.execute(() -> reportBiome(source, name, res, pi, pj, scale));
             } catch (Exception e) {
-                LOG.error("terra-find biome " + word + " failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find biome " + word + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
         return 1;
@@ -248,7 +248,7 @@ public final class FeatureFinder {
 
     // ---- Caves (caves plan v1.5) ----
 
-    /** Cave biomes {@code /terra-find cave} knows: command word → id. */
+    /** Cave biomes {@code /orogeny-find cave} knows: command word → id. */
     private static final Map<String, Short> CAVES = new LinkedHashMap<>();
     static {
         for (Map.Entry<Short, String> e : CaveBiomes.NAMES.entrySet()) {
@@ -319,10 +319,10 @@ public final class FeatureFinder {
                         : findCave(id, px, pz);
                 server.execute(() -> reportCave(source, name, found, pos));
             } catch (Exception e) {
-                LOG.error("terra-find cave " + word + " failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find cave " + word + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
         return 1;
@@ -793,10 +793,10 @@ public final class FeatureFinder {
                             z / scale, x / scale, 0f), bz / scale, bx / scale, scale);
                 });
             } catch (Exception e) {
-                LOG.error("terra-find ice failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find ice failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
     }
@@ -837,10 +837,10 @@ public final class FeatureFinder {
                     report(source, name, l, pi, pj, scale);
                 });
             } catch (Exception e) {
-                LOG.error("terra-find volcano failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find volcano failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
     }
@@ -881,10 +881,10 @@ public final class FeatureFinder {
                     report(source, name, new OceanFeatures.Landmark(word, res.i(), res.j(), 0f), pi, pj, scale);
                 });
             } catch (Exception e) {
-                LOG.error("terra-find " + word + " failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find " + word + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
     }
@@ -908,10 +908,10 @@ public final class FeatureFinder {
                 });
                 server.execute(() -> reportDelta(source, res, pi, pj, scale));
             } catch (Exception e) {
-                LOG.error("terra-find delta failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find delta failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
     }
@@ -939,17 +939,17 @@ public final class FeatureFinder {
                             int[] st = res.spitStats();
                             for (int q = 0; q < st.length; q++) why.append(q == 0 ? " " : "; ").append(CoastPlan.SPIT_REASONS[q]).append(": ").append(st[q]);
                         }
-                        LOG.info("[Terra] terra-find {}: {}", name, why);
+                        LOG.info("[Orogeny] orogeny-find {}: {}", name, why);
                         source.sendSystemMessage(Component.literal(why.toString()).withStyle(ChatFormatting.GRAY));
                         return;
                     }
                     report(source, name, new OceanFeatures.Landmark(name, res.nearest().i(), res.nearest().j(), 0f), pi, pj, scale);
                 });
             } catch (Exception e) {
-                LOG.error("terra-find " + name + " failed", e);
-                server.execute(() -> source.sendFailure(Component.literal("terra-find failed: " + e.getMessage())));
+                LOG.error("orogeny-find " + name + " failed", e);
+                server.execute(() -> source.sendFailure(Component.literal("orogeny-find failed: " + e.getMessage())));
             }
-        }, "terra-find");
+        }, "orogeny-find");
         worker.setDaemon(true);
         worker.start();
     }

@@ -1,14 +1,14 @@
 {
   "replace": false,
   "values": [
-    "terra:birch_taiga",
-    "terra:boreal_forest",
-    "terra:forested_highland",
-    "terra:geothermal_basin",
-    "terra:siberian_taiga",
-    "terra:taiga_clearing",
-    "terra:taiga_mountain",
-    "terra:yellowstone",
-    "terra:yosemite_lowlands"
+    "orogeny:birch_taiga",
+    "orogeny:boreal_forest",
+    "orogeny:forested_highland",
+    "orogeny:geothermal_basin",
+    "orogeny:siberian_taiga",
+    "orogeny:taiga_clearing",
+    "orogeny:taiga_mountain",
+    "orogeny:yellowstone",
+    "orogeny:yosemite_lowlands"
   ]
 }

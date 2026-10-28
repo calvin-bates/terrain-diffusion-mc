@@ -1,7 +1,7 @@
 {
   "replace": false,
   "values": [
-    "terra:redwoods",
-    "terra:temperate_rainforest"
+    "orogeny:redwoods",
+    "orogeny:temperate_rainforest"
   ]
 }

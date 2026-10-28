@@ -70,7 +70,7 @@ public final class CaveFormations {
         try {
             placeUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: cave formations failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: cave formations failed for chunk {}", chunk.getPos(), t);
         }
     }
 

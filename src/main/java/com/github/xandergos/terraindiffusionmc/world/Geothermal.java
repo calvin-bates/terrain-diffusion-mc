@@ -59,7 +59,7 @@ public final class Geothermal {
             if (!TerrainDiffusionConfig.showpieces()) return;
             placeUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: hot springs failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: hot springs failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -377,7 +377,7 @@ public final class Geothermal {
         if (Yellowstone.caveCutNear(cx, cz, r * 1.25 + 4, level - depth - 2, level + 1)) return;
         if (!loggedFirst) {
             loggedFirst = true;
-            LOG.info("Terra: first hot spring at {} {} {}", cx, level, cz);
+            LOG.info("Orogeny: first hot spring at {} {} {}", cx, level, cz);
         }
         ChunkPos cp = chunk.getPos();
         int x0 = cp.getMinBlockX(), z0 = cp.getMinBlockZ();

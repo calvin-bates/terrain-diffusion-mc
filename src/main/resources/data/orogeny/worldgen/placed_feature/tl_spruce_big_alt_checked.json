@@ -1,0 +1,12 @@
+{
+  "feature": "orogeny:tl_spruce_big_alt",
+  "placement": [
+    {
+      "type": "minecraft:block_predicate_filter",
+      "predicate": {
+        "type": "minecraft:would_survive",
+        "state": "minecraft:spruce_sapling"
+      }
+    }
+  ]
+}

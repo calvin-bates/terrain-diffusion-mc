@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
 public final class FrostfireCaves {
     private static final Logger LOG = LoggerFactory.getLogger(FrostfireCaves.class);
     private static final ResourceKey<Biome> FROSTFIRE = ResourceKey.create(Registries.BIOME,
-            Identifier.fromNamespaceAndPath("terra", "frostfire_caves"));
+            Identifier.fromNamespaceAndPath("orogeny", "frostfire_caves"));
     private static final BlockState BLUE_ICE = Blocks.BLUE_ICE.defaultBlockState();
     private static final BlockState DEEPSLATE = Blocks.DEEPSLATE.defaultBlockState();
 
@@ -42,7 +42,7 @@ public final class FrostfireCaves {
                     if (c != null) convert(c);
                 }
         } catch (Throwable t) {
-            LOG.error("Terra: frostfire pass failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: frostfire pass failed for chunk {}", chunk.getPos(), t);
         }
     }
 

@@ -65,7 +65,7 @@ public final class Waterfalls {
                 }
             }
         } catch (Throwable t) {
-            LOG.error("Terra: waterfalls failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: waterfalls failed for chunk {}", chunk.getPos(), t);
         }
     }
 }

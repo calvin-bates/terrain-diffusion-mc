@@ -2,7 +2,7 @@ package com.github.xandergos.terraindiffusionmc.pipeline;
 
 /**
  * Biome ids at native resolution (30 m pixels) for tools: the explorer's Biomes map, {@code terraPreview} and
- * {@code /terra-find}. Runs the same classifier (with the patch biomes, {@link BiomePatches}) and shore pass
+ * {@code /orogeny-find}. Runs the same classifier (with the patch biomes, {@link BiomePatches}) and shore pass
  * ({@link CoastShaper}) as the game, on the pipeline's elevation and climate.
  *
  * <p>Riverside and floodplain forests use the game's river regions ({@link LocalTerrainProvider#riverDistances}).

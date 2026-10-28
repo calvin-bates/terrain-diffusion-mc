@@ -79,7 +79,7 @@ public final class OceanSurfaces {
             placeUnchecked(chunk, seaLevel);
         } catch (Throwable t) {
             // Never let this break chunk generation.
-            LOG.error("Terra: ocean surfaces failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: ocean surfaces failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -95,7 +95,7 @@ public final class OceanSurfaces {
         if (data == null || data.oceanTags == null) return;
         if (!loggedFirst) {
             loggedFirst = true;
-            LOG.info("Terra: first chunk with ocean surfaces (reef, lagoon, bank, limestone or deep floor) at {}", cp);
+            LOG.info("Orogeny: first chunk with ocean surfaces (reef, lagoon, bank, limestone or deep floor) at {}", cp);
         }
         int scale = WorldScaleManager.clampScale(WorldScaleManager.getCurrentScale());
         float blockSize = 30f / scale;

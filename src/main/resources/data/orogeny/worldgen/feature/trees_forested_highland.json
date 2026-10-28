@@ -1,0 +1,38 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "orogeny:highland_dark_oak_checked",
+  "features": [
+    {
+      "chance": 0.063,
+      "feature": "orogeny:giant_highland_dark_oak_checked"
+    },
+    {
+      "chance": 0.36286,
+      "feature": "minecraft:pine_checked"
+    },
+    {
+      "chance": 0.1005,
+      "feature": "minecraft:mega_pine_checked"
+    },
+    {
+      "chance": 0.15829,
+      "feature": "orogeny:highland_orange_conifer_checked"
+    },
+    {
+      "chance": 0.03319,
+      "feature": "orogeny:giant_highland_orange_conifer_checked"
+    },
+    {
+      "chance": 0.15561,
+      "feature": "minecraft:spruce_checked"
+    },
+    {
+      "chance": 0.03252,
+      "feature": "minecraft:mega_spruce_checked"
+    },
+    {
+      "chance": 0.02801,
+      "feature": "minecraft:fallen_spruce_tree"
+    }
+  ]
+}

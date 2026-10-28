@@ -35,7 +35,7 @@ public final class CaveWaterDrain {
     }
 
     private static ResourceKey<Biome> key(String name) {
-        return ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", name));
+        return ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", name));
     }
 
     private static boolean fluidCave(Holder<Biome> h) {
@@ -48,7 +48,7 @@ public final class CaveWaterDrain {
             flood(level, chunk);
             drain(level, chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: cave water drain failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: cave water drain failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -152,7 +152,7 @@ public final class CaveWaterDrain {
                 queued[ni] = true;
             }
         }
-        if (removed > 0 && LOG.isDebugEnabled()) LOG.debug("Terra: drained {} cave fluid blocks around {}", removed, center.getPos());
+        if (removed > 0 && LOG.isDebugEnabled()) LOG.debug("Orogeny: drained {} cave fluid blocks around {}", removed, center.getPos());
     }
 
     // ---- Caves open to the sea fill to sea level ----

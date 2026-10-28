@@ -34,11 +34,11 @@ import java.util.stream.Stream;
 import static java.util.Map.entry;
 
 public class TerrainDiffusionBiomeSource extends BiomeSource {
-    private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "forest_sparse"));
-    private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "taiga_sparse"));
-    private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "snowy_taiga_sparse"));
+    private static final ResourceKey<Biome> FOREST_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", "forest_sparse"));
+    private static final ResourceKey<Biome> TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", "taiga_sparse"));
+    private static final ResourceKey<Biome> SNOWY_TAIGA_SPARSE = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", "snowy_taiga_sparse"));
     /** Vanilla dark forest without the huge mushrooms (biomes plan v1.1). */
-    private static final ResourceKey<Biome> DARK_FOREST = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "dark_forest"));
+    private static final ResourceKey<Biome> DARK_FOREST = ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", "dark_forest"));
 
     public static final MapCodec<TerrainDiffusionBiomeSource> CODEC = RecordCodecBuilder.mapCodec((instance) ->
             instance.group(
@@ -118,7 +118,7 @@ public class TerrainDiffusionBiomeSource extends BiomeSource {
             // v1.2 real-world biomes (terra namespace; data from tools/biomes/gen_biomes_v12.py).
             for (Map.Entry<Short, String> e : RegionalBiomes.NAMES.entrySet()) {
                 m.put(e.getKey(), this.biomeLookup.getOrThrow(ResourceKey.create(Registries.BIOME,
-                        Identifier.fromNamespaceAndPath("terra", e.getValue()))));
+                        Identifier.fromNamespaceAndPath("orogeny", e.getValue()))));
             }
             // v1.5 cave biomes (CaveBiomes; data from tools/biomes/gen_biomes_v12.py, dripstone caves is vanilla's).
             for (Map.Entry<Short, String> e : CaveBiomes.NAMES.entrySet()) {

@@ -20,7 +20,7 @@ import sys
 
 VANILLA = sys.argv[1] if len(sys.argv) > 1 else "/home/claude/tc/vdata/data/minecraft"
 RES = "src/main/resources/data"
-TERRA = f"{RES}/terra/worldgen"
+TERRA = f"{RES}/orogeny/worldgen"
 MC_TAGS = f"{RES}/minecraft/tags/worldgen/biome"
 MATERIAL_RULE = f"{TERRA}/material_rule/terrain_diffusion.json"
 
@@ -50,7 +50,7 @@ def survive(sapling):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Configured features (data/terra/worldgen/feature)
+# Configured features (data/orogeny/worldgen/feature)
 # ---------------------------------------------------------------------------------------------------------------
 
 FEATURES = {
@@ -247,52 +247,52 @@ def with_giants(default, default_share, kinds):
 
 # Tree mixes: random selectors over placed trees (vanilla's "*_checked" ones test the soil).
 SELECTORS = {
-    "trees_treeline": ("terra:krummholz_checked", [("minecraft:spruce_checked", 0.15), ("minecraft:pine_checked", 0.08)]),
+    "trees_treeline": ("orogeny:krummholz_checked", [("minecraft:spruce_checked", 0.15), ("minecraft:pine_checked", 0.08)]),
     # Spruce 60%, golden birch 25%, pine 15%; each 15% giant.
     "trees_boreal": mix("minecraft:spruce_checked", [("minecraft:mega_spruce_checked", 0.6 * GIANT)] + with_giants(None, 0, [
-        ("terra:golden_birch_checked", "terra:giant_golden_birch_checked", 0.25),
+        ("orogeny:golden_birch_checked", "orogeny:giant_golden_birch_checked", 0.25),
         ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.15)]) + [("minecraft:fallen_spruce_tree", 0.0125)]),
     # Larch 50%, tall spruce 40%, pine 10%; each 15% giant.
-    "trees_siberian": mix("terra:larch_checked", [("terra:giant_larch_checked", 0.5 * GIANT)] + with_giants(None, 0, [
-        ("terra:tall_spruce_checked", "terra:giant_tall_spruce_checked", 0.4),
+    "trees_siberian": mix("orogeny:larch_checked", [("orogeny:giant_larch_checked", 0.5 * GIANT)] + with_giants(None, 0, [
+        ("orogeny:tall_spruce_checked", "orogeny:giant_tall_spruce_checked", 0.4),
         ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.1)]) + [("minecraft:fallen_spruce_tree", 0.01)]),
     "trees_birch_taiga": ("minecraft:spruce_checked", [("minecraft:birch_checked", 0.5), ("minecraft:pine_checked", 0.15),
                                                       ("minecraft:fallen_birch_tree", 0.01)]),
     "trees_taiga_mountain": ("minecraft:spruce_checked", [("minecraft:pine_checked", 0.4),
-                                                         ("terra:krummholz_checked", 0.1)]),
-    "trees_bog": ("terra:stunted_spruce_checked", [("minecraft:birch_checked", 0.05)]),
+                                                         ("orogeny:krummholz_checked", 0.1)]),
+    "trees_bog": ("orogeny:stunted_spruce_checked", [("minecraft:birch_checked", 0.05)]),
     "trees_rainforest": ("minecraft:spruce_checked", [("minecraft:mega_spruce_checked", 0.35),
                                                      ("minecraft:fancy_oak_checked", 0.15),
                                                      ("minecraft:fallen_spruce_tree", 0.02), ("minecraft:fallen_oak_tree", 0.01)]),
-    "trees_redwoods": ("terra:redwood_checked", [("minecraft:mega_spruce_checked", 0.2), ("minecraft:spruce_checked", 0.15),
+    "trees_redwoods": ("orogeny:redwood_checked", [("minecraft:mega_spruce_checked", 0.2), ("minecraft:spruce_checked", 0.15),
                                                 ("minecraft:fallen_spruce_tree", 0.01)]),
     # Aspens in several colours: mostly yellow, some orange, still-green (birch leaves) and a few red.
-    "trees_aspen": mix("terra:aspen_yellow_checked", [("terra:aspen_orange_checked", 0.22),
-                                                      ("terra:aspen_green_checked", 0.2), ("terra:aspen_red_checked", 0.1)]),
-    "trees_mediterranean": ("minecraft:oak_checked", [("terra:oak_bush_checked", 0.45), ("minecraft:fancy_oak_checked", 0.08)]),
+    "trees_aspen": mix("orogeny:aspen_yellow_checked", [("orogeny:aspen_orange_checked", 0.22),
+                                                      ("orogeny:aspen_green_checked", 0.2), ("orogeny:aspen_red_checked", 0.1)]),
+    "trees_mediterranean": ("minecraft:oak_checked", [("orogeny:oak_bush_checked", 0.45), ("minecraft:fancy_oak_checked", 0.08)]),
     # Red dark oak 42%, pine 40%, orange 10%, spruce 8%; each 15% giant.
-    "trees_forested_highland": mix("terra:highland_dark_oak_checked", [
-        ("terra:giant_highland_dark_oak_checked", 0.42 * GIANT)] + with_giants(None, 0, [
+    "trees_forested_highland": mix("orogeny:highland_dark_oak_checked", [
+        ("orogeny:giant_highland_dark_oak_checked", 0.42 * GIANT)] + with_giants(None, 0, [
             ("minecraft:pine_checked", "minecraft:mega_pine_checked", 0.4),
-            ("terra:highland_orange_conifer_checked", "terra:giant_highland_orange_conifer_checked", 0.1),
+            ("orogeny:highland_orange_conifer_checked", "orogeny:giant_highland_orange_conifer_checked", 0.1),
             ("minecraft:spruce_checked", "minecraft:mega_spruce_checked", 0.08)]) + [("minecraft:fallen_spruce_tree", 0.01)]),
     # Oasis palms: small jungle trees and jungle bushes.
     "trees_oasis": mix("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.4)]),
     # Mirage isles: tall teal-leaved jungle and fancy oaks (both leaves take the biome's foliage colour), giant red and
     # brown mushrooms between them.
-    "trees_mirage": mix("minecraft:jungle_tree", [("minecraft:fancy_oak_checked", 0.3), ("terra:huge_red_mushroom", 0.12),
-                                                 ("terra:huge_brown_mushroom", 0.06), ("minecraft:mega_jungle_tree_checked", 0.08)]),
+    "trees_mirage": mix("minecraft:jungle_tree", [("minecraft:fancy_oak_checked", 0.3), ("orogeny:huge_red_mushroom", 0.12),
+                                                 ("orogeny:huge_brown_mushroom", 0.06), ("minecraft:mega_jungle_tree_checked", 0.08)]),
     "trees_highland": ("minecraft:spruce_checked", [("minecraft:oak_checked", 0.3), ("minecraft:birch_checked", 0.2),
                                                    ("minecraft:fancy_oak_checked", 0.05), ("minecraft:fallen_oak_tree", 0.01)]),
     "trees_cloud_forest": ("minecraft:jungle_tree", [("minecraft:jungle_bush", 0.35), ("minecraft:oak_checked", 0.15)]),
     "trees_tropical_dry": ("minecraft:acacia_checked", [("minecraft:jungle_bush", 0.35), ("minecraft:jungle_tree", 0.1)]),
-    "trees_floodplain": ("minecraft:oak_checked", [("terra:swamp_oak_checked", 0.25), ("minecraft:fancy_oak_checked", 0.2),
+    "trees_floodplain": ("minecraft:oak_checked", [("orogeny:swamp_oak_checked", 0.25), ("minecraft:fancy_oak_checked", 0.2),
                                                   ("minecraft:birch_checked", 0.15), ("minecraft:fallen_oak_tree", 0.02)]),
-    "trees_riverside": ("minecraft:oak_checked", [("minecraft:yellow_poplar", 0.25), ("terra:oak_bush_checked", 0.25),
+    "trees_riverside": ("minecraft:oak_checked", [("minecraft:yellow_poplar", 0.25), ("orogeny:oak_bush_checked", 0.25),
                                                  ("minecraft:fancy_oak_checked", 0.1)]),
 }
 
-# Placed features (data/terra/worldgen/placed_feature).
+# Placed features (data/orogeny/worldgen/placed_feature).
 def trees(feature, counts, water_depth=0, sapling=None):
     """counts: an int, or [(count, weight), ...]; sapling: also test that this sapling would survive (for a single
     configured tree rather than a selector of checked trees)."""
@@ -324,64 +324,64 @@ def patch(feature, count, spread=7, chance=None, heightmap="MOTION_BLOCKING"):
 
 
 PLACED = {
-    "krummholz_checked": {"feature": "terra:krummholz", "placement": [survive("minecraft:spruce_sapling")]},
-    "stunted_spruce_checked": {"feature": "terra:stunted_spruce", "placement": [survive("minecraft:spruce_sapling")]},
-    "oak_bush_checked": {"feature": "terra:oak_bush", "placement": [survive("minecraft:oak_sapling")]},
-    "redwood_checked": {"feature": "terra:redwood", "placement": [survive("minecraft:spruce_sapling")]},
-    "larch_checked": {"feature": "terra:larch", "placement": [survive("minecraft:spruce_sapling")]},
-    **{f"aspen_{c}_checked": {"feature": f"terra:aspen_{c}", "placement": [survive("minecraft:birch_sapling")]}
+    "krummholz_checked": {"feature": "orogeny:krummholz", "placement": [survive("minecraft:spruce_sapling")]},
+    "stunted_spruce_checked": {"feature": "orogeny:stunted_spruce", "placement": [survive("minecraft:spruce_sapling")]},
+    "oak_bush_checked": {"feature": "orogeny:oak_bush", "placement": [survive("minecraft:oak_sapling")]},
+    "redwood_checked": {"feature": "orogeny:redwood", "placement": [survive("minecraft:spruce_sapling")]},
+    "larch_checked": {"feature": "orogeny:larch", "placement": [survive("minecraft:spruce_sapling")]},
+    **{f"aspen_{c}_checked": {"feature": f"orogeny:aspen_{c}", "placement": [survive("minecraft:birch_sapling")]}
        for c in ("yellow", "orange", "red", "green")},
-    "giant_larch_checked": {"feature": "terra:giant_larch", "placement": [survive("minecraft:spruce_sapling")]},
-    "giant_tall_spruce_checked": {"feature": "terra:giant_tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
-    "giant_golden_birch_checked": {"feature": "terra:giant_golden_birch", "placement": [survive("minecraft:birch_sapling")]},
-    "giant_highland_dark_oak_checked": {"feature": "terra:giant_highland_dark_oak",
+    "giant_larch_checked": {"feature": "orogeny:giant_larch", "placement": [survive("minecraft:spruce_sapling")]},
+    "giant_tall_spruce_checked": {"feature": "orogeny:giant_tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
+    "giant_golden_birch_checked": {"feature": "orogeny:giant_golden_birch", "placement": [survive("minecraft:birch_sapling")]},
+    "giant_highland_dark_oak_checked": {"feature": "orogeny:giant_highland_dark_oak",
                                         "placement": [survive("minecraft:dark_oak_sapling")]},
-    "giant_highland_orange_conifer_checked": {"feature": "terra:giant_highland_orange_conifer",
+    "giant_highland_orange_conifer_checked": {"feature": "orogeny:giant_highland_orange_conifer",
                                               "placement": [survive("minecraft:dark_oak_sapling")]},
-    "tall_spruce_checked": {"feature": "terra:tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
-    "golden_birch_checked": {"feature": "terra:golden_birch", "placement": [survive("minecraft:birch_sapling")]},
-    "highland_dark_oak_checked": {"feature": "terra:highland_dark_oak", "placement": [survive("minecraft:dark_oak_sapling")]},
-    "highland_orange_conifer_checked": {"feature": "terra:highland_orange_conifer",
+    "tall_spruce_checked": {"feature": "orogeny:tall_spruce", "placement": [survive("minecraft:spruce_sapling")]},
+    "golden_birch_checked": {"feature": "orogeny:golden_birch", "placement": [survive("minecraft:birch_sapling")]},
+    "highland_dark_oak_checked": {"feature": "orogeny:highland_dark_oak", "placement": [survive("minecraft:dark_oak_sapling")]},
+    "highland_orange_conifer_checked": {"feature": "orogeny:highland_orange_conifer",
                                         "placement": [survive("minecraft:dark_oak_sapling")]},
     "swamp_oak_checked": {"feature": "minecraft:swamp_oak", "placement": [survive("minecraft:oak_sapling")]},
-    "trees_treeline": trees("terra:trees_treeline", [(1, 3), (2, 2), (0, 2)]),
-    "trees_tundra": trees("terra:krummholz", [(0, 12), (1, 1)], sapling="minecraft:spruce_sapling"),
-    "trees_boreal": trees("terra:trees_boreal", [(10, 9), (11, 1)]),
-    "trees_siberian": trees("terra:trees_siberian", [(7, 9), (8, 1)]),
-    "trees_birch_taiga": trees("terra:trees_birch_taiga", [(8, 9), (9, 1)]),
-    "trees_taiga_mountain": trees("terra:trees_taiga_mountain", [(3, 9), (4, 1)]),
-    "trees_taiga_clearing": trees("terra:trees_boreal", [(0, 3), (1, 1)]),
-    "trees_bog": trees("terra:trees_bog", [(1, 3), (2, 1), (0, 1)], water_depth=1),
-    "trees_rainforest": trees("terra:trees_rainforest", [(12, 9), (14, 1)]),
-    "trees_redwoods": trees("terra:trees_redwoods", [(6, 9), (7, 1)]),
-    "trees_aspen": grove_trees("terra:trees_aspen", above=7, below=0),
-    "trees_oasis": trees("terra:trees_oasis", [(3, 3), (5, 1)]),
-    "trees_mirage": trees("terra:trees_mirage", [(9, 9), (11, 1)]),
+    "trees_treeline": trees("orogeny:trees_treeline", [(1, 3), (2, 2), (0, 2)]),
+    "trees_tundra": trees("orogeny:krummholz", [(0, 12), (1, 1)], sapling="minecraft:spruce_sapling"),
+    "trees_boreal": trees("orogeny:trees_boreal", [(10, 9), (11, 1)]),
+    "trees_siberian": trees("orogeny:trees_siberian", [(7, 9), (8, 1)]),
+    "trees_birch_taiga": trees("orogeny:trees_birch_taiga", [(8, 9), (9, 1)]),
+    "trees_taiga_mountain": trees("orogeny:trees_taiga_mountain", [(3, 9), (4, 1)]),
+    "trees_taiga_clearing": trees("orogeny:trees_boreal", [(0, 3), (1, 1)]),
+    "trees_bog": trees("orogeny:trees_bog", [(1, 3), (2, 1), (0, 1)], water_depth=1),
+    "trees_rainforest": trees("orogeny:trees_rainforest", [(12, 9), (14, 1)]),
+    "trees_redwoods": trees("orogeny:trees_redwoods", [(6, 9), (7, 1)]),
+    "trees_aspen": grove_trees("orogeny:trees_aspen", above=7, below=0),
+    "trees_oasis": trees("orogeny:trees_oasis", [(3, 3), (5, 1)]),
+    "trees_mirage": trees("orogeny:trees_mirage", [(9, 9), (11, 1)]),
     "huge_red_mushroom": {"feature": "minecraft:huge_red_mushroom", "placement": []},
     "huge_brown_mushroom": {"feature": "minecraft:huge_brown_mushroom", "placement": []},
     "trees_blooming": trees("minecraft:fancy_oak", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
-    "trees_lush_valley": trees("terra:trees_highland", [(7, 9), (9, 1)]),
-    "oasis_pool": {"feature": "terra:oasis_pool", "placement": [
+    "trees_lush_valley": trees("orogeny:trees_highland", [(7, 9), (9, 1)]),
+    "oasis_pool": {"feature": "orogeny:oasis_pool", "placement": [
         {"type": "minecraft:count", "count": 1}, {"type": "minecraft:in_square"},
         {"type": "minecraft:heightmap", "heightmap": "WORLD_SURFACE_WG"}, {"type": "minecraft:biome"}]},
-    "trees_aspen_grove": trees("terra:trees_aspen", [(11, 9), (13, 1)]),
+    "trees_aspen_grove": trees("orogeny:trees_aspen", [(11, 9), (13, 1)]),
     "trees_prairie": trees("minecraft:oak", [(0, 39), (1, 1)], sapling="minecraft:oak_sapling"),
-    "trees_moorland": trees("terra:oak_bush", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
-    "trees_mediterranean": trees("terra:trees_mediterranean", [(2, 3), (3, 1), (1, 1)]),
-    "trees_forested_highland": trees("terra:trees_forested_highland", [(9, 9), (11, 1)]),
-    "trees_temperate_highland": trees("terra:trees_highland", [(0, 2), (1, 2), (2, 1)]),
-    "trees_cloud_forest": trees("terra:trees_cloud_forest", [(10, 9), (12, 1)]),
-    "trees_tropical_dry": trees("terra:trees_tropical_dry", [(3, 3), (4, 1), (2, 1)]),
-    "trees_floodplain": trees("terra:trees_floodplain", [(9, 9), (10, 1)], water_depth=1),
-    "trees_riverside": trees("terra:trees_riverside", [(6, 9), (7, 1)]),
+    "trees_moorland": trees("orogeny:oak_bush", [(0, 9), (1, 1)], sapling="minecraft:oak_sapling"),
+    "trees_mediterranean": trees("orogeny:trees_mediterranean", [(2, 3), (3, 1), (1, 1)]),
+    "trees_forested_highland": trees("orogeny:trees_forested_highland", [(9, 9), (11, 1)]),
+    "trees_temperate_highland": trees("orogeny:trees_highland", [(0, 2), (1, 2), (2, 1)]),
+    "trees_cloud_forest": trees("orogeny:trees_cloud_forest", [(10, 9), (12, 1)]),
+    "trees_tropical_dry": trees("orogeny:trees_tropical_dry", [(3, 3), (4, 1), (2, 1)]),
+    "trees_floodplain": trees("orogeny:trees_floodplain", [(9, 9), (10, 1)], water_depth=1),
+    "trees_riverside": trees("orogeny:trees_riverside", [(6, 9), (7, 1)]),
     "trees_marsh": trees("minecraft:swamp_oak", [(0, 15), (1, 1)], water_depth=1, sapling="minecraft:oak_sapling"),
-    "patch_tundra": patch("terra:tundra_vegetation", 48),
-    "patch_heath": patch("terra:heath_vegetation", 48),
-    "patch_bog": patch("terra:bog_vegetation", 64),
-    "patch_moss_carpet": patch("terra:moss_carpet", 32, chance=2),
-    "patch_polar": patch("terra:polar_vegetation", 6, chance=4),
-    "patch_scrub": patch("terra:scrub_vegetation", 48),
-    "wetland_pool": {"feature": "terra:wetland_pool", "placement": [
+    "patch_tundra": patch("orogeny:tundra_vegetation", 48),
+    "patch_heath": patch("orogeny:heath_vegetation", 48),
+    "patch_bog": patch("orogeny:bog_vegetation", 64),
+    "patch_moss_carpet": patch("orogeny:moss_carpet", 32, chance=2),
+    "patch_polar": patch("orogeny:polar_vegetation", 6, chance=4),
+    "patch_scrub": patch("orogeny:scrub_vegetation", 48),
+    "wetland_pool": {"feature": "orogeny:wetland_pool", "placement": [
         {"type": "minecraft:rarity_filter", "chance": 2}, {"type": "minecraft:in_square"},
         {"type": "minecraft:heightmap", "heightmap": "WORLD_SURFACE_WG"}, {"type": "minecraft:biome"}]},
     "forest_rock_sparse": {"feature": "minecraft:forest_rock", "placement": [
@@ -434,89 +434,89 @@ COLD_WATER = "#3d57d6"
 
 biome("tundra", id=50, base="snowy_plains", temp=0.3, downfall=0.5,
       colors={"grass_color": "#93a35e", "foliage_color": "#7f9a50", "dry_foliage_color": "#8a6b45"},
-      veg=["terra:trees_tundra", "terra:patch_tundra", "terra:patch_moss_carpet", "minecraft:patch_berry_rare",
-           "minecraft:flower_default", "terra:forest_rock_sparse"],
+      veg=["orogeny:trees_tundra", "orogeny:patch_tundra", "orogeny:patch_moss_carpet", "minecraft:patch_berry_rare",
+           "minecraft:flower_default", "orogeny:forest_rock_sparse"],
       top=rule((noise("surface", 0.42), "minecraft:snow_block"), (noise("surface", 0.18), "minecraft:moss_block"),
                (noise("surface_secondary", 0.35), "minecraft:podzol"), (noise("surface", -1e9, -0.3), "minecraft:coarse_dirt")),
       tags=["has_structure/village_snowy", "has_structure/igloo"])
 biome("polar_desert", id=51, base="snowy_plains", temp=-0.7, downfall=0.0, precip=False, freeze=False,
       colors={"grass_color": "#8c9c84", "foliage_color": "#7d8c76", "water_color": COLD_WATER},
-      veg=["terra:patch_polar"],
+      veg=["orogeny:patch_polar"],
       top=rule((noise("surface_secondary", 0.55), "minecraft:snow_block"), (noise("surface", 0.25), "minecraft:stone"),
                (noise("surface", -0.35), GRAVEL), (None, "minecraft:coarse_dirt")),
       under=rule((noise("surface", 0.25), "minecraft:stone"), (None, GRAVEL)), top_wet=True)
 biome("treeline", id=52, base="grove", temp=0.2, downfall=0.6,
       colors={"grass_color": "#80a462", "foliage_color": "#5f8a4c"},
-      veg=["terra:trees_treeline", "minecraft:patch_grass_meadow", "minecraft:flower_meadow", "terra:patch_heath",
-           "terra:forest_rock_sparse", "minecraft:patch_berry_rare"],
+      veg=["orogeny:trees_treeline", "minecraft:patch_grass_meadow", "minecraft:flower_meadow", "orogeny:patch_heath",
+           "orogeny:forest_rock_sparse", "minecraft:patch_berry_rare"],
       top=rule((noise("surface", 0.3), "minecraft:stone"), (noise("surface", 0.05), "minecraft:coarse_dirt")),
       under=rule((noise("surface", 0.3), "minecraft:stone")),
       tags=["is_forest"])
 biome("boreal_forest", id=53, base="taiga", temp=0.2, downfall=0.8,
       colors={"grass_color": "#6c9a5c", "foliage_color": "#d4a72c"},
-      veg=["minecraft:patch_large_fern", "terra:trees_boreal", "minecraft:patch_grass_taiga", "terra:patch_moss_carpet",
+      veg=["minecraft:patch_large_fern", "orogeny:trees_boreal", "minecraft:patch_grass_taiga", "orogeny:patch_moss_carpet",
            "minecraft:brown_mushroom_taiga", "minecraft:red_mushroom_taiga", "minecraft:patch_berry_common",
            "minecraft:patch_firefly_bush_near_water"],
       top=rule((noise("surface", 0.0), "minecraft:podzol"), (noise("surface_secondary", 0.5), "minecraft:moss_block")))
 biome("siberian_taiga", id=54, base="taiga", temp=0.15, downfall=0.4,
       colors={"grass_color": "#88a060", "foliage_color": "#d9772c", "dry_foliage_color": "#c0662a"},
-      veg=["terra:trees_siberian", "minecraft:patch_grass_taiga_2", "minecraft:patch_large_fern",
+      veg=["orogeny:trees_siberian", "minecraft:patch_grass_taiga_2", "minecraft:patch_large_fern",
            "minecraft:patch_leaf_litter", "minecraft:brown_mushroom_taiga", "minecraft:patch_berry_common"],
       top=rule((noise("surface", 0.21), "minecraft:coarse_dirt"), (noise("surface", -0.12), "minecraft:podzol")))
 biome("birch_taiga", id=55, base="taiga", temp=0.3, downfall=0.8,
       colors={"grass_color": "#79a85f", "foliage_color": "#62994c"},
-      veg=["minecraft:patch_large_fern", "terra:trees_birch_taiga", "minecraft:patch_grass_taiga_2",
+      veg=["minecraft:patch_large_fern", "orogeny:trees_birch_taiga", "minecraft:patch_grass_taiga_2",
            "minecraft:flower_default", "minecraft:brown_mushroom_taiga", "minecraft:patch_berry_common",
            "minecraft:patch_leaf_litter", "minecraft:patch_firefly_bush_near_water"],
       top=rule((noise("surface", 0.3), "minecraft:podzol")))
 biome("taiga_mountain", id=56, base="taiga", temp=0.15, downfall=0.6,
       colors={"grass_color": "#7a9a62", "foliage_color": "#55804a"},
-      veg=["terra:trees_taiga_mountain", "minecraft:patch_grass_taiga_2", "minecraft:patch_large_fern",
-           "terra:forest_rock_sparse", "minecraft:patch_berry_rare"],
+      veg=["orogeny:trees_taiga_mountain", "minecraft:patch_grass_taiga_2", "minecraft:patch_large_fern",
+           "orogeny:forest_rock_sparse", "minecraft:patch_berry_rare"],
       top=rule((noise("surface", 0.28), "minecraft:stone"), (noise("surface", 0.05), "minecraft:coarse_dirt"),
                (noise("surface", -0.15), "minecraft:podzol")),
       under=rule((noise("surface", 0.28), "minecraft:stone")))
 biome("taiga_clearing", id=57, base="taiga", temp=0.3, downfall=0.8,
       colors={"grass_color": "#82b061", "foliage_color": "#5c8f4b"},
-      veg=["terra:trees_taiga_clearing", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow",
+      veg=["orogeny:trees_taiga_clearing", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow",
            "minecraft:flower_meadow", "minecraft:patch_large_fern", "minecraft:patch_berry_common",
            "minecraft:fallen_spruce_tree", "minecraft:patch_firefly_bush_near_water"],
       top=None)
 biome("bog", id=58, base="swamp", temp=0.25, downfall=0.9,
       colors={"grass_color": "#7f8f4d", "foliage_color": "#5f7a3c", "water_color": "#4a5640"},
-      lakes=["terra:wetland_pool"],
-      veg=["terra:trees_bog", "terra:patch_bog", "minecraft:patch_waterlily", "minecraft:brown_mushroom_swamp",
+      lakes=["orogeny:wetland_pool"],
+      veg=["orogeny:trees_bog", "orogeny:patch_bog", "minecraft:patch_waterlily", "minecraft:brown_mushroom_swamp",
            "minecraft:patch_berry_rare", "minecraft:patch_firefly_bush_swamp"],
       top=rule((noise("surface", 0.15), "minecraft:moss_block"), (noise("surface", -0.25), "minecraft:podzol"),
                (None, "minecraft:mud")),
       tags=[])
 biome("moorland", id=59, base="windswept_hills", temp=0.3, downfall=0.8,
       colors={"grass_color": "#8f9a55", "foliage_color": "#6f7f45", "dry_foliage_color": "#8b5a3a"},
-      veg=["terra:trees_moorland", "terra:patch_heath", "minecraft:patch_red_shrub", "minecraft:patch_grass_plain",
-           "terra:forest_rock_sparse"],
+      veg=["orogeny:trees_moorland", "orogeny:patch_heath", "minecraft:patch_red_shrub", "minecraft:patch_grass_plain",
+           "orogeny:forest_rock_sparse"],
       top=rule((noise("surface", 0.3), "minecraft:coarse_dirt"), (noise("surface_secondary", 0.25), "minecraft:podzol")),
       tags=["has_structure/village_plains"])
 biome("temperate_rainforest", id=60, base="old_growth_spruce_taiga", temp=0.4, downfall=1.0,
       colors={"grass_color": "#4e9a3a", "foliage_color": "#3f8a2f"},
-      veg=["minecraft:patch_large_fern", "terra:trees_rainforest", "minecraft:patch_grass_taiga",
-           "terra:patch_moss_carpet", "minecraft:brown_mushroom_old_growth", "minecraft:red_mushroom_old_growth",
+      veg=["minecraft:patch_large_fern", "orogeny:trees_rainforest", "minecraft:patch_grass_taiga",
+           "orogeny:patch_moss_carpet", "minecraft:brown_mushroom_old_growth", "minecraft:red_mushroom_old_growth",
            "minecraft:patch_berry_common", "minecraft:patch_firefly_bush_near_water"],
       top=rule((noise("surface", 0.1), "minecraft:podzol"), (noise("surface", -1e9, -0.3), "minecraft:moss_block")))
 biome("aspen_parkland", id=61, base="plains", temp=0.4, downfall=0.5,
       colors={"grass_color": "#9cb85a", "foliage_color": "#b9b241"},
-      veg=["terra:trees_aspen", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_plain", "minecraft:flower_plains",
+      veg=["orogeny:trees_aspen", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_plain", "minecraft:flower_plains",
            "minecraft:patch_bush", "minecraft:patch_leaf_litter", "minecraft:patch_firefly_bush_near_water"],
       top=None, tags=["is_forest"])
 # Dense stands of aspen on cool mountainsides (Rocky Mountain aspen groves); the same aspens as the parkland.
 biome("aspen_grove", id=74, base="birch_forest", temp=0.4, downfall=0.7,
       colors={"grass_color": "#7fae55", "foliage_color": "#d6b43a"},
-      veg=["terra:trees_aspen_grove", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_forest",
+      veg=["orogeny:trees_aspen_grove", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_forest",
            "minecraft:flower_meadow", "minecraft:patch_large_fern", "minecraft:patch_leaf_litter",
            "minecraft:patch_berry_rare"],
       top=None)
 biome("tallgrass_prairie", id=62, base="plains", temp=0.8, downfall=0.6,
       colors={"grass_color": "#a2bb52", "foliage_color": "#86a53e"},
-      veg=["minecraft:patch_tall_grass", "minecraft:patch_tall_grass_2", "terra:trees_prairie",
+      veg=["minecraft:patch_tall_grass", "minecraft:patch_tall_grass_2", "orogeny:trees_prairie",
            "minecraft:flower_plains", "minecraft:wildflowers_meadow", "minecraft:patch_grass_plain",
            "minecraft:patch_sunflower", "minecraft:patch_firefly_bush_near_water"],
       top=None)
@@ -527,42 +527,42 @@ biome("steppe", id=63, base="plains", temp=0.7, downfall=0.15,
       top=rule((noise("surface", 0.2), "minecraft:coarse_dirt")))
 biome("marsh", id=64, base="swamp", temp=0.7, downfall=0.9,
       colors={"grass_color": "#6c9a40", "foliage_color": "#5e8a38", "water_color": "#4f7a62"},
-      lakes=["terra:wetland_pool"],
-      veg=["terra:trees_marsh", "minecraft:patch_tall_grass", "minecraft:patch_grass_normal",
+      lakes=["orogeny:wetland_pool"],
+      veg=["orogeny:trees_marsh", "minecraft:patch_tall_grass", "minecraft:patch_grass_normal",
            "minecraft:patch_sugar_cane_swamp", "minecraft:patch_waterlily", "minecraft:flower_swamp",
            "minecraft:patch_firefly_bush_swamp", "minecraft:seagrass_swamp"],
       top=rule((noise("surface_swamp", 0.25), "minecraft:mud")))
 biome("riverside_forest", id=65, base="forest", temp=0.8, downfall=0.6,
       colors={"grass_color": "#79ad4a", "foliage_color": "#5c9a3a"},
-      veg=["terra:trees_riverside", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_forest",
+      veg=["orogeny:trees_riverside", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_forest",
            "minecraft:patch_sugar_cane", "minecraft:patch_bush", "minecraft:patch_firefly_bush_near_water"],
       top=None)
 biome("floodplain_forest", id=66, base="forest", temp=0.7, downfall=0.9,
       colors={"grass_color": "#5f9a3c", "foliage_color": "#4d8a30", "water_color": "#3a6f8a"},
-      veg=["terra:trees_floodplain", "minecraft:patch_grass_forest", "minecraft:patch_large_fern",
-           "minecraft:patch_sugar_cane", "terra:patch_moss_carpet", "minecraft:brown_mushroom_swamp",
+      veg=["orogeny:trees_floodplain", "minecraft:patch_grass_forest", "minecraft:patch_large_fern",
+           "minecraft:patch_sugar_cane", "orogeny:patch_moss_carpet", "minecraft:brown_mushroom_swamp",
            "minecraft:patch_leaf_litter", "minecraft:patch_firefly_bush_near_water"],
       top=rule((noise("surface_swamp", 0.3), "minecraft:mud")))
 biome("redwoods", id=67, base="old_growth_spruce_taiga", temp=0.5, downfall=0.9,
       colors={"grass_color": "#5a9a45", "foliage_color": "#3f7f38"},
-      veg=["minecraft:patch_large_fern", "terra:trees_redwoods", "minecraft:patch_grass_taiga",
-           "terra:patch_moss_carpet", "minecraft:brown_mushroom_old_growth", "minecraft:patch_berry_common"],
+      veg=["minecraft:patch_large_fern", "orogeny:trees_redwoods", "minecraft:patch_grass_taiga",
+           "orogeny:patch_moss_carpet", "minecraft:brown_mushroom_old_growth", "minecraft:patch_berry_common"],
       top=rule((noise("surface", 0.45), "minecraft:coarse_dirt"), (noise("surface", -0.4), "minecraft:podzol")))
 biome("mediterranean_scrub", id=68, base="plains", temp=1.2, downfall=0.25,
       colors={"grass_color": "#a6a85a", "foliage_color": "#6e8a3e", "dry_foliage_color": "#9a7b4a"},
-      veg=["terra:trees_mediterranean", "terra:patch_scrub", "minecraft:flower_warm", "minecraft:patch_dry_grass_desert"],
+      veg=["orogeny:trees_mediterranean", "orogeny:patch_scrub", "minecraft:flower_warm", "minecraft:patch_dry_grass_desert"],
       top=rule((noise("surface", 0.05), "minecraft:coarse_dirt"), (noise("surface_secondary", 0.55), "minecraft:gravel")))
 biome("forested_highland", id=69, base="taiga", temp=0.4, downfall=0.7,
       colors={"grass_color": "#72a35a", "foliage_color": "#d9502c", "dry_foliage_color": "#b5482a"},
-      veg=["terra:trees_forested_highland", "minecraft:patch_grass_forest", "minecraft:patch_large_fern",
-           "minecraft:flower_default", "terra:forest_rock_sparse", "minecraft:patch_berry_common"],
+      veg=["orogeny:trees_forested_highland", "minecraft:patch_grass_forest", "minecraft:patch_large_fern",
+           "minecraft:flower_default", "orogeny:forest_rock_sparse", "minecraft:patch_berry_common"],
       top=rule((STEEP, "minecraft:stone"), (noise("surface", 0.45), "minecraft:stone"),
                (noise("surface", 0.25), "minecraft:coarse_dirt")),
       under=rule((STEEP, "minecraft:stone"), (noise("surface", 0.45), "minecraft:stone")), tags=["is_forest"])
 biome("temperate_highland", id=70, base="meadow", temp=0.5, downfall=0.7,
       colors={"grass_color": "#86b25e", "foliage_color": "#62994c"},
-      veg=["terra:trees_temperate_highland", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow",
-           "minecraft:flower_meadow", "minecraft:wildflowers_meadow", "terra:forest_rock_sparse"],
+      veg=["orogeny:trees_temperate_highland", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow",
+           "minecraft:flower_meadow", "minecraft:wildflowers_meadow", "orogeny:forest_rock_sparse"],
       top=rule((noise("surface", 0.45), "minecraft:stone")), under=rule((noise("surface", 0.45), "minecraft:stone")))
 biome("rocky_desert", id=71, base="desert", temp=2.0, downfall=0.0,
       colors={},
@@ -573,12 +573,12 @@ biome("rocky_desert", id=71, base="desert", temp=2.0, downfall=0.0,
                  (None, "minecraft:sandstone")), top_wet=True)
 biome("cloud_forest", id=72, base="jungle", temp=0.7, downfall=1.0,
       colors={"grass_color": "#4fa83e", "foliage_color": "#3c9a30"},
-      veg=["terra:trees_cloud_forest", "minecraft:patch_large_fern", "minecraft:patch_grass_jungle",
-           "terra:patch_moss_carpet", "minecraft:vines", "minecraft:brown_mushroom_normal"],
+      veg=["orogeny:trees_cloud_forest", "minecraft:patch_large_fern", "minecraft:patch_grass_jungle",
+           "orogeny:patch_moss_carpet", "minecraft:vines", "minecraft:brown_mushroom_normal"],
       top=rule((noise("surface", 0.15), "minecraft:moss_block")))
 biome("tropical_dry_forest", id=73, base="savanna", temp=1.5, downfall=0.3,
       colors={"grass_color": "#a6a84a", "foliage_color": "#8c9a3a", "dry_foliage_color": "#9c7a42"},
-      veg=["terra:trees_tropical_dry", "minecraft:patch_dry_grass_desert", "minecraft:patch_grass_savanna",
+      veg=["orogeny:trees_tropical_dry", "minecraft:patch_dry_grass_desert", "minecraft:patch_grass_savanna",
            "minecraft:patch_bush", "minecraft:flower_warm", "minecraft:patch_melon_sparse"],
       top=rule((noise("surface", 0.3), "minecraft:coarse_dirt")))
 
@@ -591,7 +591,7 @@ biome("shingle_beach", id=75, base="beach", temp=0.5, downfall=0.4, colors={},
       under=rule((None, GRAVEL)), top_wet=True)
 biome("salt_marsh", id=76, base="swamp", temp=0.6, downfall=0.8,
       colors={"grass_color": "#8aa452", "foliage_color": "#6f8f42", "water_color": "#4d7a72"},
-      lakes=["terra:wetland_pool"],
+      lakes=["orogeny:wetland_pool"],
       veg=["minecraft:patch_tall_grass", "minecraft:patch_grass_normal", "minecraft:patch_sugar_cane_swamp",
            "minecraft:seagrass_swamp", "minecraft:patch_dead_bush"],
       top=rule((noise("surface_swamp", -0.1), "minecraft:mud"), (None, "minecraft:grass_block")), top_wet=True)
@@ -610,25 +610,25 @@ biome("painted_mountains", id=79, base="badlands", temp=2.0, downfall=0.0,
       top=None, deep=(60, {"type": "minecraft:bandlands"}, "before"))
 biome("desert_oasis", id=80, base="desert", temp=1.6, downfall=0.4,
       colors={"grass_color": "#6fb04a", "foliage_color": "#4fa83a"},
-      lakes=["terra:oasis_pool"],
-      veg=["terra:trees_oasis", "minecraft:patch_grass_jungle", "minecraft:patch_tall_grass",
+      lakes=["orogeny:oasis_pool"],
+      veg=["orogeny:trees_oasis", "minecraft:patch_grass_jungle", "minecraft:patch_tall_grass",
            "minecraft:patch_sugar_cane_desert", "minecraft:flower_warm"],
       top=rule((noise("surface", 0.5), "minecraft:sand")), top_wet=True)
 biome("blooming_plateau", id=81, base="meadow", temp=0.6, downfall=0.8,
       colors={"grass_color": "#7cc25a", "foliage_color": "#62a84a"},
-      veg=["terra:trees_blooming", "minecraft:flower_flower_forest", "minecraft:wildflowers_meadow",
+      veg=["orogeny:trees_blooming", "minecraft:flower_flower_forest", "minecraft:wildflowers_meadow",
            "minecraft:flower_meadow", "minecraft:patch_tall_grass_2", "minecraft:patch_grass_meadow"],
       top=None)
 biome("blooming_valley", id=82, base="plains", temp=0.8, downfall=0.7,
       colors={"grass_color": "#82c45a", "foliage_color": "#66aa48"},
-      veg=["terra:trees_blooming", "minecraft:flower_flower_forest", "minecraft:flower_plains",
+      veg=["orogeny:trees_blooming", "minecraft:flower_flower_forest", "minecraft:flower_plains",
            "minecraft:wildflowers_meadow", "minecraft:patch_tall_grass", "minecraft:patch_sunflower",
            "minecraft:patch_firefly_bush_near_water"],
       top=None)
 biome("lush_valley", id=83, base="forest", temp=0.8, downfall=0.9,
       colors={"grass_color": "#5fb046", "foliage_color": "#48a038"},
-      veg=["terra:trees_lush_valley", "minecraft:patch_large_fern", "minecraft:patch_tall_grass",
-           "minecraft:flower_forest_flowers", "terra:patch_moss_carpet", "minecraft:patch_berry_common",
+      veg=["orogeny:trees_lush_valley", "minecraft:patch_large_fern", "minecraft:patch_tall_grass",
+           "minecraft:flower_forest_flowers", "orogeny:patch_moss_carpet", "minecraft:patch_berry_common",
            "minecraft:patch_leaf_litter", "minecraft:patch_firefly_bush_near_water"],
       top=rule((noise("surface", 0.45), "minecraft:moss_block")))
 biome("salt_flats", id=84, base="desert", temp=2.0, downfall=0.0, precip=False,
@@ -646,7 +646,7 @@ biome("arctic", id=85, base="snowy_plains", temp=-0.7, downfall=0.4,
       under=rule((None, "minecraft:packed_ice")), top_wet=True,
       no_tags=["has_structure/village_snowy", "has_structure/pillager_outpost"])
 
-V12 = [f"terra:{n}" for n in B]
+V12 = [f"orogeny:{n}" for n in B]
 # Vanilla biomes whose surface rules this script also owns (Terra places them; vanilla's rule tree isn't used).
 MANAGED = V12 + ["minecraft:mushroom_fields"]
 EXTRA_TOP = [("minecraft:mushroom_fields", {"type": "minecraft:block", "result_state": "minecraft:mycelium"})]
@@ -714,7 +714,7 @@ KARST_ROCK = {"type": "minecraft:sequence", "sequence": [
 biome("karst", id=92, base="jungle", temp=0.95, downfall=0.9,
       colors={"grass_color": "#59c93c", "foliage_color": "#30bb0b"},
       veg=["minecraft:trees_sparse_jungle", "minecraft:flower_warm", "minecraft:patch_grass_jungle",
-           "minecraft:patch_sugar_cane", "minecraft:vines", "terra:patch_moss_carpet"],
+           "minecraft:patch_sugar_cane", "minecraft:vines", "orogeny:patch_moss_carpet"],
       top={"type": "minecraft:sequence", "sequence": [
           {"type": "minecraft:condition", "if_true": STEEP, "then_run": KARST_ROCK},
           {"type": "minecraft:condition", "if_true": noise("surface", 0.3), "then_run": block("minecraft:moss_block")}]},
@@ -790,7 +790,7 @@ FEATURES.update({
     "tl_cliff_grass": {"type": "minecraft:vegetation_patch", "depth": 1, "extra_bottom_block_chance": 0.0,
                        "extra_edge_column_chance": 0.4, "ground_state": {"id": "minecraft:grass_block", "properties": {"snowy": "false"}},
                        "replaceable": "#minecraft:base_stone_overworld", "surface": "floor", "vegetation_chance": 0.3,
-                       "vegetation_feature": {"feature": "terra:tl_cliff_plants", "placement": []}, "vertical_range": 8, "xz_radius": uniform(1, 5)},
+                       "vegetation_feature": {"feature": "orogeny:tl_cliff_plants", "placement": []}, "vertical_range": 8, "xz_radius": uniform(1, 5)},
     "tl_diorite": {"type": "minecraft:ore", "discard_chance_on_air_exposure": 0.0, "size": 45,
                    "targets": [{"state": {"id": "minecraft:diorite"}, "target": {"predicate_type": "minecraft:block_match", "block": "minecraft:stone"}}]},
     "tl_calcite": {"type": "minecraft:ore", "discard_chance_on_air_exposure": 0.0, "size": 45,
@@ -804,9 +804,9 @@ FEATURES.update({
                                     "minecraft:grass_block", "minecraft:calcite", "minecraft:basalt"]}},
     "tl_dandelion": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:dandelion"}},
 })
-SELECTORS["tl_yosemite_oaks"] = ("terra:tl_yosemite_oak_checked", [
-    ("terra:tl_yosemite_oak_mega_checked", 0.3), ("terra:tl_spruce_big_alt_checked", 0.075),
-    ("terra:tl_spruce_big_checked", 0.075), ("terra:tl_birch_alt_checked", 0.075), ("terra:tl_birch_checked", 0.075)])
+SELECTORS["tl_yosemite_oaks"] = ("orogeny:tl_yosemite_oak_checked", [
+    ("orogeny:tl_yosemite_oak_mega_checked", 0.3), ("orogeny:tl_spruce_big_alt_checked", 0.075),
+    ("orogeny:tl_spruce_big_checked", 0.075), ("orogeny:tl_birch_alt_checked", 0.075), ("orogeny:tl_birch_checked", 0.075)])
 ON_CLIFF_EDGE = {"type": "minecraft:block_predicate_filter", "predicate": {"type": "minecraft:all_of", "predicates": [
     {"type": "minecraft:matching_blocks", "blocks": ["minecraft:air"]},
     {"type": "minecraft:solid", "offset": [0, -1, 0]},
@@ -827,54 +827,54 @@ def heightmap_count(feature, count, *mods, heightmap="WORLD_SURFACE_WG", post=()
 
 
 PLACED.update({
-    "tl_spruce_big_checked": tree_checked("terra:tl_spruce_big", "minecraft:spruce_sapling"),
-    "tl_spruce_big_alt_checked": tree_checked("terra:tl_spruce_big_alt", "minecraft:spruce_sapling"),
-    "tl_birch_checked": tree_checked("terra:tl_birch", "minecraft:birch_sapling"),
-    "tl_birch_alt_checked": tree_checked("terra:tl_birch_alt", "minecraft:birch_sapling"),
-    "tl_yosemite_oak_checked": tree_checked("terra:tl_yosemite_oak", "minecraft:oak_sapling"),
-    "tl_yosemite_oak_mega_checked": tree_checked("terra:tl_yosemite_oak_mega", "minecraft:oak_sapling"),
+    "tl_spruce_big_checked": tree_checked("orogeny:tl_spruce_big", "minecraft:spruce_sapling"),
+    "tl_spruce_big_alt_checked": tree_checked("orogeny:tl_spruce_big_alt", "minecraft:spruce_sapling"),
+    "tl_birch_checked": tree_checked("orogeny:tl_birch", "minecraft:birch_sapling"),
+    "tl_birch_alt_checked": tree_checked("orogeny:tl_birch_alt", "minecraft:birch_sapling"),
+    "tl_yosemite_oak_checked": tree_checked("orogeny:tl_yosemite_oak", "minecraft:oak_sapling"),
+    "tl_yosemite_oak_mega_checked": tree_checked("orogeny:tl_yosemite_oak_mega", "minecraft:oak_sapling"),
     # Terralith's Yellowstone trees came in height bands (spruces low, birches high); Terra's terrain has no fixed
     # heights, so all four grow everywhere at about the density each had in its band.
-    "tl_yellowstone_spruces": heightmap_count("terra:tl_spruce_big", 2, post=[survive("minecraft:spruce_sapling")]),
-    "tl_yellowstone_spruces_alt": heightmap_count("terra:tl_spruce_big_alt", 2, post=[survive("minecraft:spruce_sapling")]),
-    "tl_yellowstone_birches": heightmap_count("terra:tl_birch", 2, post=[survive("minecraft:birch_sapling")]),
-    "tl_yellowstone_birches_alt": heightmap_count("terra:tl_birch_alt", 1, post=[survive("minecraft:birch_sapling")]),
-    "tl_yosemite_oaks": {"feature": "terra:tl_yosemite_oaks", "placement": [
+    "tl_yellowstone_spruces": heightmap_count("orogeny:tl_spruce_big", 2, post=[survive("minecraft:spruce_sapling")]),
+    "tl_yellowstone_spruces_alt": heightmap_count("orogeny:tl_spruce_big_alt", 2, post=[survive("minecraft:spruce_sapling")]),
+    "tl_yellowstone_birches": heightmap_count("orogeny:tl_birch", 2, post=[survive("minecraft:birch_sapling")]),
+    "tl_yellowstone_birches_alt": heightmap_count("orogeny:tl_birch_alt", 1, post=[survive("minecraft:birch_sapling")]),
+    "tl_yosemite_oaks": {"feature": "orogeny:tl_yosemite_oaks", "placement": [
         {"type": "minecraft:count", "count": {"type": "minecraft:weighted_list", "distribution": [{"data": 7, "weight": 50}, {"data": 8, "weight": 50}]}},
         {"type": "minecraft:in_square"}, {"type": "minecraft:heightmap", "heightmap": "WORLD_SURFACE_WG"}, {"type": "minecraft:biome"}]},
-    "tl_cliff_grass": heightmap_count("terra:tl_cliff_grass", 15, noise_count(75, -0.2, 1), noise_count(75, -1, -1)),
-    "tl_calcite": heightmap_count("terra:tl_calcite", 150, noise_count(75, 1, 1), noise_count(75, 0.5, -1)),
-    "tl_diorite": heightmap_count("terra:tl_diorite", 150, noise_count(75, 0.6, 1), noise_count(75, 0.2, -1)),
-    "tl_waterfalls": heightmap_count("terra:tl_waterfall", 6, ON_CLIFF_EDGE),
-    "tl_andesite_disks": {"feature": "terra:tl_andesite_disk", "placement": [
+    "tl_cliff_grass": heightmap_count("orogeny:tl_cliff_grass", 15, noise_count(75, -0.2, 1), noise_count(75, -1, -1)),
+    "tl_calcite": heightmap_count("orogeny:tl_calcite", 150, noise_count(75, 1, 1), noise_count(75, 0.5, -1)),
+    "tl_diorite": heightmap_count("orogeny:tl_diorite", 150, noise_count(75, 0.6, 1), noise_count(75, 0.2, -1)),
+    "tl_waterfalls": heightmap_count("orogeny:tl_waterfall", 6, ON_CLIFF_EDGE),
+    "tl_andesite_disks": {"feature": "orogeny:tl_andesite_disk", "placement": [
         {"type": "minecraft:count", "count": 228}, {"type": "minecraft:in_square"}, noise_count(175, 1, 1),
         {"type": "minecraft:heightmap", "heightmap": "OCEAN_FLOOR_WG"},
         {"type": "minecraft:block_predicate_filter", "predicate": {"type": "minecraft:matching_fluids", "fluids": "minecraft:water"}},
         {"type": "minecraft:biome"}]},
-    "tl_dandelions": patch("terra:tl_dandelion", 64, spread=7, chance=20),
+    "tl_dandelions": patch("orogeny:tl_dandelion", 64, spread=7, chance=20),
 })
 # Yosemite cliffs: bare stone walls (diorite and calcite streaks from the features), grassy ledges, waterfalls.
 biome("yosemite_cliffs", id=94, base="old_growth_pine_taiga", temp=0.375, downfall=0.8,
       colors={"water_color": "#3f76e4"},
       veg=TAIGA_GROUND, top=rule((None, "minecraft:stone")), under=rule((None, "minecraft:stone")),
-      steps={5: ["terra:tl_cliff_grass", "terra:tl_calcite", "terra:tl_diorite", "terra:tl_waterfalls"]},
+      steps={5: ["orogeny:tl_cliff_grass", "orogeny:tl_calcite", "orogeny:tl_diorite", "orogeny:tl_waterfalls"]},
       spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#c0d8ff", "minecraft:visual/sky_color": "#7da3ff"},
       no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
 # Yosemite lowlands: the meadow valley floor: tall oaks (some giant), a few spruces and birches, dandelions, andesite
 # in the river beds, waterfalls where it meets the walls.
 biome("yosemite_lowlands", id=96, base="taiga", temp=0.25, downfall=0.8,
       colors={"grass_color": "#598347", "foliage_color": "#508231", "water_color": "#3647aa"},
-      veg=["terra:tl_waterfalls", "terra:tl_yosemite_oaks", "terra:tl_dandelions"] + TAIGA_GROUND, top=None,
-      add_steps={6: ["terra:tl_andesite_disks"]},
+      veg=["orogeny:tl_waterfalls", "orogeny:tl_yosemite_oaks", "orogeny:tl_dandelions"] + TAIGA_GROUND, top=None,
+      add_steps={6: ["orogeny:tl_andesite_disks"]},
       spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#c0d8ff", "minecraft:visual/sky_color": "#7da3ff"},
       no_tags=["has_structure/village_taiga", "has_structure/pillager_outpost"])
 # Yellowstone: calcite ground with coarse dirt and grass, patches of yellow terracotta, red sand, blackstone, smooth
 # basalt and gravel, thin veins of gravel and calcite, calcite on steep faces (Terralith's surface rule; its height
 # bands, made for fixed heights, are a noise mix here). world/Yellowstone lays the pools, stained rims and steam vents.
-YS_PATCH = "terra:yellowstone/calcite_patch"
-YS_VEIN = "terra:yellowstone/gravel"
-YS_DIRT = "terra:yellowstone/dirt"
-YS_CLIFF = "terra:yellowstone/calcite_cliff"
+YS_PATCH = "orogeny:yellowstone/calcite_patch"
+YS_VEIN = "orogeny:yellowstone/gravel"
+YS_DIRT = "orogeny:yellowstone/dirt"
+YS_CLIFF = "orogeny:yellowstone/calcite_cliff"
 def parity_noise(first_octave, amplitudes):
     """An old-format noise (firstOctave, amplitudes) in 26.3's format, as NormalNoise.createParity converts it."""
     n = len(amplitudes)
@@ -951,8 +951,8 @@ YELLOWSTONE_TOP = {"type": "minecraft:sequence", "sequence": [
     block("minecraft:dirt")]}
 biome("yellowstone", id=97, base="taiga", temp=0.25, downfall=0.8,
       colors={"grass_color": "#c6d097", "water_color": "#77e0f7"},
-      veg=["terra:tl_yellowstone_spruces", "terra:tl_yellowstone_spruces_alt", "terra:tl_yellowstone_birches",
-           "terra:tl_yellowstone_birches_alt", "minecraft:patch_large_fern", "minecraft:flower_default"] + TAIGA_GROUND[1:],
+      veg=["orogeny:tl_yellowstone_spruces", "orogeny:tl_yellowstone_spruces_alt", "orogeny:tl_yellowstone_birches",
+           "orogeny:tl_yellowstone_birches_alt", "minecraft:patch_large_fern", "minecraft:flower_default"] + TAIGA_GROUND[1:],
       top=YELLOWSTONE_TOP, under=rule((None, "minecraft:dirt")),
       add_steps={8: ["minecraft:spring_lava"]},
       spawns=TERRALITH_SPAWNS, attrs={"minecraft:visual/fog_color": "#e0e9ff", "minecraft:visual/sky_color": "#77a8ff"},
@@ -968,7 +968,7 @@ MIRAGE_STRATA = {"type": "minecraft:sequence", "sequence": [
     for y in range(160, 20, -2)] + [block("minecraft:calcite")]}
 biome("mirage_isles", id=95, base="sparse_jungle", temp=0.9, downfall=0.8,
       colors={"grass_color": "#5fd2b0", "foliage_color": "#36d1bd", "water_color": "#43c8e0"},
-      veg=["terra:trees_mirage", "minecraft:patch_grass_jungle", "minecraft:flower_warm", "minecraft:vines"],
+      veg=["orogeny:trees_mirage", "minecraft:patch_grass_jungle", "minecraft:flower_warm", "minecraft:vines"],
       top=None, deep=(60, MIRAGE_STRATA, "after"), spawns_from="mushroom_fields",
       no_tags=["has_structure/jungle_temple"])
 
@@ -987,7 +987,7 @@ biome("tuff_caves", id=143, **STONE_CAVE)
 # id 144 is vanilla's dripstone_caves, used as is (in VANILLA_USED below).
 
 # ---- v1.5 part two round A: the dry uncommon caves (CaveBiomes; lush and thermal caves are vanilla's) ----
-# Placement of Terra's cave features: tries per chunk column per 256 blocks of its cave layer (terra:cave_layer picks
+# Placement of Terra's cave features: tries per chunk column per 256 blocks of its cave layer (orogeny:cave_layer picks
 # Y between the bottom of the world and where cave biomes start, so caves inside mountains get features too).
 AIR = {"type": "minecraft:matching_block_tag", "tag": "minecraft:air"}
 SCAN_FLOOR = [{"type": "minecraft:environment_scan", "allowed_search_condition": AIR, "direction_of_search": "down",
@@ -999,7 +999,7 @@ SCAN_CEILING = [{"type": "minecraft:environment_scan", "allowed_search_condition
 def cave_placed(feature, count, scan=(), pre=(), post=()):
     """count: tries per chunk per 256 blocks of cave layer (int, or a dict count provider)."""
     lead = list(pre) if pre else [{"type": "minecraft:count", "count": count}]
-    return {"feature": feature, "placement": lead + [{"type": "minecraft:in_square"}, {"type": "terra:cave_layer"},
+    return {"feature": feature, "placement": lead + [{"type": "minecraft:in_square"}, {"type": "orogeny:cave_layer"},
                                                    {"type": "minecraft:biome"}] + list(scan) + list(post)}
 
 
@@ -1108,83 +1108,83 @@ CAVE_FEATURES = {
 }
 CAVE_FEATURES.update({
     "cave_fungal_floor": patch_cfg(weighted(("minecraft:moss_block", 4), ("minecraft:mycelium", 1)), "floor",
-                                   "terra:cave_fungal_plants", 0.12, radius=(4, 8)),
+                                   "orogeny:cave_fungal_plants", 0.12, radius=(4, 8)),
     "cave_fungal_ceiling": patch_cfg(weighted(("minecraft:moss_block", 7), ("minecraft:shroomlight", 1),
                                               ("minecraft:nether_wart_block", 1), ("minecraft:warped_wart_block", 1)),
-                                     "ceiling", "terra:cave_weeping_vines", 0.12),
-    "cave_jungle_floor": patch_cfg("minecraft:moss_block", "floor", "terra:cave_jungle_plants", 0.6, depth=(1, 2), radius=(4, 8)),
+                                     "ceiling", "orogeny:cave_weeping_vines", 0.12),
+    "cave_jungle_floor": patch_cfg("minecraft:moss_block", "floor", "orogeny:cave_jungle_plants", 0.6, depth=(1, 2), radius=(4, 8)),
     "cave_jungle_ceiling": patch_cfg("minecraft:moss_block", "ceiling", "minecraft:cave_vine_in_moss", 0.12, depth=(1, 2)),
     "cave_icy_floor": patch_cfg(weighted(("minecraft:snow_block", 3), ("minecraft:packed_ice", 2), ("minecraft:ice", 1)),
-                                "floor", "terra:cave_snow_layer", 0.5, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+                                "floor", "orogeny:cave_snow_layer", 0.5, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
     "cave_icy_ceiling": patch_cfg(weighted(("minecraft:packed_ice", 3), ("minecraft:ice", 2), ("minecraft:blue_ice", 1)),
-                                  "ceiling", "terra:cave_icicle", 0.25, replaceable="#minecraft:base_stone_overworld"),
+                                  "ceiling", "orogeny:cave_icicle", 0.25, replaceable="#minecraft:base_stone_overworld"),
     "cave_frostfire_floor": patch_cfg(weighted(("minecraft:packed_ice", 3), ("minecraft:blue_ice", 2), ("minecraft:magma_block", 1)),
-                                      "floor", "terra:cave_snow_layer", 0.0, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+                                      "floor", "orogeny:cave_snow_layer", 0.0, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
     "cave_rubble_floor": patch_cfg(weighted(("minecraft:gravel", 3), ("minecraft:cobblestone", 2), ("minecraft:mossy_cobblestone", 1)),
-                                   "floor", "terra:cave_rubble", 0.15, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+                                   "floor", "orogeny:cave_rubble", 0.15, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
     "cave_broken_ceiling": patch_cfg(weighted(("minecraft:cobblestone", 2), ("minecraft:stone", 2), ("minecraft:andesite", 1)),
-                                     "ceiling", "terra:cave_rubble", 0.0, depth=(1, 3), replaceable="#minecraft:base_stone_overworld"),
+                                     "ceiling", "orogeny:cave_rubble", 0.0, depth=(1, 3), replaceable="#minecraft:base_stone_overworld"),
     "cave_mud_floor": patch_cfg(weighted(("minecraft:mud", 4), ("minecraft:packed_mud", 2), ("minecraft:muddy_mangrove_roots", 2)),
-                                "floor", "terra:cave_mud_plants", 0.08, depth=(1, 2), radius=(4, 8)),
-    "cave_mud_pool": patch_cfg("minecraft:mud", "floor", "terra:cave_moss_carpet", 0.0, depth=2, edge=0.6, bottom=0.6,
+                                "floor", "orogeny:cave_mud_plants", 0.08, depth=(1, 2), radius=(4, 8)),
+    "cave_mud_pool": patch_cfg("minecraft:mud", "floor", "orogeny:cave_moss_carpet", 0.0, depth=2, edge=0.6, bottom=0.6,
                                kind="minecraft:waterlogged_vegetation_patch", replaceable="#minecraft:lush_ground_replaceable"),
 })
 FEATURES.update(CAVE_FEATURES)
 
 COBWEB_DROP = {"type": "minecraft:offset", "x": 0, "y": uniform(-3, 0), "z": 0}
 CAVE_PLACED = {
-    "cave_glow_lichen": cave_placed("terra:cave_glow_lichen", 90),
-    "cave_glow_lichen_sparse": cave_placed("terra:cave_glow_lichen", 30),
-    "cave_fungal_floor": cave_placed("terra:cave_fungal_floor", 70, SCAN_FLOOR),
-    "cave_fungal_ceiling": cave_placed("terra:cave_fungal_ceiling", 55, SCAN_CEILING),
+    "cave_glow_lichen": cave_placed("orogeny:cave_glow_lichen", 90),
+    "cave_glow_lichen_sparse": cave_placed("orogeny:cave_glow_lichen", 30),
+    "cave_fungal_floor": cave_placed("orogeny:cave_fungal_floor", 70, SCAN_FLOOR),
+    "cave_fungal_ceiling": cave_placed("orogeny:cave_fungal_ceiling", 55, SCAN_CEILING),
     # Oct 27: many more giants (Calvin: more big mushrooms).
-    "cave_warped_giants": cave_placed("terra:cave_warped_giant", 0, SCAN_FLOOR, pre=[
+    "cave_warped_giants": cave_placed("orogeny:cave_warped_giant", 0, SCAN_FLOOR, pre=[
         {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 6, "above_noise": 34}]),
-    "cave_crimson_giants": cave_placed("terra:cave_crimson_giant", 0, SCAN_FLOOR, pre=[
+    "cave_crimson_giants": cave_placed("orogeny:cave_crimson_giant", 0, SCAN_FLOOR, pre=[
         {"type": "minecraft:noise_threshold_count", "noise_level": 0.0, "below_noise": 34, "above_noise": 6}]),
     "cave_huge_brown_mushrooms": cave_placed("minecraft:huge_brown_mushroom", 18, SCAN_FLOOR),
     "cave_huge_red_mushrooms": cave_placed("minecraft:huge_red_mushroom", 15, SCAN_FLOOR),
-    "cave_twisting_vines": cave_placed("terra:cave_twisting_vines", 20, SCAN_FLOOR),
-    "cave_jungle_floor": cave_placed("terra:cave_jungle_floor", 80, SCAN_FLOOR),
-    "cave_jungle_ceiling": cave_placed("terra:cave_jungle_ceiling", 55, SCAN_CEILING),
+    "cave_twisting_vines": cave_placed("orogeny:cave_twisting_vines", 20, SCAN_FLOOR),
+    "cave_jungle_floor": cave_placed("orogeny:cave_jungle_floor", 80, SCAN_FLOOR),
+    "cave_jungle_ceiling": cave_placed("orogeny:cave_jungle_ceiling", 55, SCAN_CEILING),
     "cave_jungle_bamboo": cave_placed("minecraft:bamboo_no_podzol", 24, SCAN_FLOOR),
     "cave_jungle_bushes": cave_placed("minecraft:jungle_bush", 14, SCAN_FLOOR, post=[survive("minecraft:jungle_sapling")]),
     "cave_jungle_vines": cave_placed("minecraft:vines", 256),
-    "cave_icy_floor": cave_placed("terra:cave_icy_floor", 60, SCAN_FLOOR),
-    "cave_icy_ceiling": cave_placed("terra:cave_icy_ceiling", 50, SCAN_CEILING),
-    "cave_icicles": cave_placed("terra:cave_icicle", 60, SCAN_CEILING),
-    "cave_ice_spikes": cave_placed("terra:cave_ice_spike", 25, SCAN_FLOOR),
-    "cave_ore_packed_ice": cave_placed("terra:cave_ore_packed_ice", 10),
-    "cave_ore_ice": cave_placed("terra:cave_ore_ice", 6),
-    "cave_ore_blue_ice": cave_placed("terra:cave_ore_blue_ice", 5),
-    "cave_ore_snow": cave_placed("terra:cave_ore_snow", 4),
-    "cave_ore_magma": cave_placed("terra:cave_ore_magma", 9),
-    "cave_frostfire_floor": cave_placed("terra:cave_frostfire_floor", 50, SCAN_FLOOR),
-    "cave_ore_infested": cave_placed("terra:cave_ore_infested", 16),
-    "cave_ore_infested_cobble": cave_placed("terra:cave_ore_infested_cobble", 6),
-    "cave_rubble_floor": cave_placed("terra:cave_rubble_floor", 45, SCAN_FLOOR),
+    "cave_icy_floor": cave_placed("orogeny:cave_icy_floor", 60, SCAN_FLOOR),
+    "cave_icy_ceiling": cave_placed("orogeny:cave_icy_ceiling", 50, SCAN_CEILING),
+    "cave_icicles": cave_placed("orogeny:cave_icicle", 60, SCAN_CEILING),
+    "cave_ice_spikes": cave_placed("orogeny:cave_ice_spike", 25, SCAN_FLOOR),
+    "cave_ore_packed_ice": cave_placed("orogeny:cave_ore_packed_ice", 10),
+    "cave_ore_ice": cave_placed("orogeny:cave_ore_ice", 6),
+    "cave_ore_blue_ice": cave_placed("orogeny:cave_ore_blue_ice", 5),
+    "cave_ore_snow": cave_placed("orogeny:cave_ore_snow", 4),
+    "cave_ore_magma": cave_placed("orogeny:cave_ore_magma", 9),
+    "cave_frostfire_floor": cave_placed("orogeny:cave_frostfire_floor", 50, SCAN_FLOOR),
+    "cave_ore_infested": cave_placed("orogeny:cave_ore_infested", 16),
+    "cave_ore_infested_cobble": cave_placed("orogeny:cave_ore_infested_cobble", 6),
+    "cave_rubble_floor": cave_placed("orogeny:cave_rubble_floor", 45, SCAN_FLOOR),
     "cave_monster_rooms": cave_placed("minecraft:monster_room", 5),
-    "cave_cobwebs_ceiling": cave_placed("terra:cave_cobweb", 220, SCAN_CEILING, post=[COBWEB_DROP, AIR_FILTER]),
-    "cave_cobwebs_floor": cave_placed("terra:cave_cobweb", 70, SCAN_FLOOR),
-    "cave_cobwebs_sparse": cave_placed("terra:cave_cobweb", 25, SCAN_CEILING),
-    "cave_ore_copper": cave_placed("terra:cave_ore_copper", 26),
-    "cave_ore_raw_copper": cave_placed("terra:cave_ore_raw_copper", 4),
-    "cave_ore_oxidized_copper": cave_placed("terra:cave_ore_oxidized_copper", 7),
-    "cave_ore_weathered_copper": cave_placed("terra:cave_ore_weathered_copper", 7),
+    "cave_cobwebs_ceiling": cave_placed("orogeny:cave_cobweb", 220, SCAN_CEILING, post=[COBWEB_DROP, AIR_FILTER]),
+    "cave_cobwebs_floor": cave_placed("orogeny:cave_cobweb", 70, SCAN_FLOOR),
+    "cave_cobwebs_sparse": cave_placed("orogeny:cave_cobweb", 25, SCAN_CEILING),
+    "cave_ore_copper": cave_placed("orogeny:cave_ore_copper", 26),
+    "cave_ore_raw_copper": cave_placed("orogeny:cave_ore_raw_copper", 4),
+    "cave_ore_oxidized_copper": cave_placed("orogeny:cave_ore_oxidized_copper", 7),
+    "cave_ore_weathered_copper": cave_placed("orogeny:cave_ore_weathered_copper", 7),
     "cave_moss_floor": cave_placed("minecraft:moss_patch", 25, SCAN_FLOOR),
     "cave_moss_ceiling": cave_placed("minecraft:moss_patch_ceiling", 15, SCAN_CEILING),
-    "cave_salt_spikes": cave_placed("terra:cave_salt_spike", 30, SCAN_FLOOR),
-    "cave_salt_stalactites": cave_placed("terra:cave_salt_stalactite", 40, SCAN_CEILING),
-    "cave_mud_floor": cave_placed("terra:cave_mud_floor", 60, SCAN_FLOOR),
-    "cave_mud_pools": cave_placed("terra:cave_mud_pool", 30, SCAN_FLOOR),
+    "cave_salt_spikes": cave_placed("orogeny:cave_salt_spike", 30, SCAN_FLOOR),
+    "cave_salt_stalactites": cave_placed("orogeny:cave_salt_stalactite", 40, SCAN_CEILING),
+    "cave_mud_floor": cave_placed("orogeny:cave_mud_floor", 60, SCAN_FLOOR),
+    "cave_mud_pools": cave_placed("orogeny:cave_mud_pool", 30, SCAN_FLOOR),
     "cave_clay_pools": cave_placed("minecraft:clay_pool_with_dripleaves", 10, SCAN_FLOOR),
-    "cave_mangrove_roots": cave_placed("terra:cave_mangrove_roots", 45, SCAN_CEILING),
-    "cave_hanging_roots": cave_placed("terra:cave_hanging_roots", 45, SCAN_CEILING),
-    "cave_boulders_cobble": cave_placed("terra:cave_boulder_cobble", 7, SCAN_FLOOR),
-    "cave_boulders_stone": cave_placed("terra:cave_boulder_stone", 7, SCAN_FLOOR),
-    "cave_boulders_andesite": cave_placed("terra:cave_boulder_andesite", 4, SCAN_FLOOR),
-    "cave_boulders_mossy": cave_placed("terra:cave_boulder_mossy", 3, SCAN_FLOOR),
-    "cave_broken_ceiling": cave_placed("terra:cave_broken_ceiling", 40, SCAN_CEILING),
+    "cave_mangrove_roots": cave_placed("orogeny:cave_mangrove_roots", 45, SCAN_CEILING),
+    "cave_hanging_roots": cave_placed("orogeny:cave_hanging_roots", 45, SCAN_CEILING),
+    "cave_boulders_cobble": cave_placed("orogeny:cave_boulder_cobble", 7, SCAN_FLOOR),
+    "cave_boulders_stone": cave_placed("orogeny:cave_boulder_stone", 7, SCAN_FLOOR),
+    "cave_boulders_andesite": cave_placed("orogeny:cave_boulder_andesite", 4, SCAN_FLOOR),
+    "cave_boulders_mossy": cave_placed("orogeny:cave_boulder_mossy", 3, SCAN_FLOOR),
+    "cave_broken_ceiling": cave_placed("orogeny:cave_broken_ceiling", 40, SCAN_CEILING),
 }
 PLACED.update(CAVE_PLACED)
 
@@ -1196,15 +1196,15 @@ def cave_biome(name, cid, temp, under=(), ores=(), veg=(), **kw):
 
 
 cave_biome("fungal_caves", 146, 0.8, downfall=0.9,
-           under=["terra:cave_fungal_floor", "terra:cave_fungal_ceiling"],
-           veg=["terra:cave_crimson_giants", "terra:cave_warped_giants", "terra:cave_huge_brown_mushrooms",
-                "terra:cave_huge_red_mushrooms", "terra:cave_twisting_vines", "terra:cave_glow_lichen"])
+           under=["orogeny:cave_fungal_floor", "orogeny:cave_fungal_ceiling"],
+           veg=["orogeny:cave_crimson_giants", "orogeny:cave_warped_giants", "orogeny:cave_huge_brown_mushrooms",
+                "orogeny:cave_huge_red_mushrooms", "orogeny:cave_twisting_vines", "orogeny:cave_glow_lichen"])
 cave_biome("underground_jungle", 147, 0.95, downfall=0.9,
-           under=["terra:cave_jungle_floor", "terra:cave_jungle_ceiling"],
-           veg=["terra:cave_jungle_bamboo", "terra:cave_jungle_bushes", "terra:cave_jungle_vines", "terra:cave_glow_lichen"])
+           under=["orogeny:cave_jungle_floor", "orogeny:cave_jungle_ceiling"],
+           veg=["orogeny:cave_jungle_bamboo", "orogeny:cave_jungle_bushes", "orogeny:cave_jungle_vines", "orogeny:cave_glow_lichen"])
 cave_biome("icy_caves", 148, -0.5, downfall=0.4,
-           under=["terra:cave_icy_floor", "terra:cave_icy_ceiling", "terra:cave_icicles", "terra:cave_ice_spikes"],
-           ores=["terra:cave_ore_packed_ice", "terra:cave_ore_ice", "terra:cave_ore_blue_ice", "terra:cave_ore_snow"],
+           under=["orogeny:cave_icy_floor", "orogeny:cave_icy_ceiling", "orogeny:cave_icicles", "orogeny:cave_ice_spikes"],
+           ores=["orogeny:cave_ore_packed_ice", "orogeny:cave_ore_ice", "orogeny:cave_ore_blue_ice", "orogeny:cave_ore_snow"],
            spawns_from="snowy_plains")
 # Frostfire caves (Oct 27: "exactly like the Terralith version"): Terralith's design rebuilt from vanilla features.
 # Deepslate and blue ice patches on floors and ceilings, soul fire on the floor patches (on soul soil, the only ground
@@ -1223,7 +1223,7 @@ FEATURES.update({
          "placement": [{"type": "minecraft:offset", "x": 0, "y": -1, "z": 0}]},
         {"feature": {"type": "minecraft:simple_block", "to_place": {"id": "minecraft:soul_fire"}}, "placement": []}]},
     "cave_frostfire_floor": patch_cfg(weighted(("minecraft:deepslate", 2), ("minecraft:blue_ice", 2)), "floor",
-                                      "terra:cave_frostfire_flame", 0.05, depth=(1, 2), radius=(2, 5), edge=0.5,
+                                      "orogeny:cave_frostfire_flame", 0.05, depth=(1, 2), radius=(2, 5), edge=0.5,
                                       bottom=0.5, replaceable="#minecraft:base_stone_overworld"),
     "cave_frostfire_icicle": {"type": "minecraft:block_column", "allowed_placement": {"type": "minecraft:true"},
         "direction": "down", "prioritize_tip": False,
@@ -1236,10 +1236,10 @@ FEATURES.update({
                     "provider": {"id": "minecraft:iron_chain", "properties": {"axis": "y", "waterlogged": "false"}}},
                    {"height": 1, "provider": {"id": "minecraft:soul_lantern",
                                               "properties": {"hanging": "true", "waterlogged": "false"}}}]},
-    "cave_frostfire_hang": {"type": "minecraft:random_selector", "default": inline("terra:cave_frostfire_icicle"),
-                            "features": [{"chance": 0.07, "feature": inline("terra:cave_frostfire_lantern")}]},
+    "cave_frostfire_hang": {"type": "minecraft:random_selector", "default": inline("orogeny:cave_frostfire_icicle"),
+                            "features": [{"chance": 0.07, "feature": inline("orogeny:cave_frostfire_lantern")}]},
     "cave_frostfire_ceiling": patch_cfg(weighted(("minecraft:deepslate", 4), ("minecraft:blue_ice", 2)), "ceiling",
-                                        "terra:cave_frostfire_hang", 0.4, depth=(1, 2), radius=(2, 5), edge=0.5,
+                                        "orogeny:cave_frostfire_hang", 0.4, depth=(1, 2), radius=(2, 5), edge=0.5,
                                         bottom=0.5, replaceable="#minecraft:base_stone_overworld"),
     "cave_frostfire_pillar": {"type": "minecraft:large_dripstone", "replaceable_blocks": "#minecraft:dripstone_replaceable_blocks",
         "floor_to_ceiling_search_range": 60, "column_radius": uniform(1, 2),
@@ -1255,8 +1255,8 @@ FEATURES.update({
         "stalactite_bluntness": {"type": "minecraft:uniform", "min_inclusive": 0.2, "max_exclusive": 1.5},
         "stalagmite_bluntness": {"type": "minecraft:uniform", "min_inclusive": 0.2, "max_exclusive": 1.0},
         "wind_speed": {"type": "minecraft:uniform", "min_inclusive": 0.0, "max_exclusive": 0.3}},
-    "cave_frostfire_columns": {"type": "minecraft:random_selector", "default": inline("terra:cave_frostfire_pillar_huge"),
-                               "features": [{"chance": 0.965, "feature": inline("terra:cave_frostfire_pillar")}]},
+    "cave_frostfire_columns": {"type": "minecraft:random_selector", "default": inline("orogeny:cave_frostfire_pillar_huge"),
+                               "features": [{"chance": 0.965, "feature": inline("orogeny:cave_frostfire_pillar")}]},
     "cave_frostfire_sculk": {"type": "minecraft:sequence", "features": [
         {"feature": {"type": "minecraft:sculk_patch", "amount_per_charge": 500, "charge_count": 1, "growth_rounds": 8,
                      "spread_attempts": 64, "spread_rounds": 1}, "placement": []},
@@ -1268,16 +1268,16 @@ FEATURES.update({
 })
 # Terralith's counts were per chunk over Y -64..30 (94 blocks); these are per 256 blocks of cave layer.
 PLACED.update({
-    "cave_frostfire_floor": cave_placed("terra:cave_frostfire_floor", 46, SCAN_FLOOR_32),
-    "cave_frostfire_ceiling": cave_placed("terra:cave_frostfire_ceiling", 33, SCAN_CEILING_30),
-    "cave_frostfire_columns": cave_placed("terra:cave_frostfire_columns", 7),
-    "cave_frostfire_sculk": cave_placed("terra:cave_frostfire_sculk", 440),
+    "cave_frostfire_floor": cave_placed("orogeny:cave_frostfire_floor", 46, SCAN_FLOOR_32),
+    "cave_frostfire_ceiling": cave_placed("orogeny:cave_frostfire_ceiling", 33, SCAN_CEILING_30),
+    "cave_frostfire_columns": cave_placed("orogeny:cave_frostfire_columns", 7),
+    "cave_frostfire_sculk": cave_placed("orogeny:cave_frostfire_sculk", 440),
 })
 biome("frostfire_caves", id=149, base="dripstone_caves", temp=0.8, downfall=0.4, colors={"water_color": "#1b46d0"},
       veg=[], top=None, cave=True, drop_attrs=["minecraft:audio/background_music"],
       steps={1: [], 2: ["minecraft:amethyst_geode", "minecraft:large_dripstone"],
-             7: ["terra:cave_frostfire_columns", "terra:cave_frostfire_sculk", "terra:cave_frostfire_floor",
-                 "terra:cave_frostfire_ceiling"]},
+             7: ["orogeny:cave_frostfire_columns", "orogeny:cave_frostfire_sculk", "orogeny:cave_frostfire_floor",
+                 "orogeny:cave_frostfire_ceiling"]},
       spawns={"monster": [{"type": "minecraft:skeleton", "count": 4, "weight": 100},
                           {"type": "minecraft:stray", "count": 4, "weight": 50}],
               "underground_water_creature": [{"type": "minecraft:glow_squid", "count": uniform(4, 6), "weight": 10}]},
@@ -1286,31 +1286,31 @@ biome("frostfire_caves", id=149, base="dripstone_caves", temp=0.8, downfall=0.4,
                  "from_color": [0.5, 1.0, 1.0], "to_color": [0.0, 0.0, 1.0], "scale": 1.0}, "probability": 0.001}],
                  "modifier": "append"}})
 cave_biome("infested_caves", 151, 0.7,
-           under=["terra:cave_rubble_floor", "terra:cave_monster_rooms"],
-           ores=["terra:cave_ore_infested", "terra:cave_ore_infested_cobble"],
-           veg=["terra:cave_cobwebs_sparse"])
+           under=["orogeny:cave_rubble_floor", "orogeny:cave_monster_rooms"],
+           ores=["orogeny:cave_ore_infested", "orogeny:cave_ore_infested_cobble"],
+           veg=["orogeny:cave_cobwebs_sparse"])
 cave_biome("spider_nest", 152, 0.7,
-           under=["terra:cave_cobwebs_ceiling", "terra:cave_cobwebs_floor"],
+           under=["orogeny:cave_cobwebs_ceiling", "orogeny:cave_cobwebs_floor"],
            spawns={"monster": [{"type": "minecraft:spider", "count": 4, "weight": 200},
                                {"type": "minecraft:cave_spider", "count": 3, "weight": 160},
                                {"type": "minecraft:skeleton", "count": 4, "weight": 40},
                                {"type": "minecraft:zombie", "count": 4, "weight": 30},
                                {"type": "minecraft:creeper", "count": 4, "weight": 30}]})
 cave_biome("copper_caves", 153, 0.8,
-           under=["terra:cave_moss_floor", "terra:cave_moss_ceiling"],
-           ores=["terra:cave_ore_copper", "terra:cave_ore_raw_copper", "terra:cave_ore_oxidized_copper",
-                 "terra:cave_ore_weathered_copper"],
-           veg=["terra:cave_glow_lichen_sparse"])
+           under=["orogeny:cave_moss_floor", "orogeny:cave_moss_ceiling"],
+           ores=["orogeny:cave_ore_copper", "orogeny:cave_ore_raw_copper", "orogeny:cave_ore_oxidized_copper",
+                 "orogeny:cave_ore_weathered_copper"],
+           veg=["orogeny:cave_glow_lichen_sparse"])
 cave_biome("salt_caves", 154, 1.2, downfall=0.0,
-           under=["terra:cave_salt_spikes", "terra:cave_salt_stalactites"],
-           veg=["terra:cave_glow_lichen"])
+           under=["orogeny:cave_salt_spikes", "orogeny:cave_salt_stalactites"],
+           veg=["orogeny:cave_glow_lichen"])
 cave_biome("mud_caves", 155, 0.8, downfall=0.9,
-           under=["terra:cave_mud_floor", "terra:cave_mud_pools", "terra:cave_clay_pools", "terra:cave_mangrove_roots",
-                  "terra:cave_hanging_roots"],
-           veg=["terra:cave_glow_lichen_sparse"])
+           under=["orogeny:cave_mud_floor", "orogeny:cave_mud_pools", "orogeny:cave_clay_pools", "orogeny:cave_mangrove_roots",
+                  "orogeny:cave_hanging_roots"],
+           veg=["orogeny:cave_glow_lichen_sparse"])
 cave_biome("breakdown_chambers", 156, 0.7,
-           under=["terra:cave_rubble_floor", "terra:cave_broken_ceiling", "terra:cave_boulders_cobble",
-                  "terra:cave_boulders_stone", "terra:cave_boulders_andesite", "terra:cave_boulders_mossy"])
+           under=["orogeny:cave_rubble_floor", "orogeny:cave_broken_ceiling", "orogeny:cave_boulders_cobble",
+                  "orogeny:cave_boulders_stone", "orogeny:cave_boulders_andesite", "orogeny:cave_boulders_mossy"])
 # ids 145 (lush caves) and 150 (thermal caves = vanilla sulfur caves) are vanilla's biomes, used as is.
 
 # ---- v1.5 part two round B: water caves (world/CaveWater fills them to their region's water level, lays gravel, clay
@@ -1331,27 +1331,27 @@ POINTED_SPREAD = {"type": "minecraft:offset", "x": {"type": "minecraft:clamped_n
                   "max_inclusive": 2, "mean": 0.0, "min_inclusive": -2}, "z": {"type": "minecraft:clamped_normal",
                   "deviation": 3.0, "max_inclusive": 10, "mean": 0.0, "min_inclusive": -10}}
 PLACED.update({
-    "cave_glowworms": cave_placed("terra:cave_glowworms", 320, SCAN_CEILING),
+    "cave_glowworms": cave_placed("orogeny:cave_glowworms", 320, SCAN_CEILING),
     "cave_lake_moss_ceiling": cave_placed("minecraft:moss_patch_ceiling", 6, SCAN_CEILING),
     "cave_lake_clay_pools": cave_placed("minecraft:clay_pool_with_dripleaves", 6, SCAN_FLOOR),
     "cave_karst_dripstone_clusters": cave_placed("minecraft:dripstone_cluster", uniform(30, 60)),
     "cave_karst_large_dripstone": cave_placed("minecraft:large_dripstone", uniform(8, 30)),
     "cave_karst_pointed_dripstone": cave_placed("minecraft:pointed_dripstone", uniform(120, 180),
                                                 post=[{"type": "minecraft:count", "count": uniform(1, 5)}, POINTED_SPREAD]),
-    "cave_flowstone_up": cave_placed("terra:cave_flowstone_up", 30, SCAN_FLOOR),
-    "cave_flowstone_down": cave_placed("terra:cave_flowstone_down", 40, SCAN_CEILING),
+    "cave_flowstone_up": cave_placed("orogeny:cave_flowstone_up", 30, SCAN_FLOOR),
+    "cave_flowstone_down": cave_placed("orogeny:cave_flowstone_down", 40, SCAN_CEILING),
 })
 cave_biome("underground_lakes", 157, 0.6, downfall=0.9,
-           under=["terra:cave_lake_moss_ceiling", "terra:cave_lake_clay_pools"],
-           veg=["terra:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
+           under=["orogeny:cave_lake_moss_ceiling", "orogeny:cave_lake_clay_pools"],
+           veg=["orogeny:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
 cave_biome("glowworm_grotto", 158, 0.6, downfall=1.0,
-           under=["terra:cave_lake_clay_pools"],
-           veg=["terra:cave_glowworms"], spawns={"axolotls": AXOLOTLS})
+           under=["orogeny:cave_lake_clay_pools"],
+           veg=["orogeny:cave_glowworms"], spawns={"axolotls": AXOLOTLS})
 cave_biome("karst_caves", 159, 0.9, downfall=0.9,
-           under=["terra:cave_karst_dripstone_clusters", "terra:cave_karst_large_dripstone",
-                  "terra:cave_karst_pointed_dripstone", "terra:cave_flowstone_up", "terra:cave_flowstone_down",
-                  "terra:cave_lake_clay_pools"],
-           veg=["terra:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
+           under=["orogeny:cave_karst_dripstone_clusters", "orogeny:cave_karst_large_dripstone",
+                  "orogeny:cave_karst_pointed_dripstone", "orogeny:cave_flowstone_up", "orogeny:cave_flowstone_down",
+                  "orogeny:cave_lake_clay_pools"],
+           veg=["orogeny:cave_glow_lichen_sparse"], spawns={"axolotls": AXOLOTLS})
 
 # ---- v1.5 part three round A: rare and very rare caves (CaveBiomes; shapes in CaveShapes, rock in world/CaveStone,
 # lava in world/CaveWater, ancient cities kept to the deep dark under mountains) ----
@@ -1373,7 +1373,7 @@ FEATURES.update({
     "cave_tall_basalt_down": column("down", basalt((4, 12))),
     "cave_lavacicle": column("down", basalt((1, 2))),
     "cave_magma_floor": patch_cfg(weighted(("minecraft:magma_block", 2), ("minecraft:blackstone", 2), ("minecraft:basalt", 1)),
-                                  "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
+                                  "floor", "orogeny:cave_moss_carpet", 0.0, depth=(1, 2), replaceable="#minecraft:base_stone_overworld"),
     "cave_ore_blackstone": ore("minecraft:blackstone", 30),
     "cave_ore_amethyst": ore("minecraft:amethyst_block", 16),
     "cave_amethyst_floor": {"type": "minecraft:simple_block", "to_place": amethyst("up", *AMETHYST_KINDS)},
@@ -1381,47 +1381,47 @@ FEATURES.update({
     "cave_calcite_spike_up": column("up", ("minecraft:calcite", (3, 9)), (amethyst("up", ("minecraft:amethyst_cluster", 1)), 1)),
     "cave_calcite_spike_down": column("down", ("minecraft:calcite", (2, 7)), (amethyst("down", ("minecraft:amethyst_cluster", 1)), 1)),
     "cave_sand_floor": patch_cfg(weighted(("minecraft:sand", 3), ("minecraft:red_sand", 1), ("minecraft:sandstone", 1)),
-                                 "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), radius=(3, 6),
+                                 "floor", "orogeny:cave_moss_carpet", 0.0, depth=(1, 2), radius=(3, 6),
                                  replaceable="#minecraft:base_stone_overworld"),
 })
 PLACED.update({
-    "cave_magma_floor": cave_placed("terra:cave_magma_floor", 50, SCAN_FLOOR),
-    "cave_magma_floor_sparse": cave_placed("terra:cave_magma_floor", 15, SCAN_FLOOR),
-    "cave_basalt_up": cave_placed("terra:cave_basalt_up", 30, SCAN_FLOOR),
-    "cave_basalt_down": cave_placed("terra:cave_basalt_down", 30, SCAN_CEILING),
-    "cave_tall_basalt_up": cave_placed("terra:cave_tall_basalt_up", 40, SCAN_FLOOR),
-    "cave_tall_basalt_down": cave_placed("terra:cave_tall_basalt_down", 40, SCAN_CEILING),
-    "cave_lavacicles": cave_placed("terra:cave_lavacicle", 60, SCAN_CEILING),
-    "cave_ore_blackstone": cave_placed("terra:cave_ore_blackstone", 9),
-    "cave_ore_magma_rich": cave_placed("terra:cave_ore_magma", 14),
-    "cave_ore_amethyst": cave_placed("terra:cave_ore_amethyst", 6),
+    "cave_magma_floor": cave_placed("orogeny:cave_magma_floor", 50, SCAN_FLOOR),
+    "cave_magma_floor_sparse": cave_placed("orogeny:cave_magma_floor", 15, SCAN_FLOOR),
+    "cave_basalt_up": cave_placed("orogeny:cave_basalt_up", 30, SCAN_FLOOR),
+    "cave_basalt_down": cave_placed("orogeny:cave_basalt_down", 30, SCAN_CEILING),
+    "cave_tall_basalt_up": cave_placed("orogeny:cave_tall_basalt_up", 40, SCAN_FLOOR),
+    "cave_tall_basalt_down": cave_placed("orogeny:cave_tall_basalt_down", 40, SCAN_CEILING),
+    "cave_lavacicles": cave_placed("orogeny:cave_lavacicle", 60, SCAN_CEILING),
+    "cave_ore_blackstone": cave_placed("orogeny:cave_ore_blackstone", 9),
+    "cave_ore_magma_rich": cave_placed("orogeny:cave_ore_magma", 14),
+    "cave_ore_amethyst": cave_placed("orogeny:cave_ore_amethyst", 6),
     "cave_crystal_geodes": cave_placed("minecraft:amethyst_geode", 2),
-    "cave_amethyst_floor": cave_placed("terra:cave_amethyst_floor", 120, SCAN_FLOOR),
-    "cave_amethyst_ceiling": cave_placed("terra:cave_amethyst_ceiling", 80, SCAN_CEILING),
-    "cave_amethyst_floor_dense": cave_placed("terra:cave_amethyst_floor", 220, SCAN_FLOOR),
-    "cave_amethyst_ceiling_dense": cave_placed("terra:cave_amethyst_ceiling", 160, SCAN_CEILING),
-    "cave_calcite_spikes_up": cave_placed("terra:cave_calcite_spike_up", 30, SCAN_FLOOR),
-    "cave_calcite_spikes_down": cave_placed("terra:cave_calcite_spike_down", 30, SCAN_CEILING),
-    "cave_sand_floor": cave_placed("terra:cave_sand_floor", 60, SCAN_FLOOR),
+    "cave_amethyst_floor": cave_placed("orogeny:cave_amethyst_floor", 120, SCAN_FLOOR),
+    "cave_amethyst_ceiling": cave_placed("orogeny:cave_amethyst_ceiling", 80, SCAN_CEILING),
+    "cave_amethyst_floor_dense": cave_placed("orogeny:cave_amethyst_floor", 220, SCAN_FLOOR),
+    "cave_amethyst_ceiling_dense": cave_placed("orogeny:cave_amethyst_ceiling", 160, SCAN_CEILING),
+    "cave_calcite_spikes_up": cave_placed("orogeny:cave_calcite_spike_up", 30, SCAN_FLOOR),
+    "cave_calcite_spikes_down": cave_placed("orogeny:cave_calcite_spike_down", 30, SCAN_CEILING),
+    "cave_sand_floor": cave_placed("orogeny:cave_sand_floor", 60, SCAN_FLOOR),
 })
 MAGMA_CUBES = [{"type": "minecraft:magma_cube", "count": uniform(1, 3), "weight": 60}]
 cave_biome("molten_cavern", 160, 2.0, downfall=0.0,
-           under=["terra:cave_magma_floor", "terra:cave_basalt_up", "terra:cave_basalt_down"],
-           ores=["terra:cave_ore_blackstone"], add_spawns={"monster": MAGMA_CUBES})
+           under=["orogeny:cave_magma_floor", "orogeny:cave_basalt_up", "orogeny:cave_basalt_down"],
+           ores=["orogeny:cave_ore_blackstone"], add_spawns={"monster": MAGMA_CUBES})
 cave_biome("mantle_cave", 161, 2.0, downfall=0.0,
-           under=["terra:cave_tall_basalt_up", "terra:cave_tall_basalt_down", "terra:cave_magma_floor_sparse"],
-           ores=["terra:cave_ore_magma_rich", "terra:cave_ore_blackstone"], add_spawns={"monster": MAGMA_CUBES})
+           under=["orogeny:cave_tall_basalt_up", "orogeny:cave_tall_basalt_down", "orogeny:cave_magma_floor_sparse"],
+           ores=["orogeny:cave_ore_magma_rich", "orogeny:cave_ore_blackstone"], add_spawns={"monster": MAGMA_CUBES})
 cave_biome("crystalline_chasm", 162, 0.8,
-           under=["terra:cave_crystal_geodes", "terra:cave_amethyst_floor", "terra:cave_amethyst_ceiling",
-                  "terra:cave_calcite_spikes_up", "terra:cave_calcite_spikes_down"],
-           ores=["terra:cave_ore_amethyst"], veg=["terra:cave_glow_lichen_sparse"])
+           under=["orogeny:cave_crystal_geodes", "orogeny:cave_amethyst_floor", "orogeny:cave_amethyst_ceiling",
+                  "orogeny:cave_calcite_spikes_up", "orogeny:cave_calcite_spikes_down"],
+           ores=["orogeny:cave_ore_amethyst"], veg=["orogeny:cave_glow_lichen_sparse"])
 cave_biome("lava_tubes", 165, 1.5, downfall=0.0,
-           under=["terra:cave_magma_floor_sparse", "terra:cave_lavacicles"], add_spawns={"monster": MAGMA_CUBES})
-cave_biome("slot_canyon_caves", 166, 1.8, downfall=0.0, under=["terra:cave_sand_floor"])
+           under=["orogeny:cave_magma_floor_sparse", "orogeny:cave_lavacicles"], add_spawns={"monster": MAGMA_CUBES})
+cave_biome("slot_canyon_caves", 166, 1.8, downfall=0.0, under=["orogeny:cave_sand_floor"])
 cave_biome("glacier_caves", 167, -0.7, downfall=0.5,
-           under=["terra:cave_icy_floor", "terra:cave_icicles", "terra:cave_ice_spikes"], spawns_from="snowy_plains")
+           under=["orogeny:cave_icy_floor", "orogeny:cave_icicles", "orogeny:cave_ice_spikes"], spawns_from="snowy_plains")
 cave_biome("giant_geode_hall", 173, 0.8,
-           under=["terra:cave_amethyst_floor_dense", "terra:cave_amethyst_ceiling_dense"])
+           under=["orogeny:cave_amethyst_floor_dense", "orogeny:cave_amethyst_ceiling_dense"])
 # Deep dark away from mountains: vanilla's deep dark, without ancient cities (they only generate under mountains, in
 # vanilla's own deep_dark biome, id 163).
 # The ancient city caverns' deep dark (Oct 27): the only biome ancient cities may start in (see TAG_REPLACE below), set
@@ -1433,24 +1433,24 @@ biome("deep_dark_caves", id=175, base="deep_dark", temp=0.8, downfall=0.4, color
 # ---- v1.5 part three round B: surface cuts (pipeline/CaveSites); these biomes fill the region under each site ----
 FEATURES.update({
     "cave_sinkhole_floor": patch_cfg(weighted(("minecraft:grass_block", 3), ("minecraft:moss_block", 2)), "floor",
-                                     "terra:cave_jungle_plants", 0.6, depth=(1, 2), radius=(5, 9)),
+                                     "orogeny:cave_jungle_plants", 0.6, depth=(1, 2), radius=(5, 9)),
 })
 PLACED.update({
-    "cave_sinkhole_floor": cave_placed("terra:cave_sinkhole_floor", 90, SCAN_FLOOR),
+    "cave_sinkhole_floor": cave_placed("orogeny:cave_sinkhole_floor", 90, SCAN_FLOOR),
     "cave_sinkhole_mega_trees": cave_placed("minecraft:mega_jungle_tree", 3, SCAN_FLOOR, post=[survive("minecraft:jungle_sapling")]),
     "cave_sinkhole_trees": cave_placed("minecraft:jungle_tree", 10, SCAN_FLOOR, post=[survive("minecraft:jungle_sapling")]),
     "cave_wall_vines": cave_placed("minecraft:vines", 200),
 })
-cave_biome("canyon_ravine", 168, 0.7, under=["terra:cave_rubble_floor", "terra:cave_moss_floor"],
-           veg=["terra:cave_wall_vines", "terra:cave_glow_lichen_sparse"])
+cave_biome("canyon_ravine", 168, 0.7, under=["orogeny:cave_rubble_floor", "orogeny:cave_moss_floor"],
+           veg=["orogeny:cave_wall_vines", "orogeny:cave_glow_lichen_sparse"])
 cave_biome("sinkhole_jungle", 169, 0.95, downfall=0.9,
-           under=["terra:cave_sinkhole_floor", "terra:cave_jungle_ceiling"],
-           veg=["terra:cave_sinkhole_mega_trees", "terra:cave_sinkhole_trees", "terra:cave_jungle_bamboo",
-                "terra:cave_jungle_bushes", "terra:cave_jungle_vines", "terra:cave_glow_lichen_sparse"],
+           under=["orogeny:cave_sinkhole_floor", "orogeny:cave_jungle_ceiling"],
+           veg=["orogeny:cave_sinkhole_mega_trees", "orogeny:cave_sinkhole_trees", "orogeny:cave_jungle_bamboo",
+                "orogeny:cave_jungle_bushes", "orogeny:cave_jungle_vines", "orogeny:cave_glow_lichen_sparse"],
            spawns_from="jungle")
 cave_biome("blue_hole", 170, 0.8)
-cave_biome("deep_shaft", 171, 0.7, under=["terra:cave_moss_ceiling"],
-           veg=["terra:cave_wall_vines", "terra:cave_glow_lichen_sparse"],
+cave_biome("deep_shaft", 171, 0.7, under=["orogeny:cave_moss_ceiling"],
+           veg=["orogeny:cave_wall_vines", "orogeny:cave_glow_lichen_sparse"],
            add_spawns={"ambient": [{"type": "minecraft:bat", "count": uniform(4, 8), "weight": 40}]})
 
 # ---- v1.5 part three round C: the deep dark forest, the deep dark incursion and the giant selenite chamber. Each is a
@@ -1497,20 +1497,20 @@ FEATURES.update({
         "trunk_placer": {"type": "minecraft:dark_oak_trunk_placer", "base_height": 7, "height_rand_a": 3, "height_rand_b": 2},
         "trunk_provider": {"id": "minecraft:dark_oak_log", "properties": {"axis": "y"}}},
     # The forest floor: sculk carpets over the deepslate.
-    "cave_dd_forest_floor": patch_cfg("minecraft:sculk", "floor", "terra:cave_moss_carpet", 0.0, depth=(1, 2), radius=(4, 8),
+    "cave_dd_forest_floor": patch_cfg("minecraft:sculk", "floor", "orogeny:cave_moss_carpet", 0.0, depth=(1, 2), radius=(4, 8),
                                       replaceable="#minecraft:sculk_replaceable_world_gen"),
 })
 PLACED.update({
-    "cave_dd_forest_floor": cave_placed("terra:cave_dd_forest_floor", 70, SCAN_FLOOR),
-    "cave_dd_warped_trees": cave_placed("terra:cave_dd_warped_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
-    "cave_dd_sculk_trees": cave_placed("terra:cave_dd_sculk_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
-    "cave_dd_dead_pale_trees": cave_placed("terra:cave_dd_dead_pale_tree", 20, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
+    "cave_dd_forest_floor": cave_placed("orogeny:cave_dd_forest_floor", 70, SCAN_FLOOR),
+    "cave_dd_warped_trees": cave_placed("orogeny:cave_dd_warped_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
+    "cave_dd_sculk_trees": cave_placed("orogeny:cave_dd_sculk_tree", 30, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
+    "cave_dd_dead_pale_trees": cave_placed("orogeny:cave_dd_dead_pale_tree", 20, SCAN_FLOOR, post=[ON_FOREST_FLOOR]),
 })
 # Deep dark forest: vanilla's deep dark (sculk, music, no mob spawns) without ancient cities. Shriekers come only from
 # vanilla's sculk patches, and those grown in world generation can summon wardens (no natural warden spawns).
 biome("deep_dark_forest", id=164, base="deep_dark", temp=0.8, downfall=0.4, colors={}, top=None, cave=True,
-      veg=["terra:cave_dd_warped_trees", "terra:cave_dd_sculk_trees", "terra:cave_dd_dead_pale_trees"],
-      add_steps={7: ["terra:cave_dd_forest_floor"]}, no_tags=["has_structure/ancient_city"])
+      veg=["orogeny:cave_dd_warped_trees", "orogeny:cave_dd_sculk_trees", "orogeny:cave_dd_dead_pale_trees"],
+      add_steps={7: ["orogeny:cave_dd_forest_floor"]}, no_tags=["has_structure/ancient_city"])
 
 # ---- The deep dark incursion, exactly WWOO's (wythers:deep_dark_incursion, Abbie5/WWOO, Oct 27): plain caves (no
 # hall) 45-115 blocks under cool, humid ground (pipeline/CaveBiomes), vanilla's deep dark sculk, and WWOO's "emergent
@@ -1536,16 +1536,16 @@ FEATURES.update({
         {"type": "minecraft:acacia_foliage_placer", "radius": 1, "offset": 1},
         {"id": "minecraft:verdant_froglight", "properties": {"axis": "y"}}),
     # WWOO's caves/sculk_patch: a sculk floor patch over base stone, 1% of its blocks growing a giant sculk mushroom.
-    "cave_incursion_patch": patch_cfg("minecraft:sculk", "floor", "terra:cave_incursion_fungi", 0.01, radius=(4, 7),
+    "cave_incursion_patch": patch_cfg("minecraft:sculk", "floor", "orogeny:cave_incursion_fungi", 0.01, radius=(4, 7),
                                       replaceable="#minecraft:base_stone_overworld"),
 })
-SELECTORS["cave_incursion_fungi"] = ("terra:cave_incursion_sculk_morel", [("terra:cave_incursion_sculk_omphalotus", 0.1)])
+SELECTORS["cave_incursion_fungi"] = ("orogeny:cave_incursion_sculk_morel", [("orogeny:cave_incursion_sculk_omphalotus", 0.1)])
 PLACED.update({
-    "cave_incursion_sculk_morel": {"feature": "terra:cave_incursion_sculk_morel", "placement": []},
-    "cave_incursion_sculk_omphalotus": {"feature": "terra:cave_incursion_sculk_omphalotus", "placement": []},
+    "cave_incursion_sculk_morel": {"feature": "orogeny:cave_incursion_sculk_morel", "placement": []},
+    "cave_incursion_sculk_omphalotus": {"feature": "orogeny:cave_incursion_sculk_omphalotus", "placement": []},
     # WWOO: 125 per chunk from the bottom of the world to Y 256 (320 blocks), so 100 per 256 blocks of cave layer; the
     # floor found 12 blocks down, then up or down 1.
-    "cave_incursion_vegetation": cave_placed("terra:cave_incursion_patch", 100, [
+    "cave_incursion_vegetation": cave_placed("orogeny:cave_incursion_patch", 100, [
         {"type": "minecraft:environment_scan", "allowed_search_condition": {"type": "minecraft:matching_blocks", "blocks": "minecraft:air"},
          "direction_of_search": "down", "max_steps": 12, "target_condition": {"type": "minecraft:solid"}},
         {"type": "minecraft:offset", "x": 0, "y": uniform(-1, 1), "z": 0}]),
@@ -1563,16 +1563,16 @@ WWOO_INCURSION_ORES = ["minecraft:ore_dirt", "minecraft:ore_gravel", "minecraft:
 # lichen, freeze top layer, no mob spawns, deep dark music and sky #78a7ff. WWOO's colours on top: fog #c0d8ff, water
 # #021f2c, underwater fog #010d13.
 biome("deep_dark_incursion", id=172, base="deep_dark", temp=0.8, downfall=0.4, colors={"water_color": "#021f2c"},
-      top=None, cave=True, veg=["terra:cave_incursion_vegetation"], steps={6: WWOO_INCURSION_ORES},
+      top=None, cave=True, veg=["orogeny:cave_incursion_vegetation"], steps={6: WWOO_INCURSION_ORES},
       attrs={"minecraft:visual/fog_color": "#c0d8ff", "minecraft:visual/water_fog_color": "#010d13"},
       no_tags=["has_structure/ancient_city"])
 # Giant selenite chamber: hot and dark (no glow lichen), magma patches and amethyst on the floor and on the beams.
 biome("giant_selenite_beams", id=174, base="dripstone_caves", temp=2.0, downfall=0.0, colors={}, veg=[], top=None,
-      steps={2: ["minecraft:amethyst_geode"], 7: ["terra:cave_magma_floor_sparse", "terra:cave_amethyst_floor"], 9: []},
-      add_steps={6: ["terra:cave_ore_amethyst"]}, drop_attrs=["minecraft:audio/background_music"], cave=True)
+      steps={2: ["minecraft:amethyst_geode"], 7: ["orogeny:cave_magma_floor_sparse", "orogeny:cave_amethyst_floor"], 9: []},
+      add_steps={6: ["orogeny:cave_ore_amethyst"]}, drop_attrs=["minecraft:audio/background_music"], cave=True)
 
 # Tags this script replaces outright (vanilla's own members dropped): ancient cities only in the city caverns.
-TAG_REPLACE = {"has_structure/ancient_city": ["terra:deep_dark_city"]}
+TAG_REPLACE = {"has_structure/ancient_city": ["orogeny:deep_dark_city"]}
 
 
 def write(path, obj):
@@ -1589,7 +1589,7 @@ def load(path):
 
 def main():
     global V12, MANAGED
-    V12 = [f"terra:{n}" for n in B]
+    V12 = [f"orogeny:{n}" for n in B]
     MANAGED = V12 + ["minecraft:mushroom_fields"]
     for name, f in FEATURES.items():
         write(f"{TERRA}/feature/{name}.json", f)
@@ -1666,13 +1666,13 @@ def main():
             vals = load(os.path.join(root, fn)).get("values", [])
             for name, d in B.items():
                 if f"minecraft:{d['base']}" in vals:
-                    members.setdefault(rel, set()).add(f"terra:{name}")
+                    members.setdefault(rel, set()).add(f"orogeny:{name}")
     for name, d in B.items():
         for t in ["is_overworld"] + d.get("tags", []):
-            members.setdefault(t, set()).add(f"terra:{name}")
+            members.setdefault(t, set()).add(f"orogeny:{name}")
         for t in d.get("no_tags", []):
-            members.get(t, set()).discard(f"terra:{name}")
-    # Rewrite every tag file this script owns or adds to, keeping other entries (e.g. terra:dark_forest).
+            members.get(t, set()).discard(f"orogeny:{name}")
+    # Rewrite every tag file this script owns or adds to, keeping other entries (e.g. orogeny:dark_forest).
     for root, _, files in os.walk(MC_TAGS):
         for fn in files:
             rel = os.path.relpath(os.path.join(root, fn), MC_TAGS)[:-5]
@@ -1702,7 +1702,7 @@ def main():
     for bid, body in EXTRA_TOP:
         top_rules.append(biome_rule(bid, y_guard(body)))
     for name, d in B.items():
-        bid = f"terra:{name}"
+        bid = f"orogeny:{name}"
         if d.get("top"):
             body = d["top"]
             if not d.get("top_wet"):
@@ -1755,12 +1755,12 @@ def fixed_biomes():
         override = f"{RES}/minecraft/worldgen/biome/{b}.json"
         out[b] = load(override if os.path.exists(override) else f"{VANILLA}/worldgen/biome/{b}.json")["features"]
     for b in TERRA_FIXED:
-        out["terra:" + b] = load(f"{TERRA}/biome/{b}.json")["features"]
+        out["orogeny:" + b] = load(f"{TERRA}/biome/{b}.json")["features"]
     return out
 
 
 def is_tree(f):
-    return f.startswith("terra:trees_")
+    return f.startswith("orogeny:trees_")
 
 
 def sort_step(k, feats, fixed):
@@ -1874,10 +1874,10 @@ def find_surface_sequences(mr):
 
 
 def check_references():
-    """Every terra: and minecraft: feature this script names must exist."""
+    """Every orogeny: and minecraft: feature this script names must exist."""
     def exists(ref, kind):
         ns, path = ref.split(":")
-        if ns == "terra":
+        if ns == "orogeny":
             return os.path.exists(f"{TERRA}/{kind}/{path}.json")
         return os.path.exists(f"{VANILLA}/worldgen/{kind}/{path}.json")
     missing = []

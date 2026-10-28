@@ -36,7 +36,7 @@ public final class WorldScaleSettingsState extends SavedData {
      * Type descriptor used by the persistent state manager.
      */
     public static final SavedDataType<WorldScaleSettingsState> TYPE =
-            new SavedDataType<>(Identifier.fromNamespaceAndPath("terra", "terrain_diffusion_world_settings"), WorldScaleSettingsState::createDefault, CODEC, null);
+            new SavedDataType<>(Identifier.fromNamespaceAndPath("orogeny", "terrain_diffusion_world_settings"), WorldScaleSettingsState::createDefault, CODEC, null);
 
     /**
      * Returns the currently persisted world scale.

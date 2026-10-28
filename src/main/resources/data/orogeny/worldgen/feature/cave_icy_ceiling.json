@@ -1,0 +1,36 @@
+{
+  "type": "minecraft:vegetation_patch",
+  "depth": 1,
+  "extra_bottom_block_chance": 0.0,
+  "extra_edge_column_chance": 0.3,
+  "ground_state": {
+    "type": "minecraft:weighted",
+    "entries": [
+      {
+        "data": "minecraft:packed_ice",
+        "weight": 3
+      },
+      {
+        "data": "minecraft:ice",
+        "weight": 2
+      },
+      {
+        "data": "minecraft:blue_ice",
+        "weight": 1
+      }
+    ]
+  },
+  "replaceable": "#minecraft:base_stone_overworld",
+  "surface": "ceiling",
+  "vegetation_chance": 0.25,
+  "vegetation_feature": {
+    "feature": "orogeny:cave_icicle",
+    "placement": []
+  },
+  "vertical_range": 5,
+  "xz_radius": {
+    "type": "minecraft:uniform",
+    "max_inclusive": 7,
+    "min_inclusive": 4
+  }
+}

@@ -74,7 +74,7 @@ public final class Icebergs {
             TerraPerf.end("chunk.icebergs", t0);
         } catch (Throwable t) {
             // Never let this break chunk generation.
-            LOG.error("Terra: icebergs failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: icebergs failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -136,7 +136,7 @@ public final class Icebergs {
                 }
             });
         } catch (Exception e) {
-            LOG.warn("Terra: iceberg plan for region ({}, {}) unavailable: {}", ri, rj, e.toString());
+            LOG.warn("Orogeny: iceberg plan for region ({}, {}) unavailable: {}", ri, rj, e.toString());
             return IcebergPlan.EMPTY;
         }
     }
@@ -187,7 +187,7 @@ public final class Icebergs {
         if (bergs.isEmpty()) return;
         if (!loggedFirst) {
             loggedFirst = true;
-            LOG.info("Terra: first chunk with icebergs at {}", cp);
+            LOG.info("Orogeny: first chunk with icebergs at {}", cp);
         }
         for (int dz = 0; dz < 16; dz++) {
             for (int dx = 0; dx < 16; dx++) {
@@ -374,7 +374,7 @@ public final class Icebergs {
                 }
             }
         } catch (Throwable t) {
-            LOG.error("Terra: iceberg clean-up failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: iceberg clean-up failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -413,7 +413,7 @@ public final class Icebergs {
                 }
             }
         } catch (Throwable t) {
-            LOG.error("Terra: polar bears failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: polar bears failed for chunk {}", chunk.getPos(), t);
         }
     }
 

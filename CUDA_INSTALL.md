@@ -1,6 +1,6 @@
 # CUDA Setup (for the `-cuda` build)
 
-This guide is only needed for the `-cuda` build of Terrain Diffusion MC. If you downloaded the `-windows` build, no setup is required.
+This guide is only needed for the `-cuda` build of Orogeny. If you downloaded the `-windows` build, no setup is required.
 
 ## Installation Steps (Windows)
 

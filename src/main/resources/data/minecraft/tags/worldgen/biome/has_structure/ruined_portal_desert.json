@@ -1,9 +1,9 @@
 {
   "replace": false,
   "values": [
-    "terra:alluvial_fan",
-    "terra:desert_oasis",
-    "terra:rocky_desert",
-    "terra:salt_flats"
+    "orogeny:alluvial_fan",
+    "orogeny:desert_oasis",
+    "orogeny:rocky_desert",
+    "orogeny:salt_flats"
   ]
 }

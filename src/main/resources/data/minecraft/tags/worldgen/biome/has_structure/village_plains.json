@@ -1,14 +1,14 @@
 {
   "replace": false,
   "values": [
-    "terra:aspen_parkland",
-    "terra:blooming_plateau",
-    "terra:blooming_valley",
-    "terra:mediterranean_scrub",
-    "terra:moorland",
-    "terra:steppe",
-    "terra:tallgrass_prairie",
-    "terra:temperate_highland",
-    "terra:white_cliffs"
+    "orogeny:aspen_parkland",
+    "orogeny:blooming_plateau",
+    "orogeny:blooming_valley",
+    "orogeny:mediterranean_scrub",
+    "orogeny:moorland",
+    "orogeny:steppe",
+    "orogeny:tallgrass_prairie",
+    "orogeny:temperate_highland",
+    "orogeny:white_cliffs"
   ]
 }

@@ -584,7 +584,7 @@ public final class Landforms {
         return CELL * coarsePx();
     }
 
-    /** Markers of cell (gi, gj)'s volcanoes (building it if needed), anywhere. For /terra-find. */
+    /** Markers of cell (gi, gj)'s volcanoes (building it if needed), anywhere. For /orogeny-find. */
     public List<OceanFeatures.Landmark> cellMarkers(int gi, int gj) {
         return markers(cell(gi, gj), Integer.MIN_VALUE / 2, Integer.MIN_VALUE / 2, Integer.MAX_VALUE / 2, Integer.MAX_VALUE / 2);
     }

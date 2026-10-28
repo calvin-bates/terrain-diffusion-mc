@@ -1,8 +1,8 @@
 {
   "replace": false,
   "values": [
-    "terra:desert_oasis",
-    "terra:rocky_desert",
-    "terra:salt_flats"
+    "orogeny:desert_oasis",
+    "orogeny:rocky_desert",
+    "orogeny:salt_flats"
   ]
 }

@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "minecraft:oak_checked",
+  "features": [
+    {
+      "chance": 0.25,
+      "feature": "minecraft:yellow_poplar"
+    },
+    {
+      "chance": 0.25,
+      "feature": "orogeny:oak_bush_checked"
+    },
+    {
+      "chance": 0.1,
+      "feature": "minecraft:fancy_oak_checked"
+    }
+  ]
+}

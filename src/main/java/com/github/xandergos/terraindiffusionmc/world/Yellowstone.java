@@ -59,7 +59,7 @@ public final class Yellowstone {
             if (!TerrainDiffusionConfig.showpieces()) return;
             placeUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: Yellowstone pools failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: Yellowstone pools failed for chunk {}", chunk.getPos(), t);
         }
     }
 

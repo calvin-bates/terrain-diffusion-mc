@@ -1,8 +1,8 @@
 {
   "replace": false,
   "values": [
-    "terra:arctic",
-    "terra:polar_desert",
-    "terra:tundra"
+    "orogeny:arctic",
+    "orogeny:polar_desert",
+    "orogeny:tundra"
   ]
 }

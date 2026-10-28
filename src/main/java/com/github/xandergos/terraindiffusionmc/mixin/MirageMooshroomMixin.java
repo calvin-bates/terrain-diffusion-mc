@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(AgeableMob.class)
 public abstract class MirageMooshroomMixin {
     private static final ResourceKey<Biome> TERRA$MIRAGE =
-            ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", "mirage_isles"));
+            ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", "mirage_isles"));
 
     @Inject(method = "finalizeSpawn", at = @At("RETURN"), require = 0)
     private void terra$brownMooshrooms(ServerLevelAccessor level, DifficultyInstance difficulty, EntitySpawnReason reason,

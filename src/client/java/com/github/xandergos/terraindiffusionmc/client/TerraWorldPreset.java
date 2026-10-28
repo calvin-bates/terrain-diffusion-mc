@@ -9,7 +9,7 @@ import net.minecraft.world.level.levelgen.presets.WorldPreset;
 /** The Terra world type ("world preset") as the create-world screen sees it. */
 public final class TerraWorldPreset {
     public static final ResourceKey<WorldPreset> KEY =
-            ResourceKey.create(Registries.WORLD_PRESET, Identifier.fromNamespaceAndPath("terra", "terrain_diffusion"));
+            ResourceKey.create(Registries.WORLD_PRESET, Identifier.fromNamespaceAndPath("orogeny", "terrain_diffusion"));
 
     private TerraWorldPreset() {
     }

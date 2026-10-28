@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "orogeny:aspen_yellow_checked",
+  "features": [
+    {
+      "chance": 0.22,
+      "feature": "orogeny:aspen_orange_checked"
+    },
+    {
+      "chance": 0.25641,
+      "feature": "orogeny:aspen_green_checked"
+    },
+    {
+      "chance": 0.17241,
+      "feature": "orogeny:aspen_red_checked"
+    }
+  ]
+}

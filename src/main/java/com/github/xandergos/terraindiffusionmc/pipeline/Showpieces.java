@@ -324,7 +324,7 @@ public final class Showpieces {
         return out;
     }
 
-    /** Markers of cell (gi, gj)'s showpieces (building it if needed), anywhere. For /terra-find. */
+    /** Markers of cell (gi, gj)'s showpieces (building it if needed), anywhere. For /orogeny-find. */
     public List<OceanFeatures.Landmark> cellMarkers(int gi, int gj) {
         List<OceanFeatures.Landmark> out = new ArrayList<>();
         markers(cell(gi, gj), Integer.MIN_VALUE / 2, Integer.MIN_VALUE / 2, Integer.MAX_VALUE / 2, Integer.MAX_VALUE / 2, out);

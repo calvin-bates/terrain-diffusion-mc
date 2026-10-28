@@ -58,7 +58,7 @@ public final class Glaciers {
             if (!TerrainDiffusionConfig.glaciers()) return;
             placeUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: glaciers failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: glaciers failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -79,7 +79,7 @@ public final class Glaciers {
                 if (kind == GlacierShaper.NONE) continue;
                 if (!loggedFirst) {
                     loggedFirst = true;
-                    LOG.info("Terra: first chunk with a glacier at {}", cp);
+                    LOG.info("Orogeny: first chunk with a glacier at {}", cp);
                 }
                 int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, dx, dz);
                 while (y > minY) {

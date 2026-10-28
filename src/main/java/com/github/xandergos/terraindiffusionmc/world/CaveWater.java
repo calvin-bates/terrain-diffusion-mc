@@ -47,7 +47,7 @@ public final class CaveWater {
     }
 
     private static ResourceKey<Biome> key(String name) {
-        return ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("terra", name));
+        return ResourceKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("orogeny", name));
     }
 
     private static boolean enabled() {
@@ -87,7 +87,7 @@ public final class CaveWater {
         try {
             placeUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: cave water failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: cave water failed for chunk {}", chunk.getPos(), t);
         }
     }
 

@@ -35,7 +35,7 @@ public abstract class ChunkGeneratorMixin {
                                      CallbackInfo ci) {
         ChunkGenerator self = (ChunkGenerator) (Object) this;
         if (!(self.getBiomeSource() instanceof TerrainDiffusionBiomeSource)) return;
-        TerraPerf.end("chunk.features (vanilla and Terra features, trees)", TERRA$DECORATE_START.get()[0]);
+        TerraPerf.end("chunk.features (vanilla and Orogeny features, trees)", TERRA$DECORATE_START.get()[0]);
         long t0 = TerraPerf.start();
         try {
             OceanFlora.trimDeepPlants(chunk, self.getSeaLevel());

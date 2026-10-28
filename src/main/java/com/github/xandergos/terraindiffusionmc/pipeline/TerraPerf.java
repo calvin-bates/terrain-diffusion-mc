@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.LongAdder;
  * Off with {@code debug.timing=false}.
  */
 public final class TerraPerf {
-    private static final Logger LOG = LoggerFactory.getLogger("Terra");
+    private static final Logger LOG = LoggerFactory.getLogger("Orogeny");
     private static final long PERIOD_NS = 60_000_000_000L;
 
     private static final Map<String, LongAdder[]> STAGES = new ConcurrentHashMap<>();
@@ -64,6 +64,6 @@ public final class TerraPerf {
             if (sb.length() > 0) sb.append(" | ");
             sb.append(rows.get(i)[1]);
         }
-        LOG.info("Terra timing ({} s): {}", Math.round(seconds), sb);
+        LOG.info("Orogeny timing ({} s): {}", Math.round(seconds), sb);
     }
 }

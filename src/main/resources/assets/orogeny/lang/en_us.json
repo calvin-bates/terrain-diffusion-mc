@@ -1,0 +1,9 @@
+{
+  "generator.orogeny.terrain_diffusion": "Orogeny",
+  "orogeny.scale_choice.title": "World Scale",
+  "orogeny.scale_choice.line1": "How large should this world's landscape be?",
+  "orogeny.scale_choice.line2": "Higher scales spread the same terrain over more blocks: taller mountains, longer rivers.",
+  "orogeny.scale_choice.per_block": "real-world distance per block",
+  "orogeny.scale_choice.tooltip": "Scale %s: one block is %s m",
+  "orogeny.scale_choice.tooltip_default": "Scale %s: one block is %s m (default)"
+}

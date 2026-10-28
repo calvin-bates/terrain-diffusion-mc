@@ -1,19 +1,19 @@
 {
   "replace": false,
   "values": [
-    "terra:birch_taiga",
-    "terra:boreal_forest",
-    "terra:cloud_forest",
-    "terra:forested_highland",
-    "terra:geothermal_basin",
-    "terra:karst",
-    "terra:redwoods",
-    "terra:siberian_taiga",
-    "terra:taiga_clearing",
-    "terra:taiga_mountain",
-    "terra:temperate_rainforest",
-    "terra:yellowstone",
-    "terra:yosemite_cliffs",
-    "terra:yosemite_lowlands"
+    "orogeny:birch_taiga",
+    "orogeny:boreal_forest",
+    "orogeny:cloud_forest",
+    "orogeny:forested_highland",
+    "orogeny:geothermal_basin",
+    "orogeny:karst",
+    "orogeny:redwoods",
+    "orogeny:siberian_taiga",
+    "orogeny:taiga_clearing",
+    "orogeny:taiga_mountain",
+    "orogeny:temperate_rainforest",
+    "orogeny:yellowstone",
+    "orogeny:yosemite_cliffs",
+    "orogeny:yosemite_lowlands"
   ]
 }

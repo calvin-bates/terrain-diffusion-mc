@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "orogeny:tl_yosemite_oak_checked",
+  "features": [
+    {
+      "chance": 0.3,
+      "feature": "orogeny:tl_yosemite_oak_mega_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "orogeny:tl_spruce_big_alt_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "orogeny:tl_spruce_big_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "orogeny:tl_birch_alt_checked"
+    },
+    {
+      "chance": 0.075,
+      "feature": "orogeny:tl_birch_checked"
+    }
+  ]
+}

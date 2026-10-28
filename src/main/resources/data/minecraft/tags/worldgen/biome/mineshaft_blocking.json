@@ -1,9 +1,9 @@
 {
   "replace": false,
   "values": [
-    "terra:deep_dark_caves",
-    "terra:deep_dark_city",
-    "terra:deep_dark_forest",
-    "terra:deep_dark_incursion"
+    "orogeny:deep_dark_caves",
+    "orogeny:deep_dark_city",
+    "orogeny:deep_dark_forest",
+    "orogeny:deep_dark_incursion"
   ]
 }

@@ -1,0 +1,89 @@
+# Builds the three Orogeny jars (windows/DirectML, cuda, cpu) and publishes them as a GitHub release.
+#
+# Release: bump mod_version in gradle.properties, add its section to CHANGELOG.md, then push a tag v<mod_version>
+# (for example: git tag v1.0.0, git push origin v1.0.0). The release is created as a draft so it can be checked
+# before publishing. "Run workflow" on the Actions tab builds the jars without releasing (they are kept as artifacts).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        variant: [Dml, Cuda, Cpu]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Check the tag matches mod_version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          if [ "v$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match mod_version=$version in gradle.properties" >&2
+            exit 1
+          fi
+
+      - name: Build (${{ matrix.variant }})
+        run: ./gradlew build -Puse${{ matrix.variant }}=true --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jar-${{ matrix.variant }}
+          path: |
+            build/libs/orogeny-*.jar
+            !build/libs/*-sources.jar
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: jar-*
+          merge-multiple: true
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "### Which jar?"
+            echo "- **windows**: Windows with any modern GPU (recommended)."
+            echo "- **cuda**: NVIDIA GPUs with CUDA and cuDNN installed (see CUDA_INSTALL.md)."
+            echo "- **cpu**: everything else; uses CoreML on Apple Silicon Macs."
+            echo
+            echo "Requires Minecraft 26.3, Fabric Loader 0.19.5+, Fabric API and Java 25. The first launch downloads the terrain models (about 2.5 GB)."
+          } >> notes.md
+          cat notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Orogeny ${{ github.ref_name }}
+          body_path: notes.md
+          draft: true
+          files: dist/*.jar

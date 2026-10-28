@@ -61,7 +61,7 @@ public final class VolcanicSurfaces {
             if (!TerrainDiffusionConfig.volcanoes()) return;
             placeUnchecked(chunk);
         } catch (Throwable t) {
-            LOG.error("Terra: volcanic surfaces failed for chunk {}", chunk.getPos(), t);
+            LOG.error("Orogeny: volcanic surfaces failed for chunk {}", chunk.getPos(), t);
         }
     }
 
@@ -84,7 +84,7 @@ public final class VolcanicSurfaces {
                         && tag != Landforms.TAG_CRATER && tag != Landforms.TAG_HOT_CRATER) continue;
                 if (!loggedFirst) {
                     loggedFirst = true;
-                    LOG.info("Terra: first chunk with volcanic surfaces at {}", cp);
+                    LOG.info("Orogeny: first chunk with volcanic surfaces at {}", cp);
                 }
                 long h = mix(seed ^ (x * 0x9E3779B97F4A7C15L) ^ (z * 0xC2B2AE3D27D4EB4FL) ^ 0x7A1AL);
                 column(chunk, data, pos, x, z, lx, lz, h, tag, minY, scale);

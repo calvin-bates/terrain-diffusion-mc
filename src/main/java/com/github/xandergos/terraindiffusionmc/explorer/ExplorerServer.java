@@ -119,7 +119,7 @@ public final class ExplorerServer {
     private static void handleRoot(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equalsIgnoreCase("GET")) { send405(ex); return; }
         try (InputStream in = ExplorerServer.class.getResourceAsStream(
-                "/assets/terra/explorer/index.html")) {
+                "/assets/orogeny/explorer/index.html")) {
             if (in == null) {
                 sendError(ex, 404, "index.html not found");
                 return;

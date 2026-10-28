@@ -1,0 +1,22 @@
+{
+  "feature": "minecraft:dripstone_cluster",
+  "placement": [
+    {
+      "type": "minecraft:count",
+      "count": {
+        "type": "minecraft:uniform",
+        "max_inclusive": 60,
+        "min_inclusive": 30
+      }
+    },
+    {
+      "type": "minecraft:in_square"
+    },
+    {
+      "type": "orogeny:cave_layer"
+    },
+    {
+      "type": "minecraft:biome"
+    }
+  ]
+}

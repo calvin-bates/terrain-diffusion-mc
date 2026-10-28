@@ -1,184 +1,110 @@
-# Terra
+# Orogeny
 
-Terra is a Fabric mod for Minecraft 26.3 that generates realistic, AI-based terrain with a build range up to y=2031. It is a fork of [Terrain Diffusion](https://github.com/xandergos/terrain-diffusion-mc) by xandergos (MIT licensed); the original copyright notice is kept in `LICENSE.txt`. The text below is the upstream README and still describes the original mod.
+Orogeny is a Fabric mod for Minecraft 26.3 that generates realistic, AI-drawn terrain: whole continents, mountain ranges up to Y 2031, rivers that drain real watersheds, lakes, coasts and islands, caves under every kind of ground, and 85 new surface and cave biomes, all built from vanilla blocks.
 
----
+The terrain itself comes from [Terrain Diffusion](https://github.com/xandergos/terrain-diffusion-mc) by xandergos (SIGGRAPH 2026), a diffusion model trained on real elevation data. Orogeny is a fork of that mod (MIT licensed) that builds a full world on top of it.
 
-# Terrain Diffusion Fabric Mod [[Modrinth]](https://modrinth.com/mod/terrain-diffusion)
+## Features
 
-#### UPDATE: The research behind this mod has been accepted to SIGGRAPH 2026, the world's premier graphics conference! That means the research was officially peer reviewed and recognized as a significant contribution to the field. Enjoy the mod!
+- **Realistic terrain at real scale.** One block is 5 to 30 real metres (you choose the world scale when you create a world). Mountains reach the 2031 build limit; the sea floor drops into a continental shelf, slope and abyss.
+- **Rivers and lakes from real hydrology.** Water drains downhill over the generated terrain: streams join into rivers and main rivers that carve their own valleys, and filled basins become lakes. Rivers are wide and deep enough for boats; deltas, oxbow lakes, alluvial fans and waterfalls form where the ground calls for them.
+- **Oceans, coasts and islands.** Continental shelves, reefs and atolls, barrier islands and lagoons, sea stacks, sea arches and wave-cut overhangs, spits and tombolos, rift seas, active margins with trenches, icebergs and arctic ice islands.
+- **Biomes that follow the climate.** Every biome is placed from the model's temperature and rainfall, not vanilla's noise: boreal forests, temperate and tropical rainforests, cloud forests, redwoods, steppe, tundra, salt flats and glaciers, plus Terralith-style showpieces (Yellowstone with geysers, Yosemite, painted mountains, white cliffs, volcanoes) that only appear where the terrain already suits them.
+- **Caves under any terrain.** Orogeny's own noise caves run under every mountain (inside a peak at Y 1500 too), with cave biomes from andesite and tuff caves to fungal grottos, deep dark forests, molten caverns, glowworm grottos and giant geode halls; underground lakes, cenotes and river sinks; and cave formations (columns, flowstone, rimstone pools, crystal rooms, natural bridges).
+- **Vanilla structures and mobs fit in.** Villages and outposts sit on levelled ground pads, ancient cities in caverns big enough to hold them, and vanilla's sulfur caves, lush caves and deep dark all appear.
+- **A terrain explorer.** `/orogeny-explore` opens an interactive map of the world in your browser (relief, elevation, climate, rivers, biomes and caves).
 
-This is a Minecraft Fabric mod integrating [Terrain Diffusion](https://github.com/xandergos/terrain-diffusion).
+## Which build should I use?
 
-## Which version should I use?
+Three builds are attached to every release. All need the same Minecraft and Fabric versions.
 
-Three builds are available on the [Releases](https://github.com/xandergos/terrain-diffusion-mc/releases) page:
+| Build | For | Setup |
+|---|---|---|
+| **windows** (recommended) | Windows with any modern GPU (DirectML) | None |
+| **cuda** | NVIDIA GPUs on Linux (or Windows if you prefer CUDA) | [CUDA + cuDNN install](CUDA_INSTALL.md) |
+| **cpu** | Everything else; uses CoreML on Apple Silicon Macs | None |
 
-**The CPU build is slow unless you are on MacOS.**
-
-| Build                     | Supports                    | Setup required                          |
-|---------------------------| --------------------------- | --------------------------------------- |
-| **Windows** (recommended) | Windows with any modern GPU | None                                    |
-| **CUDA**                  | NVIDIA GPUs                 | [CUDA + cuDNN install](CUDA_INSTALL.md) |
-| **CPU**                   | Everything else             | None                                    |
-
-> **Mac users:** the CPU build automatically uses CoreML for hardware acceleration on Apple Silicon. No extra setup is needed.
-
-Use the `-cuda` build only if you are on Linux, or have an NVIDIA GPU and prefer CUDA (may improve performance).
+The CPU build works everywhere but is slow except on Apple Silicon.
 
 ## Requirements
 
-- Minecraft with [Fabric](https://fabricmc.net/) and the [Fabric API Mod](https://modrinth.com/mod/fabric-api) installed
-- Windows with a GPU OR Linux with an NVIDIA GPU is strongly recommended. CPU inference works but is very slow.
-- VRAM (GPU RAM) needed: 1.5GB
-- RAM needed: 2.5GB (May need to increase Minecraft's RAM allocation)
+- Minecraft 26.3 with [Fabric Loader](https://fabricmc.net/) 0.19.5+ and [Fabric API](https://modrinth.com/mod/fabric-api)
+- Java 25 or newer
+- A GPU with about 2 GB of free VRAM (2.5 GB to keep all three models loaded, see `inference.offload_models`)
+- About 2.5 GB of extra RAM for the models (raise Minecraft's memory allocation if needed)
+- An internet connection the first time you launch, to download the models (about 2.5 GB) into `.minecraft/terrain-diffusion-models`
 
-## Usage
+## Getting started
 
-**If using CUDA build:** First see [CUDA_INSTALL.md](CUDA_INSTALL.md).
+1. Put the jar for your build and Fabric API in your `mods/` folder.
+2. Launch Minecraft once while online so the models download.
+3. Create a world. **Orogeny** is already selected as the world type; when you press **Create New World**, pick a **World Scale** (2 is recommended).
+4. The first chunks take a little longer while the models warm up. Spawn is placed on land near the origin.
 
-1. Download the mod jar from [Releases](https://github.com/xandergos/terrain-diffusion-mc/releases) for your Minecraft version and place it in your Minecraft `mods/` folder. Make sure the Minecraft version matches.
-2. Launch Minecraft, at least once online to download the models (~2.5GB).
-3. Create a world. **Terra** is already selected as the world type; when you press **Create New World** it asks for the `World Scale` with six buttons (see [Per-world settings](#per-world-settings) below).
-4. The mod will search for a land spawn point near the world origin automatically. If the area around (0, 0) is entirely ocean, it may take a moment to find land. Use `/terra-explore` (see below) to scout the world further.
+### World scale
 
-## Exploring the World
+Each world saves its scale (1 to 6). Scale `n` means one block is `30 / n` metres, so higher scales spread the same terrain over more blocks: taller mountains, longer rivers, bigger everything. Scale 2 is a good balance. Lower scales run the AI model more often (more GPU load); higher scales make taller worlds (more CPU and memory load).
 
-The mod includes a built-in terrain explorer web UI. Run the `/terra-explore` command in-game; it will print a clickable link (e.g. `http://localhost:19801`) that opens an interactive map in your browser. Click the map on the left to open a "detailed view". Click the detailed view to get coordinates in the bottom left. You can also filter for certain climates. The **Biomes** view colours each biome over the relief, with a legend of the biomes in view (click one to highlight it), and `/terra-find biome <name>` teleports you to the nearest patch of a biome.
+## Commands
 
-Use the explorer to scout continents, mountains, islands, and other interesting terrain before venturing out in Minecraft.
+| Command | What it does |
+|---|---|
+| `/orogeny-explore` | Starts the terrain explorer and prints a link (`http://localhost:19801`) to open it in your browser. |
+| `/orogeny-find biome <name>` | Teleports you to the nearest patch of a biome. |
+| `/orogeny-find cave <name>` | Teleports you to the nearest cave biome or cave site of that kind. |
+| `/orogeny-find <feature>` | Teleports you to the nearest landmark: volcanoes, deltas, atolls, iceberg fields and more (press Tab for the list). |
+| `/orogeny-column` | Debug: prints what the generator did to the column you're standing in (rivers, lakes, ground levels). |
 
 ## Configuration
 
-Edit `config/terrain-diffusion-mc.properties` (created automatically on first launch):
+Settings live in `config/orogeny.properties`, created on first launch with comments for every option. The ones you're most likely to change:
 
-```
-# Terrain Diffusion MC configuration
-
-# Inference device: "cpu", "gpu", or "auto" (try GPU first then fall back to CPU).
-# "gpu" uses DirectML on the -windows build, or CUDA on the -cuda build.
-# GPU builds default to "gpu" so startup fails loudly if no GPU is detected.
-# CPU build defaults to "auto": uses CoreML on macOS, otherwise CPU.
+```properties
+# "gpu", "cpu", or "auto" (try the GPU, fall back to the CPU).
 inference.device=gpu
 
-# Offload inactive models from VRAM between pipeline stages.
-# Keeps peak VRAM to ~1.5-2 GB. Set to false if you have ~2.5+ GB free for slightly
-# faster generation.
+# Keep only one model on the GPU at a time (about 1.5-2 GB of VRAM). With 4 GB or more free, set this to false:
+# all three models stay loaded and tiles build noticeably faster.
 inference.offload_models=true
 
-# Validate SHA-256 for pre-existing files in .minecraft/terrain-diffusion-models.
-# Set to false if you want to provide custom models/config files without hash checks.
-validate_model=true
+# Build the terrain around you ahead of time while the GPU is otherwise idle.
+performance.prefetch_tiles=true
 
-# Port for the local terrain explorer web UI (/terra-explore).
-explorer.port=19801
-
-# Spawn search: coarse-pixel region sizes for finding a land spawn near (0, 0).
-# Starts at initial_size x initial_size and expands by 8 each step up to max_size x max_size.
-# Each coarse pixel covers a large area (hundreds of blocks), so 16–128 is typically sufficient.
-spawn_search.initial_size=16
-spawn_search.max_size=128
+# Size multiplier for the patch biomes (meadow, dark forest, birch forest ...).
+biomes.size=2.5
 ```
 
-### Per-world settings
+Rivers, lakes, oceans, landforms and caves each have their own switches (`rivers.*`, `oceans.*`, `landforms.*`, `caves.*`). Changes only affect newly generated chunks.
 
-For Terra worlds, pressing **Create New World** opens a screen with six buttons, one per `World Scale` (`1..6`); each shows how many real-world metres one block covers.
+## Common issues
 
-This value is saved with the world save and affects:
+**Chunks load slowly at first.** Every new 256-block tile runs the AI model. Leave `performance.prefetch_tiles` on, and on a GPU with room to spare set `inference.offload_models=false`.
 
-- how many real-world meters each block represents (`scale=1` => `30m/block`, `scale=2` => `15m/block`, etc.)
-- world max height for newly created worlds (assumes tallest point is 10000 real-world meters)
-- 2 is recommended for a good balance of scale and playability. Use 1 for smaller, more compressed worlds.
-- Lower values put more stress on the GPU (Terrain Diffusion runs more often), while higher values put more stress on the CPU (larger world height). Most modern GPUs will be bottlenecked by the CPU around scale 2 or 3.
+**A dynamic link library (DLL) initialization routine failed.** Update Java to the newest release (Java 25 or newer).
 
-### Axolotls
+**LoadLibrary failed with error 126** *(CUDA build only).* CUDA or cuDNN isn't installed correctly; see [CUDA_INSTALL.md](CUDA_INSTALL.md).
 
-Axolotls live in a few alpine lakes: lake water at least 3000 real-world metres up (the Y level this needs depends on the world scale: Y 163 at scale 1, Y 263 at scale 2, Y 663 at scale 6), in rare "axolotl chunks" (like slime chunks, one in 25). `/terra-column` says whether you are standing in one.
+**`Failed to load terrain-diffusion models`.** Usually out of memory: give Minecraft about 2.5 GB more RAM.
 
-### Fish
+**Not compatible with PolyhedralDev's Terra or other world-type mods.** Orogeny replaces the overworld generator for its own world type; other world types are untouched.
 
-Terra's lakes have fish at any height: salmon in cold and cool biomes, cod in larger lakes outside warm biomes, and tropical fish in warm biomes (jungle, savanna, swamp, desert). They need water at least three blocks deep in open water, so streams have none. Oceans and rivers keep vanilla's fish.
+Report other problems on the [issue tracker](https://github.com/calvin-bates/terrain-diffusion-mc/issues).
 
-## Common Issues
+## Building from source
 
-**A dynamic link library (DLL) initialization routine failed**
-
-This can happen for some older Java versions. Please update to the most recent version of Java 21 or higher. The [latest Microsoft OpenJDK 21](https://learn.microsoft.com/en-us/java/openjdk/download) version is known to work.
-
-**LoadLibrary failed with error 126** *(CUDA build only)*
-
-This is typically due to an improper CUDA or cuDNN installation. See [CUDA_INSTALL.md](CUDA_INSTALL.md) for troubleshooting steps.
-
-**java.lang.IllegalStateException: Failed to load terrain-diffusion models**
-
-This typically indicates an "out of memory" error (the logs should show this as well).
-Terrain Diffusion's models take up about 2.5GB of RAM, so make sure to allocate enough RAM to account for this.
-
-**If your issue is still not resolved, please [raise it here](https://github.com/xandergos/terrain-diffusion-mc/issues/new).**
-
-## Building from Source
-
-An internet connection is required during the build to fetch the pinned model manifest metadata from Hugging Face.
-
-The `-windows` build requires `libs/onnxruntime-dml.jar`, which is provided as part of the repo. See [Building onnxruntime with DirectML](#building-onnxruntime-with-directml) to build from source. 
-
-Build for Windows (DirectML):
-```
-./gradlew build -PuseDml=true
-```
-
-Build for CUDA:
-```
-./gradlew build -PuseCuda=true
-```
-
-Build for CPU (also handles macOS/CoreML automatically):
-```
-./gradlew build -PuseCpu=true
-```
-
-Build all:
-```
-./gradlew buildAll
-```
-
-### Building onnxruntime with DirectML
-
-**Requirements**
-
-- [Windows 10 SDK (10.0.17134.0)](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/index-legacy) — for Windows 10 version 1803 or newer
-- Visual Studio 2017 toolchain — install *Desktop development with C++* from the VS Installer
-- Visual Studio 2022 toolchain — same as above
-- Python 3.10+: [https://python.org/](https://python.org/)
-- CMake 3.28 or higher
-
-Keep both VS toolchains up to date. Full details at the [ONNX Runtime build docs](https://onnxruntime.ai/docs/build/inferencing.html) and the [DirectML EP requirements](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html#build).
-
-**Steps**
-
-Run all commands from the **Developer Command Prompt for VS 2022**.
+The build needs Java 25 and an internet connection (it fetches the pinned model manifest from Hugging Face).
 
 ```
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-cd onnxruntime
-.\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --use_dml --build_java --build
+./gradlew build -PuseDml=true    # windows (DirectML), the default
+./gradlew build -PuseCuda=true   # cuda
+./gradlew build -PuseCpu=true    # cpu (and CoreML on macOS)
+./gradlew buildAll               # all three
 ```
 
-The built jar appears in `java/build/`. Rename it to `onnxruntime-dml.jar` and place it in `libs/` in this repository.
+Jars appear in `build/libs/` as `orogeny-<version>-<build>+26.3.jar`. The windows build uses `libs/onnxruntime-dml.jar` from this repository; see the [ONNX Runtime build docs](https://onnxruntime.ai/docs/build/inferencing.html) and the [DirectML requirements](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html#build) to build it yourself.
 
-## Note For Mod Developers
+## Credits and license
 
-While modifying the AI terrain itself is quite complex, the integration with Minecraft biomes is extremely simple. The model outputs elevation + 4 climate variables, and this is converted to Minecraft biomes with hand-written rules. This is the most immediate way to improve the quality of the terrain and is relatively easy, but takes time to get realistic. The entire biome classifier is [only 250 lines](https://github.com/xandergos/terrain-diffusion-mc/blob/master/src/main/java/com/github/xandergos/terraindiffusionmc/pipeline/BiomeClassifier.java).
-
-The terrain diversity far outpaces the biome diversity and there's a real opportunity to close that gap. I'm hoping someone goes crazy with it.
-
-## Rivers and lakes
-
-Terra derives rivers and lakes from the generated terrain: water drains downhill, small catchments
-make streams, larger ones rivers and main rivers, and filled basins become lakes. Main rivers stay in
-the lowlands, mountains only get streams, and snowy or stony peaks stay dry. Channels are carved into
-the terrain, so rivers sit in real valleys.
-
-Tune it with the **Rivers** view in `/terra-explore` (sliders for thresholds and lake size), then copy
-the numbers into `config/terra.properties` (`rivers.*` keys). Set `rivers.enabled=false` to turn it
-off. It only affects newly generated chunks.
+- **Terrain Diffusion** (the AI model and the original mod): [xandergos](https://github.com/xandergos/terrain-diffusion-mc), MIT license. The models are downloaded from [xandergos/terrain-diffusion-30m-onnx](https://huggingface.co/xandergos/terrain-diffusion-30m-onnx).
+- Biome and cave styles inspired by Terralith, Biomes O' Plenty, William Wythers' Overhauled Overworld and vanilla Minecraft, rebuilt with vanilla blocks only. No code or assets from those mods are included.
+- Orogeny is released under the MIT license; see [LICENSE.txt](LICENSE.txt).

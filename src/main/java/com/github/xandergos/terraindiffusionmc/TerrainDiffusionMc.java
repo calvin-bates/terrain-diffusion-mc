@@ -31,12 +31,12 @@ import org.slf4j.LoggerFactory;
 import static net.minecraft.commands.Commands.literal;
 
 public class TerrainDiffusionMc implements ModInitializer {
-    public static final String MOD_ID = "terra";
+    public static final String MOD_ID = "orogeny";
     private static final Logger LOG = LoggerFactory.getLogger(TerrainDiffusionMc.class);
 
     @Override
     public void onInitialize() {
-        LOG.info("Initializing terra");
+        LOG.info("Initializing Orogeny");
         Registry.register(BuiltInRegistries.BIOME_SOURCE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionBiomeSource.CODEC);
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion"), TerrainDiffusionDensityFunction.CODEC);
         Registry.register(BuiltInRegistries.DENSITY_FUNCTION_TYPE, Identifier.fromNamespaceAndPath(MOD_ID, "terrain_diffusion_surface"), TerrainDiffusionSurfaceLevelFunction.CODEC);
@@ -61,8 +61,8 @@ public class TerrainDiffusionMc implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 {
-                    dispatcher.register(literal("terra-explore").executes(TerrainDiffusionMc::executeExplore));
-                    dispatcher.register(literal("terra-column").executes(TerrainDiffusionMc::executeColumn));
+                    dispatcher.register(literal("orogeny-explore").executes(TerrainDiffusionMc::executeExplore));
+                    dispatcher.register(literal("orogeny-column").executes(TerrainDiffusionMc::executeColumn));
                     FeatureFinder.register(dispatcher);
                 }
         );
@@ -108,7 +108,7 @@ public class TerrainDiffusionMc implements ModInitializer {
                     act[dz + R][dx + R] = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.OCEAN_FLOOR, x, z) - 1;
                 }
             }
-            StringBuilder log = new StringBuilder("[Terra] terra-column at " + p.getX() + " " + p.getZ()
+            StringBuilder log = new StringBuilder("[Orogeny] orogeny-column at " + p.getX() + " " + p.getZ()
                     + " (centre generated Y " + orig[R][R] + ", final " + fin[R][R]
                     + (wat[R][R] != Short.MIN_VALUE ? ", water " + wat[R][R] : "") + ")\nlowered-by map (W water, _ unchanged, @ = you), then generated Y minus centre:\n");
             for (int r = 0; r <= 2 * R; r++) {
@@ -180,8 +180,8 @@ public class TerrainDiffusionMc implements ModInitializer {
             ctx.getSource().sendSuccess(() -> Component.literal("Axolotls: this chunk is " + (axolotlChunk ? "" : "not ")
                     + "an axolotl chunk; they spawn in lakes in those chunks from Y " + axolotlMinY + " up"), false);
         } catch (Exception e) {
-            LOG.error("terra-column failed", e);
-            ctx.getSource().sendFailure(Component.literal("terra-column failed: " + e));
+            LOG.error("orogeny-column failed", e);
+            ctx.getSource().sendFailure(Component.literal("orogeny-column failed: " + e));
         }
         return 1;
     }

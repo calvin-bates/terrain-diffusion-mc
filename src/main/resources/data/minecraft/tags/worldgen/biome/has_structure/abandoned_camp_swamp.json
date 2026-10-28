@@ -1,8 +1,8 @@
 {
   "replace": false,
   "values": [
-    "terra:bog",
-    "terra:marsh",
-    "terra:salt_marsh"
+    "orogeny:bog",
+    "orogeny:marsh",
+    "orogeny:salt_marsh"
   ]
 }

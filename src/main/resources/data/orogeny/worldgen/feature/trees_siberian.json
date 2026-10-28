@@ -1,0 +1,30 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "orogeny:larch_checked",
+  "features": [
+    {
+      "chance": 0.075,
+      "feature": "orogeny:giant_larch_checked"
+    },
+    {
+      "chance": 0.36757,
+      "feature": "orogeny:tall_spruce_checked"
+    },
+    {
+      "chance": 0.10256,
+      "feature": "orogeny:giant_tall_spruce_checked"
+    },
+    {
+      "chance": 0.1619,
+      "feature": "minecraft:pine_checked"
+    },
+    {
+      "chance": 0.03409,
+      "feature": "minecraft:mega_pine_checked"
+    },
+    {
+      "chance": 0.02353,
+      "feature": "minecraft:fallen_spruce_tree"
+    }
+  ]
+}

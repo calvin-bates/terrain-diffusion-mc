@@ -255,7 +255,7 @@ public final class LocalTerrainProvider {
     }
 
     /**
-     * Biome ids at native resolution for the explorer's Biomes map and {@code /terra-find biome}: the same classifier
+     * Biome ids at native resolution for the explorer's Biomes map and {@code /orogeny-find biome}: the same classifier
      * (with the patch biomes) and shore pass the game uses, on the inference thread. See {@link BiomeMap}.
      */
     public static BiomeMap.Result getBiomeMap(int i1, int j1, int i2, int j2) throws Exception {
@@ -626,13 +626,13 @@ public final class LocalTerrainProvider {
                     svc.regionSize(), svc.trust(),
                     (ri, rj) -> {
                         boolean cached = svc.isCached(ri, rj);
-                        if (!cached) LOG.info("Terra rivers: computing region ({}, {})...", ri, rj);
+                        if (!cached) LOG.debug("Orogeny rivers: computing region ({}, {})...", ri, rj);
                         long t0 = System.nanoTime();
                         long tp = cached ? 0L : TerraPerf.start();
                         RiverService.Region region = svc.region(ri, rj, source);
                         TerraPerf.end("riverRegion (part of tile.rivers)", tp);
                         if (!cached) {
-                            LOG.info("Terra rivers: region ({}, {}) ready in {} ms", ri, rj,
+                            LOG.debug("Orogeny rivers: region ({}, {}) ready in {} ms", ri, rj,
                                     (System.nanoTime() - t0) / 1_000_000L);
                         }
                         return region;
@@ -644,7 +644,7 @@ public final class LocalTerrainProvider {
                 data.waterIsLake = res.isLake;
             }
         } catch (RuntimeException e) {
-            LOG.error("Terra rivers failed for tile at ({}, {}); generating it without rivers", j1, i1, e);
+            LOG.error("Orogeny rivers failed for tile at ({}, {}); generating it without rivers", j1, i1, e);
         }
     }
 
@@ -698,7 +698,7 @@ public final class LocalTerrainProvider {
             }
             return out;
         } catch (RuntimeException e) {
-            LOG.warn("Terra: deltas unavailable for tile at ({}, {}): {}", j1, i1, e.toString());
+            LOG.warn("Orogeny: deltas unavailable for tile at ({}, {}): {}", j1, i1, e.toString());
             return List.of();
         }
     }
@@ -743,7 +743,7 @@ public final class LocalTerrainProvider {
             }
             return out;
         } catch (RuntimeException e) {
-            LOG.warn("Terra: coastal landforms unavailable for ({}, {}): {}", pj0, pi0, e.toString());
+            LOG.warn("Orogeny: coastal landforms unavailable for ({}, {}): {}", pj0, pi0, e.toString());
             return List.of();
         }
     }
@@ -882,7 +882,7 @@ public final class LocalTerrainProvider {
             }
             return out;
         } catch (RuntimeException e) {
-            LOG.warn("Terra: river mouths unavailable for the coast at ({}, {}): {}", j1, i1, e.toString());
+            LOG.warn("Orogeny: river mouths unavailable for the coast at ({}, {}): {}", j1, i1, e.toString());
             return null;
         }
     }
@@ -963,7 +963,7 @@ public final class LocalTerrainProvider {
             }
             return new float[][]{outR, outM};
         } catch (RuntimeException e) {
-            LOG.warn("Terra: river distances unavailable for the biomes at ({}, {}): {}", j1, i1, e.toString());
+            LOG.warn("Orogeny: river distances unavailable for the biomes at ({}, {}): {}", j1, i1, e.toString());
             return null;
         }
     }
@@ -995,7 +995,7 @@ public final class LocalTerrainProvider {
                             return cached.data;
                         }
                         task = fresh;
-                        LOG.info(
+                        LOG.debug(
                                 "Terrain Diffusion ({}) uncached region requested: ({}, {})-({}, {}) size {}x{}",
                                 OnnxModel.getResolvedInferenceProvider(), j1, i1, j2, i2, j2 - j1, i2 - i1);
                         INFERENCE_EXECUTOR.execute(fresh);
@@ -1052,7 +1052,7 @@ public final class LocalTerrainProvider {
                 noWaterUnderIce(data);
                 TerraPerf.end("tile.rivers", tr);
                 long newlyComputedWindowCount = pipeline.getTotalComputedWindowCount() - computedWindowCountBefore;
-                LOG.info(
+                LOG.debug(
                         "Terrain Diffusion ({}) finished generating region {}x{} ({} newly computed windows) in {} ms{}",
                         OnnxModel.getResolvedInferenceProvider(), j2 - j1, i2 - i1, newlyComputedWindowCount,
                         (System.nanoTime() - tBuild) / 1_000_000L, me.prefetch && !me.promoted ? " (prefetched)" : "");
@@ -1067,7 +1067,7 @@ public final class LocalTerrainProvider {
                 PENDING.remove(key, me);
                 if (me.prefetch && !me.promoted && e instanceof RuntimeException) {
                     // Nobody is waiting; a chunk that asks later builds it again and sees the error itself.
-                    LOG.warn("Terra: prefetching the tile at ({}, {}) failed: {}", j1, i1, e.toString());
+                    LOG.warn("Orogeny: prefetching the tile at ({}, {}) failed: {}", j1, i1, e.toString());
                     return null;
                 }
                 throw e;
@@ -1311,7 +1311,7 @@ public final class LocalTerrainProvider {
                 KarstTowers.apply(elev, biomes, field, rivers, i1, j1, H, W, scale);
             }
         } catch (RuntimeException e) {
-            LOG.warn("Terra: round C landforms unavailable for ({}, {}): {}", j1, i1, e.toString());
+            LOG.warn("Orogeny: round C landforms unavailable for ({}, {}): {}", j1, i1, e.toString());
         }
     }
 
@@ -1510,7 +1510,7 @@ public final class LocalTerrainProvider {
             }
             MarineTerraces.apply(elevOut, dist, biomes, i1, j1, H, W, mpb);
         } catch (RuntimeException e) {
-            LOG.warn("Terra: marine terraces unavailable for ({}, {}): {}", j1, i1, e.toString());
+            LOG.warn("Orogeny: marine terraces unavailable for ({}, {}): {}", j1, i1, e.toString());
         }
     }
 

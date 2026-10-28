@@ -1,7 +1,7 @@
 {
   "replace": false,
   "values": [
-    "terra:blooming_plateau",
-    "terra:temperate_highland"
+    "orogeny:blooming_plateau",
+    "orogeny:temperate_highland"
   ]
 }

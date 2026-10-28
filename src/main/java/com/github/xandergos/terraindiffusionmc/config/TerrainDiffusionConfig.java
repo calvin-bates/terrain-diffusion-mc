@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.Properties;
 
 public final class TerrainDiffusionConfig {
-    private static final String FILE_NAME = "terra.properties";
+    private static final String FILE_NAME = "orogeny.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
     /**
@@ -202,7 +202,7 @@ public final class TerrainDiffusionConfig {
      */
     public static boolean prefetchTiles() { return readBoolean("performance.prefetch_tiles", true); }
     /** Once-a-minute log line of where Terra's generation time goes ({@code pipeline.TerraPerf}). */
-    public static boolean timing() { return readBoolean("debug.timing", true); }
+    public static boolean timing() { return readBoolean("debug.timing", false); }
     /** Size multiplier for the patch biomes (meadow, dark forest, tundra, boreal forest ...); 1 = the original sizes. */
     public static float biomeSize() { return Math.max(0.25f, Math.min(10f, readFloat("biomes.size", 2.5f))); }
     /** Terra's iceberg fields, ice islands, arctic ice shelves and sea ice detail (vanilla's icebergs are off). */
@@ -266,6 +266,11 @@ public final class TerrainDiffusionConfig {
     private static void loadOverrides(Path configPath) {
         try {
             Files.createDirectories(configPath.getParent());
+            // Before the rename to Orogeny the file was terra.properties: carry its settings over once.
+            Path old = configPath.resolveSibling("terra.properties");
+            if (!Files.exists(configPath) && Files.exists(old) && Files.readString(old).contains("inference.device")) {
+                Files.copy(old, configPath);
+            }
             if (Files.exists(configPath)) {
                 try (InputStream in = Files.newInputStream(configPath)) {
                     Properties overrides = new Properties();

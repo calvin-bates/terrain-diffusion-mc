@@ -1,11 +1,11 @@
 {
   "replace": false,
   "values": [
-    "terra:birch_taiga",
-    "terra:boreal_forest",
-    "terra:forested_highland",
-    "terra:siberian_taiga",
-    "terra:taiga_clearing",
-    "terra:taiga_mountain"
+    "orogeny:birch_taiga",
+    "orogeny:boreal_forest",
+    "orogeny:forested_highland",
+    "orogeny:siberian_taiga",
+    "orogeny:taiga_clearing",
+    "orogeny:taiga_mountain"
   ]
 }

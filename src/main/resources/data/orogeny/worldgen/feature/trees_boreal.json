@@ -1,0 +1,30 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "minecraft:spruce_checked",
+  "features": [
+    {
+      "chance": 0.09,
+      "feature": "minecraft:mega_spruce_checked"
+    },
+    {
+      "chance": 0.23352,
+      "feature": "orogeny:golden_birch_checked"
+    },
+    {
+      "chance": 0.05376,
+      "feature": "orogeny:giant_golden_birch_checked"
+    },
+    {
+      "chance": 0.19318,
+      "feature": "minecraft:pine_checked"
+    },
+    {
+      "chance": 0.04225,
+      "feature": "minecraft:mega_pine_checked"
+    },
+    {
+      "chance": 0.02451,
+      "feature": "minecraft:fallen_spruce_tree"
+    }
+  ]
+}

@@ -1,10 +1,10 @@
 {
   "replace": false,
   "values": [
-    "terra:arctic",
-    "terra:glacier",
-    "terra:polar_desert",
-    "terra:treeline",
-    "terra:tundra"
+    "orogeny:arctic",
+    "orogeny:glacier",
+    "orogeny:polar_desert",
+    "orogeny:treeline",
+    "orogeny:tundra"
   ]
 }

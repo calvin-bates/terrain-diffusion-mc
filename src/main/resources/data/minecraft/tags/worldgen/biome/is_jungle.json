@@ -1,8 +1,8 @@
 {
   "replace": false,
   "values": [
-    "terra:cloud_forest",
-    "terra:karst",
-    "terra:mirage_isles"
+    "orogeny:cloud_forest",
+    "orogeny:karst",
+    "orogeny:mirage_isles"
   ]
 }

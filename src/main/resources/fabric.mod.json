@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "terra",
+  "id": "orogeny",
   "version": "${version}",
-  "name": "Terra",
-  "description": "A playable, realistic terrain generation mod built off of xandergos' Terrain Diffusion.",
+  "name": "Orogeny",
+  "description": "Realistic, AI-generated terrain: continents, mountain ranges, rivers, lakes, coasts, islands, caves and 85 new surface and cave biomes, built on xandergos' Terrain Diffusion.",
   "authors": [
     "The_Ponderer",
     {
@@ -13,9 +13,13 @@
       }
     }
   ],
-  "contact": {},
+  "contact": {
+    "homepage": "https://github.com/calvin-bates/terrain-diffusion-mc",
+    "sources": "https://github.com/calvin-bates/terrain-diffusion-mc",
+    "issues": "https://github.com/calvin-bates/terrain-diffusion-mc/issues"
+  },
   "license": "MIT",
-  "icon": "assets/terra/icon.png",
+  "icon": "assets/orogeny/icon.png",
   "environment": "*",
   "entrypoints": {
     "fabric-datagen": [
@@ -29,15 +33,16 @@
     ]
   },
   "mixins": [
-    "terra.mixins.json",
+    "orogeny.mixins.json",
     {
-      "config": "terra.client.mixins.json",
+      "config": "orogeny.client.mixins.json",
       "environment": "client"
     }
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
-    "minecraft": "${minecraft_version}"
+    "minecraft": "${minecraft_version}",
+    "java": ">=25"
   }
 }

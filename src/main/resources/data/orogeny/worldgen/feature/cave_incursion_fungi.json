@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:random_selector",
+  "default": "orogeny:cave_incursion_sculk_morel",
+  "features": [
+    {
+      "chance": 0.1,
+      "feature": "orogeny:cave_incursion_sculk_omphalotus"
+    }
+  ]
+}

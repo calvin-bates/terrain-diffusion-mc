@@ -37,7 +37,7 @@ public final class WorldScaleChoiceScreen extends Screen {
     private final CreateWorldScreen parent;
 
     public WorldScaleChoiceScreen(CreateWorldScreen parent) {
-        super(Component.translatable("terra.scale_choice.title"));
+        super(Component.translatable("orogeny.scale_choice.title"));
         this.parent = parent;
     }
 
@@ -54,8 +54,8 @@ public final class WorldScaleChoiceScreen extends Screen {
         int centerY = this.height / 2;
 
         addCentered(this.title, centerX, centerY - 62, 0xFFFFFF);
-        addCentered(Component.translatable("terra.scale_choice.line1"), centerX, centerY - 44, 0xAAAAAA);
-        addCentered(Component.translatable("terra.scale_choice.line2"), centerX, centerY - 32, 0xAAAAAA);
+        addCentered(Component.translatable("orogeny.scale_choice.line1"), centerX, centerY - 44, 0xAAAAAA);
+        addCentered(Component.translatable("orogeny.scale_choice.line2"), centerX, centerY - 32, 0xAAAAAA);
 
         int count = WorldScaleManager.MAX_SCALE;
         int rowWidth = count * SCALE_BUTTON_WIDTH + (count - 1) * SCALE_BUTTON_GAP;
@@ -66,15 +66,15 @@ public final class WorldScaleChoiceScreen extends Screen {
             int x = left + (scale - 1) * (SCALE_BUTTON_WIDTH + SCALE_BUTTON_GAP);
             String metres = metresPerBlock(scale);
             Component tip = scale == WorldScaleManager.DEFAULT_SCALE
-                    ? Component.translatable("terra.scale_choice.tooltip_default", scale, metres)
-                    : Component.translatable("terra.scale_choice.tooltip", scale, metres);
+                    ? Component.translatable("orogeny.scale_choice.tooltip_default", scale, metres)
+                    : Component.translatable("orogeny.scale_choice.tooltip", scale, metres);
             this.addRenderableWidget(Button.builder(Component.literal(String.valueOf(scale)), b -> choose(chosen))
                     .bounds(x, rowY, SCALE_BUTTON_WIDTH, BUTTON_HEIGHT)
                     .tooltip(Tooltip.create(tip))
                     .build());
             addCentered(Component.literal(metres + " m"), x + SCALE_BUTTON_WIDTH / 2, rowY + BUTTON_HEIGHT + 4, 0xAAAAAA);
         }
-        addCentered(Component.translatable("terra.scale_choice.per_block"), centerX, rowY + BUTTON_HEIGHT + 16, 0x808080);
+        addCentered(Component.translatable("orogeny.scale_choice.per_block"), centerX, rowY + BUTTON_HEIGHT + 16, 0x808080);
 
         this.addRenderableWidget(Button.builder(Component.translatable("gui.back"), b -> onClose())
                 .bounds(centerX - BACK_BUTTON_WIDTH / 2, rowY + BUTTON_HEIGHT + 36, BACK_BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -124,7 +124,7 @@ public final class WorldScaleChoiceScreen extends Screen {
                                                               WorldDimensions selectedDimensions, int scale) {
         LevelStem overworld = selectedDimensions.get(LevelStem.OVERWORLD).orElse(null);
         if (overworld == null) return null;
-        Identifier id = Identifier.fromNamespaceAndPath("terra", "terrain_diffusion_scale_" + scale);
+        Identifier id = Identifier.fromNamespaceAndPath("orogeny", "terrain_diffusion_scale_" + scale);
         Holder.Reference<DimensionType> type = dimensionTypes.get(id).orElse(null);
         if (type == null) return null;
         Map<ResourceKey<LevelStem>, LevelStem> dimensions = new HashMap<>(selectedDimensions.dimensions());

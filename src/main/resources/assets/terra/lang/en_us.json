@@ -1,9 +1,0 @@
-{
-  "generator.terra.terrain_diffusion": "Terra",
-  "terra.scale_choice.title": "World Scale",
-  "terra.scale_choice.line1": "How large should this world's landscape be?",
-  "terra.scale_choice.line2": "Higher scales spread the same terrain over more blocks: taller mountains, longer rivers.",
-  "terra.scale_choice.per_block": "real-world distance per block",
-  "terra.scale_choice.tooltip": "Scale %s: one block is %s m",
-  "terra.scale_choice.tooltip_default": "Scale %s: one block is %s m (default)"
-}

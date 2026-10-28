@@ -173,7 +173,7 @@ public final class OnnxModel implements AutoCloseable {
                 if ("CoreML".equals(resolvedInferenceProvider)) {
                     throw new OrtException(
                             "inference.offload_models=false is not supported with CoreML. " +
-                            "Set inference.offload_models=true in terra.properties.");
+                            "Set inference.offload_models=true in orogeny.properties.");
                 }
                 this.gpuSession = env.createSession(modelBytes, sessionOptions);
             }
@@ -307,15 +307,15 @@ public final class OnnxModel implements AutoCloseable {
             // The GPU worked earlier this run, so this is not a missing driver: usually the GPU or system memory ran
             // out, or the graphics driver reset. Free what we can and try once more, then fall back to the CPU rather
             // than crash the world.
-            LOG.error("[Terra] GPU session for '{}' failed: {}. Freeing memory and retrying once.", name, describe(first));
+            LOG.error("[Orogeny] GPU session for '{}' failed: {}. Freeing memory and retrying once.", name, describe(first));
             System.gc();
             try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
             try {
                 createGpuSession();
-                LOG.warn("[Terra] GPU session for '{}' recovered on retry.", name);
+                LOG.warn("[Orogeny] GPU session for '{}' recovered on retry.", name);
             } catch (OrtException second) {
                 gpuFailed = true;
-                LOG.error("[Terra] GPU inference failed again ({}). Terrain generation continues on the CPU until "
+                LOG.error("[Orogeny] GPU inference failed again ({}). Terrain generation continues on the CPU until "
                         + "the game is restarted; expect it to be much slower.", describe(second));
                 throw new GpuFallback();
             }
@@ -353,7 +353,7 @@ public final class OnnxModel implements AutoCloseable {
                     opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
                     cpuFallback = env.createSession(optimizedModelBytes, opts);
                 }
-                LOG.warn("[Terra] '{}' now runs on the CPU.", name);
+                LOG.warn("[Orogeny] '{}' now runs on the CPU.", name);
             } catch (OrtException e) {
                 throw new RuntimeException("Failed to create CPU fallback session for: " + name, e);
             }
@@ -401,7 +401,7 @@ public final class OnnxModel implements AutoCloseable {
                 if ("DirectML".equals(resolvedInferenceProvider)) {
                     // DirectML worked earlier this run: this is a real failure (memory, driver reset), so always log
                     // it. Out of memory is re-thrown so it is not mistaken for a missing GPU.
-                    LOG.error("[Terra] DirectML failed to start a session: {} - {}", t.getClass().getSimpleName(), t.getMessage());
+                    LOG.error("[Orogeny] DirectML failed to start a session: {} - {}", t.getClass().getSimpleName(), t.getMessage());
                     if (t instanceof OutOfMemoryError oom) throw oom;
                 } else if (dmlWarnLoggedOnce.compareAndSet(false, true)) {
                     LOG.warn("DirectML not available: {} - {}. This is expected if you are not using a DirectML build.",
