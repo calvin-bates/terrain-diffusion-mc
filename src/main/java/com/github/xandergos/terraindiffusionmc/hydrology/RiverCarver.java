@@ -51,6 +51,8 @@ public final class RiverCarver {
 
     private static final short[] FROZEN_BIOMES = {3, 16, 32, 33, 34, 48, 49, 50, 51, 85, 116, 131};   // 50 tundra, 51 polar desert, 85 arctic
 
+    /** Deepest a steep channel column is cut down to its cross-section's lowest column (blocks). */
+    private static final int STEP_CUT_MAX = 4;
     /** Distance (blocks) from the channel edge over which banks are shaped. */
     private static final float BANK = 4f;   // how far a stream reshapes the ground beside it (was 8: diagonal steps reached too far)
     /** Bank rise per block of distance from the channel edge. */
@@ -743,17 +745,28 @@ public final class RiverCarver {
                 int top = ytop[idx];
                 if (top < SEA_SURFACE_Y) continue;
                 int rad = Math.min(8, (int) Math.ceil(halfWidthAt(zA[idx], scale)) + 1);
-                int lvl = Integer.MAX_VALUE;
+                int lvl = Integer.MAX_VALUE, minTop = top;
                 for (int rr = Math.max(0, r - rad); rr <= Math.min(H - 1, r + rad); rr++) {
                     for (int cc = Math.max(0, c - rad); cc <= Math.min(W - 1, c + rad); cc++) {
                         int j = rr * W + cc;
-                        if (j == idx || steepSkip[j] || chanWater[j] == NOWATER) continue;
+                        if (j == idx) continue;
                         float ddx = cpx[j] - cpx[idx], ddz = cpz[j] - cpz[idx];
                         if (ddx * ddx + ddz * ddz > 2.25f) continue;
+                        if (steepSkip[j] && score[j] <= 0f) minTop = Math.min(minTop, ytop[j]);
+                        if (steepSkip[j] || chanWater[j] == NOWATER) continue;
                         lvl = Math.min(lvl, chanWater[j]);
                     }
                 }
-                if (lvl == Integer.MAX_VALUE || lvl > top) continue;
+                // A step across the whole channel (every column of its cross-section skipped, Calvin's Oct 27 waterfall
+                // at X -58130 Z -16995): it used to stay dry rock, leaving stone pillars and dry ledges between the
+                // pools above and below. Now the cross-section is cut level to its lowest column and holds water there,
+                // so a steep reach is a staircase of level steps; Waterfalls wakes each step's lip, so the water pours
+                // from one to the next as a cascade, and a tall step is a waterfall.
+                if (lvl == Integer.MAX_VALUE) {
+                    if (top - minTop > STEP_CUT_MAX) continue;
+                    lvl = minTop;
+                }
+                if (lvl > top) continue;
                 int bed = Math.max(bedFloor[idx], lvl - columnDepth(cA[idx], zA[idx], sc, wA[idx], scale));
                 surfaceY[r][c] = (short) Math.min(top, bed);
                 waterY[r][c] = (short) lvl;
