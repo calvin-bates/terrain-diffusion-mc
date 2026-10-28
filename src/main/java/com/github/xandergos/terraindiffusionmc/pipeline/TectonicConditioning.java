@@ -203,6 +203,8 @@ public final class TectonicConditioning {
                 if (f == null) continue;
                 float d = f[1], w = f[2], along = f[3];
                 if (w < 0.5f) continue;
+                // Fade out over the narrowing tip of a closed end instead of stopping dead at half a pixel wide.
+                along *= smoothstep(0.5f, 1.2f, w);
                 float u = d / w;
                 // The sea: an axial trough falling from a narrow shelf at the coast (u = 1) to the full depth at the axis.
                 float trough = -r.depth * (1f - u * u) * (float) Math.sqrt(Math.max(0f, 1f - u * u)) + 120f * u * u;
@@ -244,7 +246,8 @@ public final class TectonicConditioning {
     /**
      * Where (x, y) lies across a rift sea, for drowning its floor at native resolution: {u, along}, u the distance from
      * the axis over the half-width there (0 on the axis, 1 at the planned coast) and along the strength along it
-     * (fading where it runs on into the ocean), the nearest rift's; or null if no rift is within 1.2 half-widths.
+     * (fading where it runs on into the ocean) and width its half-width there (coarse pixels; it narrows to nothing at a
+     * closed end), the nearest rift's: {u, along, width}; or null if no rift is within 1.2 half-widths.
      */
     public float[] riftSea(float x, float y, Base base) {
         if (!rifts) return null;
@@ -258,7 +261,7 @@ public final class TectonicConditioning {
                 if (f == null || f[2] < 0.5f) continue;
                 float u = f[1] / f[2];
                 if (u > 1.2f) continue;
-                if (best == null || u < best[0]) best = new float[]{u, f[3]};
+                if (best == null || u < best[0]) best = new float[]{u, f[3], f[2]};
             }
         }
         return best;

@@ -986,7 +986,12 @@ public final class WorldPipeline implements AutoCloseable {
                 float[] f = syn.riftSea((j1 + c) / (float) S, (i1 + r) / (float) S);
                 if (f == null) continue;
                 float u = f[0];
-                float w = f[1] * (1f - smoothstepF(0.8f, 1.05f, u)) * (1f - smoothstepF(RIFT_LOW_M, RIFT_HIGH_M, e));
+                // Faded out softly towards the coast (from u 0.6, so the edge of the drowning is spread over kilometres
+                // and never shows as a line), and over the narrowing tip of a closed end: the rift stopped dead where
+                // it was half a coarse pixel wide, which drew a straight line across the shallows and a straight
+                // groove through the low land beyond (Calvin, Oct 27, an archipelago cut by a rift).
+                float w = f[1] * smoothstepF(0.6f, 1.6f, f[2]) * (1f - smoothstepF(0.6f, 1.05f, u))
+                        * (1f - smoothstepF(RIFT_LOW_M, RIFT_HIGH_M, e));
                 if (w <= 0f) continue;
                 float target = -(RIFT_SHELF_M + RIFT_FLOOR_M * (1f - u * u));
                 if (e > target) elev[k] = e + (target - e) * w;
