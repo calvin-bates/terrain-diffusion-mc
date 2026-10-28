@@ -208,6 +208,8 @@ public final class TerrainDiffusionConfig {
     /** Terra's iceberg fields, ice islands, arctic ice shelves and sea ice detail (vanilla's icebergs are off). */
     public static boolean icebergs() { return readBoolean("oceans.icebergs", true); }
     public static boolean coastalCurrents() { return readBoolean("climate.coastal_currents", true); }
+    /** Boats under water (still or flowing) float back up to the surface (mixin/BoatFloatMixin). */
+    public static boolean floatingBoats() { return readBoolean("gameplay.floating_boats", true); }
     /** Active continental margins (coastal range, narrow shelf, trench) laid into the elevation conditioning. */
     public static boolean activeMargins() { return readBoolean("oceans.active_margins", true); }
     /**

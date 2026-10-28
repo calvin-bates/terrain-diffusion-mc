@@ -7,6 +7,7 @@
     "AxolotlMixin",
     "BeardifierAccessor",
     "BiomeMixin",
+    "BoatFloatMixin",
     "ChunkGeneratorMixin",
     "LakeFeatureMixin",
     "MinecraftServerMixin",
