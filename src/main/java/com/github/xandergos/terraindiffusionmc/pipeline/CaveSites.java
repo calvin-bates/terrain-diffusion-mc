@@ -549,6 +549,8 @@ public final class CaveSites {
 
     /** Share of land region anchors (without another cut) that get a cave mouth. */
     public static float MOUTH_CHANCE = 0.5f;
+    /** How far the ground 24 blocks uphill must rise over a mouth's entrance, and the least roof over its tunnel (blocks). */
+    public static int MOUTH_MIN_RISE = 12, MOUTH_MIN_ROOF = 5;
 
     /**
      * A cave mouth: a big arched tunnel from the surface sloping down into the caves, 14-26 blocks across at the
@@ -575,6 +577,10 @@ public final class CaveSites {
                 yaw = (float) ang;
             }
         }
+        // Only into a real hillside (Calvin, Oct 28, X 1284 Z 4643: on flat ground the mouth was a shallow ramp whose
+        // thin roof broke open in a string of pits along it). The ground 24 blocks uphill must stand MOUTH_MIN_RISE over
+        // the entrance.
+        if (best < ground + MOUTH_MIN_RISE) return null;
         float pitch = 0.35f + 0.25f * b;
         float len = 70f + 70f * w;
         float r0 = 7f + 6f * v;
@@ -586,6 +592,21 @@ public final class CaveSites {
         float c2 = (float) Math.cos(p2);
         float fx = ex + len2 * c2 * (float) Math.cos(yaw2), fy = ey - len2 * (float) Math.sin(p2), fz = ez + len2 * c2 * (float) Math.sin(yaw2);
         if (fy - r0 * 1.4f < CUT_FLOOR_Y + 6) return null;
+        // The roof stays whole past the entrance: every 6 blocks along both legs (from two radii in), the ground stands
+        // at least MOUTH_MIN_ROOF blocks over the tunnel's crown, so it never breaks through as a line of holes.
+        for (int leg = 0; leg < 2; leg++) {
+            float ax0 = leg == 0 ? sx : ex, ay0 = leg == 0 ? sy : ey, az0 = leg == 0 ? sz : ez;
+            float bx0 = leg == 0 ? ex : fx, by0 = leg == 0 ? ey : fy, bz0 = leg == 0 ? ez : fz;
+            float ra = leg == 0 ? r0 : r0 * 1.2f, rb = leg == 0 ? r0 * 1.2f : r0 * 1.4f;
+            float ll = (float) Math.sqrt((bx0 - ax0) * (bx0 - ax0) + (by0 - ay0) * (by0 - ay0) + (bz0 - az0) * (bz0 - az0));
+            for (float t = leg == 0 ? 2f * r0 : 0f; t <= ll; t += 6f) {
+                float f = t / ll;
+                float cx = ax0 + (bx0 - ax0) * f, cy = ay0 + (by0 - ay0) * f, cz = az0 + (bz0 - az0) * f;
+                float crown = cy + (ra + (rb - ra) * f) * 1.13f;
+                int g = surface.groundTop(Math.round(cx), Math.round(cz));
+                if (g == Integer.MIN_VALUE || g < crown + MOUTH_MIN_ROOF) return null;
+            }
+        }
         return new Mouth(sx, sy, sz, ex, ey, ez, fx, fy, fz, r0, r0 * 1.4f, ground, b * 6.28f);
     }
 
