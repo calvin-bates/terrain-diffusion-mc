@@ -411,7 +411,7 @@ public final class CaveShapes {
     // ---- Roof and entrances ----
 
     /** Solid roof kept over caves, in blocks below the lowest nearby ground: dry land, the sea floor, inland water. */
-    public static int ROOF_LAND = 10, ROOF_SEA = 6, ROOF_WATER = 16;
+    public static int ROOF_LAND = 10, ROOF_SEA = 10, ROOF_WATER = 16;
     /** Entrances: where the entrance noise is above the first value the roof starts thinning, gone at the second. */
     // Oct 27: off (the start is above the noise's range). Thinning the roof opened caves as slits and shelves along
     // hillsides; caves now reach the surface through cave mouths (CaveSites.Mouth) and the other cuts instead.
@@ -428,8 +428,12 @@ public final class CaveShapes {
         return ROOF_LAND * (1f - t * t * (3f - 2f * t));
     }
 
-    /** Openings in the sea floor: rarer patches than the land entrances (the sea floor is mostly sealed). */
-    public static float SEA_OPENING_START = 0.56f, SEA_OPENING_FULL = 0.66f;
+    /**
+     * Openings in the sea floor. Off since Oct 27 (the start is above the noise's range): the patches opened the big
+     * caves under the sea floor as ragged pits all over it (Calvin: "the ceiling collapses in"). The sea floor is
+     * sealed; blue holes are the sea's openings.
+     */
+    public static float SEA_OPENING_START = 2f, SEA_OPENING_FULL = 2.12f;
 
     /** Roof depth under the sea floor at column (x, z): {@link #ROOF_SEA}, thinning to 0 in rare opening patches. */
     public float seaRoof(int x, int z) {

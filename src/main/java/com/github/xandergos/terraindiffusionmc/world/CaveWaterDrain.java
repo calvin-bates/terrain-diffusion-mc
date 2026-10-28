@@ -157,18 +157,16 @@ public final class CaveWaterDrain {
 
     // ---- Caves open to the sea fill to sea level ----
 
-    /** Sea level water's top block, and how far from the sea (blocks) a cave still floods from it. */
+    /** Sea level water's top block. */
     private static final int SEA_TOP = 62;
-    public static int FLOOD_RADIUS = 96;
-    private static final int GRID = 8;
 
     /**
      * Fills caves that the sea reaches to sea level. The terrain pass floods caves below sea level by column (near the
      * sea, or under it) and keeps the rest dry, so a cave running inland from the sea stood with a flat wall of water
      * where the flooded columns ended (Calvin, Oct 27, X -48914 Z 39840). Over the 3 x 3 chunks around the one just
-     * decorated, air at or below Y 62 touching sea-level water is filled with water, and so on, in columns within
-     * {@link #FLOOD_RADIUS} of the open sea (judged on an 8-block world grid, so every pass agrees). Water and lava
-     * caves' own cells are left alone (they have their own levels).
+     * decorated, air at or below Y 62 touching sea-level water is filled with water, and so on, in columns of the
+     * coastal band ({@link com.github.xandergos.terraindiffusionmc.pipeline.CoastBand}, pure, so every pass agrees),
+     * whose edge is a rock sill. Water and lava caves' own cells are left alone (they have their own levels).
      */
     private static void flood(WorldGenLevel level, ChunkAccess center) {
         int cx = center.getPos().x(), cz = center.getPos().z();
@@ -187,18 +185,10 @@ public final class CaveWaterDrain {
                         anyWater = true;
             }
         if (!anyWater) return;
-        // Near the sea, on the 8-block grid (the grid points around the area, nearest point per column).
         CaveSurface surface = CaveSurface.get();
-        int g0x = Math.floorDiv(x0, GRID), g0z = Math.floorDiv(z0, GRID), gn = 48 / GRID + 1;
-        boolean[] near = new boolean[gn * gn];
-        boolean anyNear = false;
-        for (int j = 0; j < gn; j++)
-            for (int i = 0; i < gn; i++) {
-                int gx = (g0x + i) * GRID + GRID / 2, gz = (g0z + j) * GRID + GRID / 2;
-                near[j * gn + i] = com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.nearSea(surface, gx, gz, FLOOD_RADIUS);
-                anyNear |= near[j * gn + i];
-            }
-        if (!anyNear) return;
+        com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.generation = com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.cacheGeneration();
+        if (com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.distance(x0 + 24, z0 + 24, surface)
+                > com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.RADIUS + 40) return;   // far from any sea
         final int W = 48, H = SEA_TOP - minY + 1;
         boolean[] seen = new boolean[W * W * H];
         int[] queue = new int[4096];
@@ -226,7 +216,7 @@ public final class CaveWaterDrain {
                         for (int lx = 0; lx < 16; lx++) {
                             if (!sec.getBlockState(lx, ly, lz).isAir()) continue;
                             int ax = ox + lx, az = oz + lz, ay = y - minY;
-                            if (!nearAt(near, gn, g0x, g0z, x0 + ax, z0 + az)) continue;
+                            if (!com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.flooded(x0 + ax, z0 + az, surface)) continue;
                             if (fluidCave(sec.getNoiseBiome(lx >> 2, ly >> 2, lz >> 2))) continue;
                             boolean wet = false;
                             for (int k = 0; k < 6 && !wet; k++) {
@@ -257,7 +247,7 @@ public final class CaveWaterDrain {
                 seen[ni] = true;
                 BlockState st = get(cs, ax, minY + ay, az, minSection);
                 if (st == null || !st.isAir()) continue;
-                if (!nearAt(near, gn, g0x, g0z, x0 + ax, z0 + az)) continue;
+                if (!com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.flooded(x0 + ax, z0 + az, surface)) continue;
                 ChunkAccess c = cs[(az >> 4) * 3 + (ax >> 4)];
                 LevelChunkSection sec = c.getSections()[((minY + ay) >> 4) - minSection];
                 if (sec != null && fluidCave(sec.getNoiseBiome((ax & 15) >> 2, ((minY + ay) & 15) >> 2, (az & 15) >> 2))) continue;
@@ -271,11 +261,6 @@ public final class CaveWaterDrain {
                 queue[tail++] = ni;
             }
         }
-    }
-
-    private static boolean nearAt(boolean[] near, int gn, int g0x, int g0z, int wx, int wz) {
-        int i = Math.floorDiv(wx, GRID) - g0x, j = Math.floorDiv(wz, GRID) - g0z;
-        return i >= 0 && j >= 0 && i < gn && j < gn && near[j * gn + i];
     }
 
     /** The block at area position (x, y, z) (x, z in 0..47 over the 3 x 3 chunks), or null if unknown. */

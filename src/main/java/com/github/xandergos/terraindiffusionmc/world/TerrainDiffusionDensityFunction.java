@@ -284,6 +284,10 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                     boolean guarded = colGuards != null && !colGuards.isEmpty();
                     // A cut passing just under the ground opens the thin crust over it (no one-block strips).
                     int open = eTop == Integer.MIN_VALUE ? Integer.MAX_VALUE : extras.openFrom(c, blockX, t - 1, blockZ);
+                    // The rock sill at the coastal band's edge (CoastBand): caves stay sealed up to Y 63 there.
+                    boolean sill = minY <= com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.SILL_TOP
+                            && TerrainDiffusionConfig.caveFormations()
+                            && com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.sill(blockX, blockZ, CaveSurface.get());
                     for (int y = 0; y < sizeY; y++) {
                         int blockY = minY + y;
                         float v = t - blockY;
@@ -296,6 +300,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
                             float ev = extras.value(c, blockX, blockY, blockZ);
                             if (ev < v) v = ev;
                         }
+                        if (sill && blockY < t && blockY <= com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.SILL_TOP && v < 0.5f) v = 0.5f;
                         if (guarded && blockY < t) v = StructureGuards.apply(colGuards, blockX, blockY, blockZ, v);
                         buffer.set(index++, v);
                     }

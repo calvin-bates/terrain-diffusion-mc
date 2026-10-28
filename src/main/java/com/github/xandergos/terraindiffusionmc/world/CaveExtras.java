@@ -46,6 +46,7 @@ final class CaveExtras {
         long seed = LocalTerrainProvider.getSeed();
         CaveSurface surface = CaveSurface.get();
         CaveSites.formations = TerrainDiffusionConfig.caveFormations();
+        com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.generation = LocalTerrainProvider.cacheGeneration();
         List<CaveSites.Cut> shafts = TerrainDiffusionConfig.caveBiomes() && TerrainDiffusionConfig.waterCaves()
                 ? CaveSites.near(x0, z0, x0 + sx - 1, z0 + sz - 1, CaveBiomes.forSeed(seed), surface) : List.of();
         // Sea arches and coastal overhangs: with the sea caves and the formations.

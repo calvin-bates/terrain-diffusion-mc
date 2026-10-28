@@ -75,6 +75,7 @@ public final class DryCaves {
                 && TerrainDiffusionConfig.seaCaves()
                 ? com.github.xandergos.terraindiffusionmc.pipeline.SeaCaves.forSeed(LocalTerrainProvider.getSeed()) : null;
         CaveSurface surface = seaCaves == null ? null : CaveSurface.get();
+        com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.generation = LocalTerrainProvider.cacheGeneration();
         // So do sea arches and coastal overhangs.
         boolean arches = seaCaves != null && TerrainDiffusionConfig.caveFormations();
         java.util.List<com.github.xandergos.terraindiffusionmc.pipeline.CaveSites.Cut> archList = new java.util.ArrayList<>();
@@ -107,6 +108,8 @@ public final class DryCaves {
                     if (tile.surfaceY != null && tile.surfaceY[lz][lx] != RiverCarver.NONE) top = tile.surfaceY[lz][lx];
                     dry = top >= seaLevel - 1;   // no sea water above it
                     if (dry && seaCaves != null && seaCaves.active(x, z, surface)) dry = false;
+                    // The coastal band: caves below sea level hold sea water (a rock sill at its edge, CoastBand).
+                    if (dry && com.github.xandergos.terraindiffusionmc.pipeline.CoastBand.flooded(x, z, CaveSurface.get())) dry = false;
                     if (dry && arches) {
                         for (var a : archList)
                             if (((com.github.xandergos.terraindiffusionmc.pipeline.SeaArches.Arch) a).wet(x, z)) { dry = false; break; }
